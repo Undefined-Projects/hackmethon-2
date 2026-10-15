@@ -1,0 +1,281 @@
+// ============================================================
+//  HackMeThon — Esquema de datos
+//  Motor: SQLite (archivo único, cero infraestructura en sitio).
+//  NOTA: SQLite en Prisma NO soporta `enum` ni `Json`.
+//  Por eso los estados son String validados en la capa de app
+//  (ver src/lib/constants.ts) y las configs son String con JSON.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// EventState: fila única (id = "singleton").
+// Es la "fuente de verdad" que se emite a TODOS los clientes.
+// ------------------------------------------------------------
+model EventState {
+  id     String @id @default("singleton")
+  status String @default("LOBBY") // LOBBY | RUNNING | PAUSED | FINISHED
+
+  // Fase "destacada" en el lobby. NO controla el acceso ni navega:
+  // el acceso lo dicta Phase.status. Es solo un realce visual opcional.
+  focusPhaseId String?
+  focusPhase   Phase?  @relation(fields: [focusPhaseId], references: [id])
+
+  // Acceso libre: cuando está activo, cualquier fase ABIERTA por el admin
+  // es accesible aunque el equipo no haya resuelto la anterior. Apagado por
+  // defecto: la cadena es el comportamiento normal del evento y esto es la
+  // excepción que se enciende a mano —para una demo, para una sala que va
+  // con retraso, o para probar una fase suelta sin jugarse las cinco previas.
+  libreAcceso   Boolean   @default(false)
+
+  shuffleCount  Int       @default(0) // nº de mezclas de roles realizadas
+
+  // Lo que un equipo tiene que esperar entre un ataque y el siguiente.
+  // Lo ajusta el panel en caliente: con la sala tranquila se acorta, y
+  // si los ataques ahogan el juego se alarga. Reiniciar NO lo toca: es
+  // configuración del evento, no estado de la partida.
+  enfriamientoAtaqueMs Int @default(60000)
+  lastShuffleAt DateTime?
+  startedAt     DateTime?
+
+  // Contabilidad de pausas: el reloj de los equipos no debe correr
+  // mientras el admin tiene el evento en PAUSED.
+  pausedAt      DateTime? // instante de la pausa en curso (null si corre)
+  totalPausedMs Int       @default(0)
+
+  updatedAt DateTime @updatedAt
+}
+
+// ------------------------------------------------------------
+// Team: la unidad de juego. Cada equipo = 1 room de Socket.io.
+// ------------------------------------------------------------
+model Team {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  joinCode  String   @unique // código corto que teclea el equipo
+  score     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // --- Ataques entre equipos ---
+  // Cuándo atacó este equipo por última vez, a quién, y cuánta pausa
+  // global llevaba el evento en ese momento. Lo tercero es lo que hace
+  // que el enfriamiento NO corra mientras el admin tiene el evento en
+  // pausa: sin ello, una parada de cinco minutos le regalaría el ataque
+  // a quien acabara de gastarlo y se lo quitaría a quien esperaba.
+  ultimoAtaqueAt    DateTime?
+  ultimoObjetivoId  String?
+  ultimoAtaquePausaMs Int @default(0)
+
+  // Logo del equipo. Los BYTES viven aquí y no en una carpeta del disco:
+  // todo el evento cabe en un archivo .db que se copia a otro portátil
+  // media hora antes de empezar, y una carpeta de imágenes sueltas es
+  // justo lo que se queda atrás en esa copia.
+  //
+  // El tipo sale de los bytes, no de lo que diga quien sube el archivo.
+  // `logoAt` hace de versión: va en la URL para que el navegador no
+  // siga enseñando el logo viejo después de cambiarlo.
+  logo     Bytes?
+  logoMime String?
+  logoAt   DateTime?
+
+  members  User[]
+  progress TeamPhaseProgress[]
+  commands CommandLog[]
+  logs     EventLog[]
+  luces    LuzRegla[]
+}
+
+// ------------------------------------------------------------
+// Plano: el mapa del auditorio, fila única (id = "singleton").
+//
+// Va entero en un JSON porque es UN documento que se edita entero desde
+// el panel y se pinta entero en el proyector: partirlo en tablas sería
+// sincronizar cien filas para mover una mesa. Las mesas apuntan al
+// equipo por su id DENTRO del JSON, así que si se borra un equipo su
+// mesa se queda libre en vez de romper nada.
+//
+// El reinicio del juego NO lo toca: el auditorio no cambia porque se
+// vuelva a jugar.
+// ------------------------------------------------------------
+model Plano {
+  id        String   @id @default("singleton")
+  datosJson String   @default("{}")
+  updatedAt DateTime @updatedAt
+}
+
+// ------------------------------------------------------------
+// LuzRegla: «cuando pase ESTO, manda ESTE código por ESTOS pines».
+//
+// El automatismo de las luces. Vive aquí y no en el servidor de Luces
+// porque lo único que hace falta para decidir —qué acaba de pasar en el
+// evento y de qué equipo— solo lo sabe este lado. El de Luces es el
+// actuador: guarda las ondas y las emite, y no tiene por qué enterarse
+// de que existen fases ni equipos.
+// ------------------------------------------------------------
+model LuzRegla {
+  id     String @id @default(cuid())
+  /** La acción del evento. Ver EVENTOS_LUZ en src/lib/luces.ts. */
+  evento String
+
+  /** Acotada a un equipo, o null = la dispara cualquiera. */
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  /** El botón del almacén de Luces. El nombre va COPIADO: si alguien
+   *  borra el botón allí, la regla se sigue pudiendo leer y desactivar
+   *  en vez de convertirse en un identificador huérfano. */
+  botonId     String
+  botonNombre String
+
+  /** Por dónde emitir. Vacío = los pines que diga el propio botón. */
+  pinesJson String  @default("[]")
+
+  activa   Boolean  @default(true)
+  creadaAt DateTime @default(now())
+
+  @@index([evento])
+}
+
+// ------------------------------------------------------------
+// User: un integrante. `role` es lo que DICTA el render del front.
+// `previousRole` permite garantizar que una mezcla nunca repite rol.
+// `socketId` + `connected` permiten reconexión con estado exacto.
+// ------------------------------------------------------------
+model User {
+  id           String    @id @default(cuid())
+  displayName  String
+  accessCode   String    @unique // auth ligera: un código por persona
+  role         String    @default("DATOS") // DATOS | TERMINAL | PANTALLA
+  previousRole String?
+  // Cuántas veces ha tenido la TERMINAL. La mezcla se la da a quien menos
+  // la ha tenido: en un equipo de cinco, todos pasan por el teclado.
+  vecesTerminal Int     @default(0)
+  isAdmin      Boolean   @default(false)
+  connected    Boolean   @default(false)
+  socketId     String?
+  lastSeenAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  commands CommandLog[]
+  logs     EventLog[]
+
+  @@index([teamId])
+}
+
+// ------------------------------------------------------------
+// Phase: reto modular. `status` global lo controla el admin.
+// `configJson` guarda los datos propios de la fase (pistas,
+// comandos válidos, etc.) sin tocar el esquema al añadir fases.
+// ------------------------------------------------------------
+model Phase {
+  id          String    @id @default(cuid())
+  key         String    @unique // "fase-1-acceso"
+  order       Int       @unique
+  title       String
+  description String?
+  status      String    @default("LOCKED") // LOCKED | ACTIVE | COMPLETED
+
+  // Lo ÚNICO que se envía al cliente cuando la fase está LOCKED.
+  // El resto (description, configJson) jamás sale del servidor si no está ACTIVE.
+  teaser String?
+
+  // --- El recorrido ---
+  // `esFinal` es la fase que cierra el evento: la proyección de sala le
+  // pone encima una cuenta atrás y un cohete. `esBonus` queda FUERA del
+  // recorrido —se juega si sobra tiempo— y por eso no cuenta para la
+  // meta de la carrera ni para la escala de averías del proyector.
+  esFinal  Boolean @default(false)
+  esBonus  Boolean @default(false)
+  /** Lo que la sala tiene para resolverla, en ms. Solo lo usa la final:
+   *  es el reloj del cohete. Lo ajusta el admin desde el panel. */
+  limiteMs Int?
+
+  configJson String @default("{}")
+  openedAt    DateTime?
+  closedAt    DateTime?
+
+  progress   TeamPhaseProgress[]
+  commands   CommandLog[]
+  eventState EventState[]
+}
+
+// ------------------------------------------------------------
+// TeamPhaseProgress: avance POR equipo POR fase.
+// Separa el estado global de la fase del progreso individual.
+// ------------------------------------------------------------
+model TeamPhaseProgress {
+  id        String    @id @default(cuid())
+  teamId    String
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  phaseId   String
+  phase     Phase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  status    String @default("PENDING") // PENDING | IN_PROGRESS | SOLVED | FAILED
+  attempts  Int    @default(0)
+  stateJson String @default("{}") // estado interno del reto para ese equipo
+
+  // --- Cronometraje (ver src/lib/timing.ts) ---
+  unlockedAt   DateTime? // = Phase.openedAt. RELOJ OFICIAL: mismo t0 para todos.
+  availableAt  DateTime? // instante en que ESTE equipo pudo entrar de verdad
+                         // = max(Phase.openedAt, solvedAt de la fase anterior).
+  enteredAt    DateTime? // 1ª vez que el equipo abre la fase desde el lobby.
+  firstMoveAt  DateTime? // 1er comando enviado por el Operador de Terminal.
+  solvedAt     DateTime?
+  pausedMs     Int       @default(0) // pausas globales sufridas por esta fila.
+
+  // Congelados al resolver, para que el ranking no dependa de recalcular:
+  timeToSolveMs Int? // OFICIAL: solvedAt - unlockedAt - pausedMs
+  activeMs      Int? // TRABAJO REAL: solvedAt - enteredAt - pausedMs
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, phaseId])
+  @@index([phaseId, timeToSolveMs])
+}
+
+// ------------------------------------------------------------
+// CommandLog: cada comando "a ciegas" del Operador de Terminal.
+// Sirve de auditoría y de historial al reconectar la Pantalla.
+// ------------------------------------------------------------
+model CommandLog {
+  id           String   @id @default(cuid())
+  teamId       String
+  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  phaseId      String?
+  phase        Phase?   @relation(fields: [phaseId], references: [id])
+  raw          String // texto exacto tecleado
+  accepted     Boolean  @default(false)
+  responseJson String   @default("{}") // lo que se pintó en Pantalla
+  createdAt    DateTime @default(now())
+
+  @@index([teamId, createdAt])
+}
+
+// ------------------------------------------------------------
+// EventLog: bitácora de acciones del admin (fases, mezclas).
+// Permite reconstruir la partida y depurar en vivo.
+// ------------------------------------------------------------
+model EventLog {
+  id        String   @id @default(cuid())
+  type      String // PHASE_OPEN | PHASE_CLOSE | ROLE_SHUFFLE | JOIN | DISCONNECT ...
+  message   String
+  dataJson  String   @default("{}")
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

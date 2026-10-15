@@ -1,0 +1,12 @@
+# Solo se versionan hackmethon-2/ y hackmethon-servidor/
+/*
+!/.gitignore
+!/hackmethon-2/
+!/hackmethon-servidor/
+
+node_modules/
+.vercel/
+.env
+.env*.local
+*.db
+*.db-journal

@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Promo HACK(ME)THON 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Silkscreen:wght@400;700&display=swap">
+<style>
+  html, body{ margin:0; background:#000; height:100%; }
+  body{ display:grid; place-items:center; }
+  canvas{ display:block; max-width:100vw; max-height:100vh; width:auto; height:auto; }
+  #aviso{ position:fixed; bottom:16px; left:0; right:0; margin:0; text-align:center; pointer-events:none;
+          font:14px "IBM Plex Mono", monospace; letter-spacing:.12em; color:#ffd3ee; }
+</style>
+</head>
+<body>
+<canvas id="cv" width="1080" height="1920"></canvas>
+<p id="aviso" hidden>CLIC PARA ACTIVAR EL SONIDO</p>
+<script>
+/* ============================================================
+   Promo del HACK(ME)THON 2.0 con el Chihuacornio de BYPASS.
+
+   Abierto en el navegador se reproduce en bucle (clic para el sonido).
+   Para el video, promo/render.mjs llama a render(t) cuadro por cuadro,
+   pide la pista de audio a pistaWav() y arma el MP4 con ffmpeg: todo
+   depende solo de t, nada de Math.random ni del reloj.
+
+   El sprite, sus poses y su paleta NO están copiados aquí: se leen de
+   sitio/bypass.js al cargar, así que si cambia en el juego, cambia aquí.
+   Se sirve desde la raíz del proyecto (ver render.mjs).
+
+   Formato vertical, 1080 × 1920 (reels, historias, TikTok).
+   ============================================================ */
+
+const cv = document.getElementById("cv");
+const W = cv.width, H = cv.height;
+const ctx = cv.getContext("2d");
+const C = {
+  fondo: "#0a070c", cuerpo: "#120a16", phos: "#fa39ba", hi: "#ffd3ee", dim: "#b0559b",
+  violeta: "#a32198", azul: "#4f86ee", azulDim: "#2f4a9a", verde: "#3ddc97",
+  verdeDim: "#23805a", sangre: "#ff3355", uv: "#d946ef",
+};
+const EVENTO = {
+  fecha: "SÁBADO 28 DE NOVIEMBRE · 2026",
+  hora: "16:00 A 22:00",
+  sede: ["AUDITORIO MENLO", "TEC DE MONTERREY", "CAMPUS CHIHUAHUA"],
+  costo: ["GRATIS", "SIN EXPERIENCIA PREVIA"],
+  url: "undefinedclub.org/hackmethon",
+};
+
+/* ── el Chihuacornio, sacado de bypass.js ──────────────────── */
+async function cargaChiwua(){
+  const src = await (await fetch("../sitio/bypass.js")).text();
+  const corta = (desde, hasta) => {
+    const i = src.indexOf(desde), j = src.indexOf(hasta, i);
+    if (i < 0 || j < 0) throw new Error("No encontré «" + desde + "» en bypass.js");
+    return src.slice(i, j);
+  };
+  const codigo = [
+    corta("const SPRITE =", "\n"),
+    corta("const CHIWUA_W =", "const CHIWUA_OJO ="),
+    corta("const CHIWUA_OJO =", "const VIRUS"),
+    corta("const VIRUS =", "/* ── sprites precalculados"),
+    corta("const MASCOTA =", "const CUERNO_LUZ"),
+    corta("const CUERNO_LUZ =", "const TINTAS_CHIWUA"),
+    corta("const TINTAS_CHIWUA =", "const spriteChiwua"),
+  ].join("\n");
+  return new Function("C", codigo +
+    "\nreturn { SPRITE, CHIWUA_W, CHIWUA_H, CHIWUA_BOCA, poseChiwua, VIRUS, TINTAS_CHIWUA };")(C);
+}
+
+// cada sprite se pinta una vez a 1 px por celda y se estampa escalado
+const cache = new Map();
+function sprite(clave, filas, tinta){
+  let c = cache.get(clave);
+  if (c) return c;
+  c = document.createElement("canvas");
+  c.width = filas[0].length; c.height = filas.length;
+  const k = c.getContext("2d");
+  filas.forEach((fila, y) => [...fila].forEach((t, x) => {
+    if (t === "." || !tinta[t]) return;
+    k.fillStyle = tinta[t]; k.fillRect(x, y, 1, 1);
+  }));
+  cache.set(clave, c);
+  return c;
+}
+let B;   // lo que viene de bypass.js
+const chiwua = (pose, tinta) => sprite("c" + pose + tinta, B.poseChiwua(pose), B.TINTAS_CHIWUA[tinta]);
+const pulso = (color = C.phos) => sprite("p" + color, B.SPRITE, { X: color, H: C.hi });
+const virus = f => sprite("v" + f, B.VIRUS[f], { X: C.sangre, O: C.hi });
+function estampa(img, x, y, esc, alfa = 1){
+  ctx.save(); ctx.globalAlpha *= alfa; ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, Math.round(x), Math.round(y), img.width * esc, img.height * esc);
+  ctx.restore();
+}
+
+/* ── utilidades ────────────────────────────────────────────── */
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const tramo = (t, a, b) => clamp((t - a) / (b - a));          // 0→1 entre a y b
+const sale = p => 1 - Math.pow(1 - p, 3);                      // ease-out
+const rebote = p => { const c = 1.70158; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
+// pseudoazar determinista: el mismo t siempre da lo mismo
+const azar = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const F = { pixel: '"Silkscreen", monospace', mono: '"IBM Plex Mono", monospace' };
+const S = W / 1080;   // escala: todo se diseñó a 1080 de ancho
+
+function texto(str, x, y, { tam = 40, fuente = F.mono, color = C.phos, alinea = "left", peso = 400,
+                            brillo = 14, alfa = 1, espacio = 0 } = {}){
+  ctx.save();
+  ctx.globalAlpha *= alfa;
+  ctx.font = `${peso} ${tam * S}px ${fuente}`;
+  ctx.textAlign = alinea; ctx.textBaseline = "alphabetic";
+  if ("letterSpacing" in ctx) ctx.letterSpacing = espacio * S + "px";
+  ctx.shadowColor = color; ctx.shadowBlur = brillo * S;
+  ctx.fillStyle = color;
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+// texto que se escribe letra por letra, con cursor
+function teclea(str, t, t0, cps, x, y, op){
+  [...str].forEach((c, i) => c !== " " && suena(`tecla-${t0}-${i}`, t0 + i / cps, "tecla"));
+  const n = Math.floor(clamp((t - t0) * cps, 0, str.length));
+  if (t < t0) return;
+  const cursor = n < str.length || Math.floor(t * 2.5) % 2 ? "█" : " ";
+  texto(str.slice(0, n) + cursor, x, y, op);
+}
+
+/* ── fondo de terminal ─────────────────────────────────────── */
+function fondo(t, tinte = 0){
+  ctx.fillStyle = C.fondo; ctx.fillRect(0, 0, W, H);
+  // rejilla de circuito, muy tenue, que se desliza
+  ctx.save();
+  ctx.strokeStyle = "rgba(250,57,186,.06)"; ctx.lineWidth = 2 * S;
+  const paso = 90 * S, off = (t * 20 * S) % paso;
+  for (let x = -off; x < W; x += paso){ ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = off; y < H; y += paso){ ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.restore();
+  if (tinte > 0){ ctx.fillStyle = `rgba(255,51,85,${.18 * tinte})`; ctx.fillRect(0, 0, W, H); }
+}
+// lo que va encima de todo: rayado del tubo, viñeta y marco
+function vidrio(t){
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.28)";
+  for (let y = 0; y < H; y += 4 * S) ctx.fillRect(0, y, W, 1.6 * S);
+  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .75);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.65)");
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  // marco de la terminal
+  ctx.strokeStyle = C.phos; ctx.lineWidth = 6 * S; ctx.shadowColor = C.phos; ctx.shadowBlur = 18 * S;
+  ctx.strokeRect(30 * S, 30 * S, W - 60 * S, H - 60 * S);
+  // banda de interferencia que pasa de vez en cuando
+  const b = (t * .37) % 1;
+  if (b < .12){
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(250,57,186,.10)";
+    ctx.fillRect(0, H * (b / .12), W, 60 * S);
+  }
+  ctx.restore();
+}
+// barra de estado de arriba, como en la portada
+function barra(t, etiqueta){
+  ctx.save();
+  ctx.fillStyle = C.phos; ctx.shadowColor = C.phos; ctx.shadowBlur = 16 * S;
+  ctx.fillRect(30 * S, 30 * S, W - 60 * S, 70 * S);
+  ctx.restore();
+  texto("HACK(ME)THON 2.0", 60 * S, 77 * S, { tam: 28, fuente: F.pixel, color: C.fondo, brillo: 0, peso: 700 });
+  texto(etiqueta, W - 60 * S, 77 * S, { tam: 24, fuente: F.pixel, color: C.fondo, brillo: 0, alinea: "right" });
+}
+
+/* ── electrocardiograma ────────────────────────────────────── */
+// la forma de un latido (p, qrs, t) entre 0 y 1; 0 = línea base
+function latido(f){
+  if (f < .10) return Math.sin(f / .10 * Math.PI) * .12;
+  if (f < .16) return 0;
+  if (f < .19) return -(f - .16) / .03 * .18;
+  if (f < .23) return -.18 + (f - .19) / .04 * 1.18;
+  if (f < .27) return 1 - (f - .23) / .04 * 1.35;
+  if (f < .30) return -.35 + (f - .27) / .03 * .35;
+  if (f < .44) return Math.sin((f - .30) / .14 * Math.PI) * .22;
+  return 0;
+}
+function ecg(t, y, amp, { desde = 0, plano = false, color = C.phos, alfa = 1, bpm = 72 } = {}){
+  const periodo = 60 / bpm, ancho = W - 120 * S, x0 = 60 * S, vel = 380 * S;   // px por segundo
+  const cabeza = (t * vel) % ancho;
+  ctx.save();
+  ctx.globalAlpha = alfa;
+  ctx.strokeStyle = color; ctx.lineWidth = 5 * S; ctx.lineJoin = "round";
+  ctx.shadowColor = color; ctx.shadowBlur = 18 * S;
+  ctx.beginPath();
+  for (let px = 0; px <= ancho; px += 3 * S){
+    // cuánto hace que se dibujó ese punto (el trazo se va borrando)
+    const edad = ((cabeza - px + ancho) % ancho) / ancho;
+    if (edad > .82) { ctx.stroke(); ctx.beginPath(); continue; }
+    const tp = t - edad * ancho / vel;          // el tiempo en que se trazó
+    const v = plano || tp < desde ? 0 : latido(((tp - desde) / periodo) % 1);
+    const yy = y - v * amp;
+    px === 0 || edad > .80 ? ctx.moveTo(x0 + px, yy) : ctx.lineTo(x0 + px, yy);
+  }
+  ctx.stroke();
+  // el punto que va escribiendo
+  ctx.fillStyle = C.hi;
+  const tc = t;
+  const vc = plano || tc < desde ? 0 : latido(((tc - desde) / periodo) % 1);
+  ctx.beginPath(); ctx.arc(x0 + cabeza, y - vc * amp, 8 * S, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/* ── glitch: se cortan franjas del cuadro y se corren ──────── */
+function glitch(t, fuerza){
+  if (fuerza <= 0) return;
+  const n = 4 + Math.floor(fuerza * 8);
+  const copia = ctx.getImageData(0, 0, W, H);
+  for (let i = 0; i < n; i++){
+    const r = azar(Math.floor(t * 24) * 13 + i);
+    const y = Math.floor(r * H), alto = Math.floor((10 + azar(i + t) * 70) * S);
+    const dx = Math.round((azar(i * 7 + Math.floor(t * 24)) - .5) * 120 * S * fuerza);
+    ctx.putImageData(copia, dx, 0, 0, y, W, alto);
+  }
+  // separación de canales
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = .25 * fuerza;
+  ctx.fillStyle = C.azul; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+/* ============================================================
+   EL SONIDO
+   Cada escena declara lo que suena junto a lo que dibuja, con su
+   segundo exacto: suena(clave, t, efecto, ...). Antes de reproducir,
+   pista() recorre la animación entera con el registro prendido, junta
+   los eventos (la clave evita repetidos) y los sintetiza en un
+   OfflineAudioContext con las mismas recetas de 8 bits de
+   sitio/sonido.js. Así el audio no se puede desfasar del dibujo.
+   ============================================================ */
+let registro = null;
+function suena(clave, t, efecto, ...args){
+  if (registro && !registro.has(clave)) registro.set(clave, { t, efecto, args });
+}
+
+function recetas(ac, master){
+  // ruido blanco determinista, para que cada render suene igual
+  const ruido = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const d = ruido.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = azar(i * .37) * 2 - 1;
+
+  function tono({ tipo = "square", f0, f1 = f0, dur, vol = .3, ataque = .005, sostener = 0, en }){
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = tipo;
+    o.frequency.setValueAtTime(f0, en);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), en + dur);
+    g.gain.setValueAtTime(0.0001, en);
+    g.gain.linearRampToValueAtTime(vol, en + ataque);
+    if (sostener) g.gain.setValueAtTime(vol, en + dur * sostener);
+    g.gain.exponentialRampToValueAtTime(0.0001, en + dur);
+    o.connect(g); g.connect(master);
+    o.start(en); o.stop(en + dur + .03);
+  }
+  function soplo({ dur, vol = .2, f = 1200, f1 = f, q = 1, filtro = "bandpass", en }){
+    const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain();
+    s.buffer = ruido;
+    fl.type = filtro; fl.Q.value = q;
+    fl.frequency.setValueAtTime(f, en);
+    if (f1 !== f) fl.frequency.exponentialRampToValueAtTime(Math.max(20, f1), en + dur);
+    g.gain.setValueAtTime(vol, en);
+    g.gain.exponentialRampToValueAtTime(0.0001, en + dur);
+    s.connect(fl); fl.connect(g); g.connect(master);
+    s.start(en, azar(en) * .5); s.stop(en + dur + .03);
+  }
+  const arpegio = (notas, paso, op) => notas.forEach((f, i) => tono({ f0: f, ...op, en: op.en + i * paso }));
+
+  return {
+    // del sitio (sonido.js), tal cual
+    latido:  en => tono({ tipo: "sine", f0: 880, f1: 1040, dur: .075, vol: .22, en }),
+    punto:   en => { tono({ f0: 660, dur: .06, vol: .14, en }); tono({ f0: 990, dur: .1, vol: .14, en: en + .06 }); },
+    carga:   (en, dur = .45) => tono({ tipo: "sawtooth", f0: 80, f1: 300, dur, vol: .12, ataque: .08, en }),
+    disparo: en => { tono({ f0: 760, f1: 130, dur: .15, vol: .13, en }); soplo({ dur: .07, vol: .08, f: 3200, en }); },
+    absorbe: en => soplo({ dur: .14, vol: .12, f: 1600, f1: 500, q: 2, en }),
+    furia:   en => {
+      for (let i = 0; i < 2; i++){
+        tono({ f0: 540, dur: .13, vol: .14, en: en + i * .3 });
+        tono({ f0: 400, dur: .13, vol: .14, en: en + i * .3 + .15 });
+      }
+      tono({ tipo: "sawtooth", f0: 58, f1: 44, dur: 1.05, vol: .2, ataque: .15, sostener: .6, en });
+    },
+    muro:    en => { soplo({ dur: .28, vol: .3, f: 260, f1: 80, q: .7, filtro: "lowpass", en });
+                     tono({ f0: 120, f1: 50, dur: .24, vol: .18, en }); },
+    tic:     (en, f0 = 1320) => tono({ tipo: "square", f0, dur: .04, vol: .1, en }),
+    record:  en => arpegio([523, 659, 784, 1047, 1319], .085, { dur: .11, vol: .13, en }),
+    giro:    en => { soplo({ dur: .45, vol: .18, f: 300, f1: 3000, q: 3, en });
+                     tono({ tipo: "triangle", f0: 220, f1: 880, dur: .22, vol: .16, en });
+                     tono({ tipo: "triangle", f0: 880, f1: 220, dur: .22, vol: .16, en: en + .22 }); },
+    registro: en => arpegio([784, 1047, 1568], .09, { tipo: "triangle", dur: .14, vol: .22, en }),
+    plano:   (en, dur = 1) => tono({ tipo: "sine", f0: 1000, dur, vol: .12, ataque: .01, sostener: .85, en }),
+    alarma:  en => { tono({ tipo: "triangle", f0: 960, dur: .16, vol: .16, en });
+                     tono({ tipo: "triangle", f0: 960, dur: .16, vol: .16, en: en + .24 }); },
+    vuelta:  en => { tono({ tipo: "sine", f0: 880, dur: .09, vol: .22, en });
+                     tono({ tipo: "sine", f0: 1175, dur: .14, vol: .22, en: en + .12 }); },
+    // propios del promo
+    tecla:   en => tono({ tipo: "square", f0: 1900 + azar(en * 9) * 500, dur: .018, vol: .035, en }),
+    pitido:  en => tono({ tipo: "sine", f0: 1000, dur: .09, vol: .1, en }),   // el del monitor
+    pum:     (en, vol = .5) => { tono({ tipo: "sine", f0: 70, f1: 40, dur: .16, vol, en });          // latido grave: lub…
+                                 tono({ tipo: "sine", f0: 62, f1: 38, dur: .14, vol: vol * .7, en: en + .19 }); },   // …dub
+    corte:   en => soplo({ dur: .16, vol: .16, f: 2500, f1: 600, q: .6, en }),
+    golpe:   en => { tono({ tipo: "sine", f0: 110, f1: 32, dur: .9, vol: .55, en });
+                     soplo({ dur: .5, vol: .22, f: 900, f1: 90, q: .5, filtro: "lowpass", en });
+                     tono({ tipo: "square", f0: 220, f1: 110, dur: .25, vol: .08, en }); },
+    subida:  en => { tono({ tipo: "sawtooth", f0: 60, f1: 420, dur: .9, vol: .12, ataque: .3, en });
+                     soplo({ dur: .9, vol: .1, f: 200, f1: 4000, q: 2, en }); },
+  };
+}
+
+// La pista completa como AudioBuffer: recorre la animación y sintetiza.
+let pistaHecha = null;
+function pista(){
+  if (pistaHecha) return pistaHecha;
+  registro = new Map();
+  for (let t = 0; t < DURACION; t += 1 / 12) render(t, true);
+  const eventos = [...registro.values()].filter(e => e.t >= 0 && e.t < DURACION);
+  registro = null;
+  const sr = 44100;
+  const ac = new OfflineAudioContext(2, Math.ceil(sr * DURACION), sr);
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.ratio.value = 5;
+  const master = ac.createGain(); master.gain.value = .8;
+  master.connect(comp); comp.connect(ac.destination);
+  const fx = recetas(ac, master);
+  for (const e of eventos) fx[e.efecto](e.t, ...e.args);
+  return pistaHecha = ac.startRendering();
+}
+// La pista en WAV (16 bits), en base64, para render.mjs.
+async function pistaWav(){
+  const b = await pista(), n = b.length, canales = b.numberOfChannels;
+  const buf = new ArrayBuffer(44 + n * canales * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + n * canales * 2, true); str(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, canales, true);
+  v.setUint32(24, b.sampleRate, true); v.setUint32(28, b.sampleRate * canales * 2, true);
+  v.setUint16(32, canales * 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * canales * 2, true);
+  const datos = [...Array(canales)].map((_, c) => b.getChannelData(c));
+  for (let i = 0, o = 44; i < n; i++) for (let c = 0; c < canales; c++, o += 2)
+    v.setInt16(o, Math.max(-1, Math.min(1, datos[c][i])) * 32767, true);
+  let bin = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/* ── el Chihuacornio en escena ─────────────────────────────── */
+// la pose según el tiempo: respira, parpadea y mueve las orejas solo
+function poseEn(t, { ojos = "abiertos", boca = "cerrada" } = {}){
+  const respira = Math.floor(t * 1.6) % 2;
+  const parpadea = ojos === "abiertos" && (t % 2.7) < .14 ? "cerrados" : ojos;
+  const fo = t % 3.3;
+  const oreja = boca === "cerrada" && fo > 1.2 && fo < 1.45 ? "izq" : boca === "cerrada" && fo > 2.4 && fo < 2.6 ? "der" : "no";
+  return `${respira},${parpadea},${boca},${oreja}`;
+}
+
+// el latido de fondo (y el pitido del monitor) entre dos tiempos
+function latidos(clave, desde, hasta, bpm = 72, { pitido = true, vol = .5 } = {}){
+  const p = 60 / bpm;
+  for (let k = 0, tk = desde; tk < hasta; k++, tk = desde + k * p){
+    suena(`${clave}-pum-${k}`, tk, "pum", vol);
+    if (pitido) suena(`${clave}-pit-${k}`, tk + p * .21, "pitido");
+  }
+}
+
+/* ============================================================
+   LA HISTORIA (21.5 s)
+   ============================================================ */
+const T = {
+  chihua:  2.6,    // aparece el Chihuacornio, carga el cuerno y escupe virus
+  bypass:  6.6,    // BYPASS: el pulso pasa válvulas y rompe el récord
+  puntaje: 11.0,   // ¿hasta dónde llegas? no hay puntaje máximo; top 8 a la final
+  paro:    13.6,   // se enfurece: paro cardiaco
+  titulo:  14.8,   // HACK(ME)THON 2.0, con tiempo para leerlo
+  datos:   17.6,   // los datos del evento
+};
+const DURACION = 21.5;
+const CORTES = [T.chihua, T.bypass, T.puntaje, T.paro, T.titulo, T.datos];
+
+function render(t){
+  ctx.save();
+  // sacudida de cámara cuando escupe y cuando entra en paro
+  const sac = Math.max(0, 1 - Math.abs(t - (T.chihua + 2.75)) / .25) + Math.max(0, 1 - Math.abs(t - (T.paro + .1)) / .3);
+  if (sac > 0) ctx.translate((azar(t * 50) - .5) * 30 * S * sac, (azar(t * 50 + 3) - .5) * 30 * S * sac);
+
+  if (t < T.chihua) escenaArranque(t);
+  else if (t < T.bypass) escenaChihua(t);
+  else if (t < T.puntaje) escenaBypass(t);
+  else if (t < T.paro) escenaPuntaje(t);
+  else if (t < T.titulo) escenaParo(t);
+  else if (t < T.datos) escenaTitulo(t);
+  else escenaDatos(t);
+  ctx.restore();
+
+  // cortes con glitch entre escenas
+  CORTES.forEach((c, i) => suena("corte-" + i, c - .05, "corte"));
+  const g = Math.max(...CORTES.map(c => Math.max(0, 1 - Math.abs(t - c) / .18)));
+  if (!registro) glitch(t, g);
+  vidrio(t);
+}
+
+function escenaArranque(t){
+  fondo(t);
+  barra(t, "PACIENTE 2.0 · ECG");
+  const x = 70 * S;
+  let y = 190 * S;
+  const lineas = [
+    [">> TERMINAL 3277 MOD 2 · EN LÍNEA", .1],
+    [">> MONITOR DE SIGNOS VITALES", .5],
+    [">> PACIENTE: DESCONOCIDO", .9],
+    [">> ORIGEN: CULTIVADO", 1.3],
+  ];
+  for (const [l, t0] of lineas){ teclea(l, t, t0, 40, x, y, { tam: 34, color: C.dim, brillo: 8 }); y += 56 * S; }
+  // el ECG plano (con su pitido largo) que de pronto late
+  const yE = H * .58;
+  suena("plano-arranque", .15, "plano", 1.25);
+  latidos("arranque", 1.5 - 60 / 72 * .21, T.chihua);
+  ecg(t, yE, 260 * S, { desde: 1.5, color: t > 1.5 ? C.phos : C.dim });
+  const fc = t < 1.5 ? "--" : "72";
+  texto("FC", W - 260 * S, yE - 330 * S, { tam: 30, fuente: F.pixel, color: C.dim });
+  texto(fc, W - 260 * S, yE - 230 * S, { tam: 110, fuente: F.mono, color: C.hi, peso: 700, brillo: 24 });
+  texto("LPM", W - 100 * S, yE - 230 * S, { tam: 30, fuente: F.pixel, color: C.dim });
+  teclea("ALGO SE MOVIÓ ADENTRO.", t, 1.7, 30, W / 2, H * .85, { tam: 46, fuente: F.pixel, color: C.hi, alinea: "center", brillo: 20 });
+}
+
+function escenaChihua(t){
+  const l = t - T.chihua;
+  const tCarga = T.chihua + 1.9, tEscupe = T.chihua + 2.65;
+  // el cuarto se va poniendo rojo mientras carga
+  const carga = tramo(t, tCarga, tCarga + .7);
+  fondo(t, carga * .6);
+  barra(t, "ALERTA · ESPÉCIMEN");
+  ecg(t, H * .93, 60 * S, { desde: 0, alfa: .5, bpm: 72 + carga * 70 });
+  latidos("chihua-a", T.chihua, tCarga, 72);
+  latidos("chihua-b", tCarga, tEscupe + .2, 150, { vol: .4 });
+  latidos("chihua-c", tEscupe + .9, T.bypass, 72);
+
+  const esc = Math.round(19 * S);
+  const cw = B.CHIWUA_W * esc, ch = B.CHIWUA_H * esc;
+  const sube = rebote(tramo(l, 0, .9));
+  const x = (W - cw) / 2, y = H * .5 - ch / 2 + (1 - sube) * (H * .7);
+  suena("chihua-sube", T.chihua, "giro");
+
+  let tinta = "calma", pose = poseEn(t);
+  if (t > tCarga && t < tEscupe){ tinta = Math.floor(t * 12) % 2 ? "cargaLuz" : "carga"; pose = `${Math.floor(t * 1.6) % 2},abiertos,abierta,no`; }
+  if (t >= tEscupe && t < tEscupe + .65) pose = `${Math.floor(t * 1.6) % 2},abiertos,grande,no`;
+  if (t >= tEscupe + .65) pose = poseEn(t, { ojos: "felices", boca: "grande" });
+  suena("chihua-carga", tCarga, "carga", .75);
+  suena("chihua-escupe", tEscupe, "disparo");
+  suena("chihua-golpe", tEscupe + .05, "muro");
+
+  // halo del cuerno al cargar
+  if (carga > 0 && t < tEscupe + .15){
+    ctx.save();
+    const hx = x + 18 * esc, hy = y + 4 * esc;
+    const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 260 * S * carga);
+    g.addColorStop(0, "rgba(255,211,238,.75)"); g.addColorStop(1, "rgba(217,70,239,0)");
+    ctx.fillStyle = g; ctx.fillRect(hx - 300 * S, hy - 300 * S, 600 * S, 600 * S);
+    ctx.restore();
+  }
+  estampa(chiwua(pose, tinta), x, y, esc);
+
+  // virus: salen de la boca y vuelan hacia la cámara
+  const boca = { x: x + 18 * esc, y: y + B.CHIWUA_BOCA * esc };
+  for (let i = 0; i < 7; i++){
+    const t0 = tEscupe + i * .06, p = tramo(t, t0, t0 + .9);
+    suena("virus-" + i, t0 + .02, "absorbe");
+    if (p <= 0 || p >= 1) continue;
+    const ang = -Math.PI / 2 + (i - 3) * .55;
+    const d = sale(p) * 900 * S;
+    const e = Math.round((8 + p * 26) * S);
+    const vx = boca.x + Math.cos(ang + Math.PI) * d * .9 * (i % 2 ? 1 : -1) * .5 + Math.sin(ang) * d;
+    const vy = boca.y + d * .35 + (azar(i) - .5) * 200 * S * p;
+    const img = virus(Math.floor(t * 8 + i) % 2);
+    estampa(img, vx - img.width * e / 2, vy - img.height * e / 2, e, 1 - p * .3);
+  }
+  // los letreros
+  teclea("SE LLAMA CHIHUACORNIO.", t, T.chihua + .3, 32, W / 2, 230 * S, { tam: 50, fuente: F.pixel, color: C.hi, alinea: "center", brillo: 22 });
+  teclea("NO VINO EN PAZ.", t, T.chihua + 1.3, 32, W / 2, 310 * S, { tam: 50, fuente: F.pixel, color: carga > .3 ? C.sangre : C.phos, alinea: "center", brillo: 22 });
+  const tVirus = tEscupe + .25;
+  suena("chihua-letrero", tVirus, "alarma");
+  if (t > tVirus) texto("Y ESCUPE VIRUS.", W / 2, Math.min(H * .84, y + ch + 110 * S), { tam: 58, fuente: F.pixel, color: C.sangre, alinea: "center", brillo: 26, alfa: tramo(t, tVirus, tVirus + .2) });
+}
+
+// BYPASS: el pulso pasa válvulas, cada una es un punto, y rompe el récord
+const JUEGO = { inicio: 38, record: 42, vel: 600, sep: 420, x0: 700, xPulso: .30 };
+// cuándo cruza el pulso la válvula k (segundos desde que empieza la escena)
+const cruce = k => (JUEGO.x0 + k * JUEGO.sep - 1080 * JUEGO.xPulso) / JUEGO.vel;
+function escenaBypass(t){
+  const l = t - T.bypass;
+  fondo(t);
+  barra(t, "BYPASS · MINIJUEGO");
+  const piso = H * .80, techo = H * .22;
+  const vel = JUEGO.vel * S, avance = l * vel;
+  const sep = JUEGO.sep * S, ancho = 90 * S, hueco = 440 * S;
+  const xPulso = W * JUEGO.xPulso, x0 = JUEGO.x0 * S;
+  // centro de cada hueco, determinista
+  const centro = k => techo + 240 * S + azar(k + 9) * (piso - techo - 480 * S);
+  // el pulso sigue una curva suave entre los huecos (como si jugara bien)
+  const suave = q => q * q * (3 - 2 * q);
+  const yEn = tl => {
+    const kk = (xPulso + tl * vel - x0) / sep, kf = Math.floor(kk);
+    return centro(kf) + (centro(kf + 1) - centro(kf)) * suave(clamp(kk - kf));
+  };
+  const k0 = Math.floor((xPulso + avance - x0) / sep);
+  const brinco = Math.abs(Math.sin(l * 9.5)) * 30 * S;
+  // aleteo del pulso: un latido por cada brinco
+  for (let i = 0; i * Math.PI / 9.5 < T.puntaje - T.bypass; i++) suena("aleteo-" + i, T.bypass + i * Math.PI / 9.5, "latido");
+
+  // válvulas: circuito arriba, enredadera abajo
+  for (let k = Math.max(0, k0 - 1); k < k0 + 4; k++){
+    const x = x0 + k * sep - avance;
+    if (x < -ancho || x > W) continue;
+    const c = centro(k);
+    for (const [y0, y1, color] of [[techo, c - hueco / 2, C.phos], [c + hueco / 2, piso, C.verde]]){
+      ctx.save();
+      ctx.fillStyle = color === C.phos ? "rgba(250,57,186,.16)" : "rgba(61,220,151,.14)";
+      ctx.strokeStyle = color; ctx.lineWidth = 6 * S; ctx.shadowColor = color; ctx.shadowBlur = 16 * S;
+      ctx.fillRect(x, y0, ancho, y1 - y0); ctx.strokeRect(x, y0, ancho, y1 - y0);
+      ctx.fillStyle = color;
+      for (let yy = y0 + 40 * S; yy < y1 - 20 * S; yy += 70 * S) ctx.fillRect(x + ancho / 2 - 9 * S, yy, 18 * S, 18 * S);
+      ctx.restore();
+    }
+  }
+  ctx.save(); ctx.fillStyle = C.dim;
+  ctx.fillRect(60 * S, techo - 6 * S, W - 120 * S, 4 * S); ctx.fillRect(60 * S, piso + 2 * S, W - 120 * S, 4 * S);
+  ctx.restore();
+
+  // rastro y pulso
+  for (let i = 1; i <= 10; i++){
+    ctx.fillStyle = `rgba(250,57,186,${.35 - i * .03})`;
+    ctx.fillRect(xPulso - i * 18 * S, yEn(l - i * .035) - 8 * S, 16 * S, 16 * S);
+  }
+  const pe = Math.round(15 * S), p = pulso();
+  const yP = yEn(l) - brinco;
+  estampa(p, xPulso - p.width * pe / 2, yP - p.height * pe / 2, pe);
+
+  // puntos: uno por válvula, con su +1 que sube
+  let pasadas = 0;
+  for (let k = 0; ; k++){
+    const tc = cruce(k);
+    if (T.bypass + tc >= T.puntaje) break;
+    const num = JUEGO.inicio + k + 1;
+    suena("punto-" + k, T.bypass + tc, num === JUEGO.record + 1 ? "record" : "punto");
+    if (l >= tc){
+      pasadas = k + 1;
+      const q = tramo(l, tc, tc + .6);
+      if (q < 1) texto("+1", xPulso + 40 * S, yP - 60 * S - q * 120 * S, { tam: 44, fuente: F.pixel, color: C.verde, alfa: 1 - q, brillo: 16 });
+    }
+  }
+  const puntos = JUEGO.inicio + pasadas;
+  const record = puntos > JUEGO.record;
+
+  // el Chihuacornio en el borde derecho, como en el juego, escupiendo
+  const ce = Math.round(7 * S), cx = W - B.CHIWUA_W * ce - 50 * S, cy = piso - B.CHIWUA_H * ce;
+  const dispara = (l % 1.1) < .25;
+  estampa(chiwua(dispara ? `${Math.floor(t * 1.6) % 2},abiertos,abierta,no` : poseEn(t), dispara ? "carga" : "calma"), cx, cy, ce);
+  for (let i = 0; i < 4; i++){
+    const t0 = i * 1.1 + .1, q = (l - t0) / 1.4;
+    suena("escupe-" + i, T.bypass + i * 1.1, "disparo");
+    if (q < 0 || q > 1) continue;
+    const ve = Math.round(11 * S), img = virus(Math.floor(t * 8) % 2);
+    const vx = cx + 10 * ce - q * (W * .95), vy = cy + B.CHIWUA_BOCA * ce + Math.sin(q * 6 + i) * 120 * S - q * 200 * S * (i % 2 ? 1 : -1);
+    estampa(img, vx, vy, ve);
+  }
+
+  // marcador grande arriba
+  const tRec = cruce(JUEGO.record - JUEGO.inicio);
+  const destello = record && Math.floor((l - tRec) * 8) % 2 === 0;
+  texto("PUNTOS", 70 * S, 175 * S, { tam: 30, fuente: F.pixel, color: C.dim });
+  texto(String(puntos).padStart(3, "0"), 70 * S, 270 * S, { tam: 96, fuente: F.mono, peso: 700, color: record ? C.verde : C.hi, brillo: 26 });
+  texto("RÉCORD", W - 70 * S, 175 * S, { tam: 30, fuente: F.pixel, color: C.dim, alinea: "right" });
+  texto(String(Math.max(puntos, JUEGO.record)).padStart(3, "0"), W - 70 * S, 270 * S, { tam: 96, fuente: F.mono, peso: 700, color: record ? C.verde : C.dim, alinea: "right", brillo: record ? 26 : 0 });
+  if (record) texto("¡NUEVO RÉCORD!", W / 2, 370 * S, { tam: 58, fuente: F.pixel, color: destello ? C.verde : C.hi, alinea: "center", brillo: 28 });
+
+  // letreros
+  teclea("MANTÉN EL PULSO.", t, T.bypass + .2, 30, W / 2, H * .87, { tam: 56, fuente: F.pixel, color: C.hi, alinea: "center", brillo: 22 });
+  teclea("SUMA CADA VÁLVULA.", t, T.bypass + 1.6, 30, W / 2, H * .87 + 80 * S, { tam: 56, fuente: F.pixel, color: C.verde, alinea: "center", brillo: 22 });
+}
+
+// No hay puntaje máximo: el contador se dispara y se rompe.
+function escenaPuntaje(t){
+  const l = t - T.puntaje;
+  fondo(t);
+  barra(t, "TABLA DE PULSOS");
+  const tope = 1.5;   // cuando el contador ya no cabe
+  const n = l < tope ? Math.floor(43 * Math.pow(999 / 43, Math.pow(l / tope, 1.6))) : 999;
+  // un tic por cada cambio, cada vez más agudo
+  for (let i = 0; i * .045 < tope; i++){
+    const q = i * .045 / tope;
+    suena("cuenta-" + i, T.puntaje + i * .045, "tic", 700 + q * q * 1800);
+  }
+  suena("cuenta-sube", T.puntaje, "subida");
+  suena("cuenta-rompe", T.puntaje + tope, "golpe");
+
+  teclea("¿HASTA DÓNDE LLEGAS?", t, T.puntaje + .05, 40, W / 2, 330 * S, { tam: 60, fuente: F.pixel, color: C.hi, alinea: "center", brillo: 24 });
+  // el número: al pasar el tope se vuelve ??? con glitch
+  const roto = l >= tope;
+  const tam = 300;
+  const cad = roto ? (Math.floor(t * 12) % 2 ? "???" : "∞") : String(n).padStart(3, "0");
+  const sep = roto ? 16 * S : 6 * S;
+  texto(cad, W / 2 - sep, H * .47, { tam, fuente: F.mono, peso: 700, color: C.azul, alinea: "center", brillo: 0, alfa: .8 });
+  texto(cad, W / 2 + sep, H * .47, { tam, fuente: F.mono, peso: 700, color: roto ? C.verde : C.phos, alinea: "center", brillo: 40 });
+  texto("PUNTOS", W / 2, H * .47 + 90 * S, { tam: 40, fuente: F.pixel, color: C.dim, alinea: "center" });
+  if (roto){
+    const a = tramo(l, tope, tope + .2);
+    texto("NO HAY PUNTAJE MÁXIMO.", W / 2, H * .64, { tam: 52, fuente: F.pixel, color: C.verde, alinea: "center", brillo: 24, alfa: a });
+  }
+  // la recompensa
+  const tTop = T.puntaje + 1.8;
+  suena("top8", tTop, "registro");
+  if (t > tTop){
+    const a = sale(tramo(t, tTop, tTop + .25));
+    ctx.save();
+    ctx.globalAlpha = a; ctx.fillStyle = C.phos; ctx.shadowColor = C.phos; ctx.shadowBlur = 24 * S;
+    ctx.fillRect(80 * S, H * .72, W - 160 * S, 230 * S);
+    ctx.restore();
+    texto("LOS 8 MEJORES PUNTAJES", W / 2, H * .72 + 85 * S, { tam: 46, fuente: F.pixel, color: C.fondo, alinea: "center", brillo: 0, alfa: a, peso: 700 });
+    texto("VAN A LA FINAL EN VIVO", W / 2, H * .72 + 150 * S, { tam: 46, fuente: F.pixel, color: C.fondo, alinea: "center", brillo: 0, alfa: a, peso: 700 });
+    texto("POR UN PREMIO", W / 2, H * .72 + 205 * S, { tam: 34, fuente: F.pixel, color: C.fondo, alinea: "center", brillo: 0, alfa: a });
+  }
+  if (!registro) glitch(t, roto ? Math.max(0, .6 - (l - tope) * 1.5) : 0);
+  ecg(t, H * .93, 50 * S, { desde: 0, alfa: .45, bpm: 140 });
+  latidos("puntaje", T.puntaje, T.paro, 140, { vol: .35 });
+}
+
+// el Chihuacornio furioso a todo lo que da, y se lo traga el glitch
+function escenaParo(t){
+  fondo(t, 1);
+  suena("paro-furia", T.paro, "furia");
+  suena("paro-plano", T.paro + .3, "plano", .95);
+  const esc = Math.round(24 * S);
+  const cw = B.CHIWUA_W * esc, ch = B.CHIWUA_H * esc;
+  const tinta = Math.floor(t * 14) % 2 ? "furiaLuz" : "furia";
+  const l = t - T.paro;
+  estampa(chiwua(`${Math.floor(t * 3) % 2},enojados,grande,no`, tinta), (W - cw) / 2, H * .5 - ch / 2 + 60 * S, esc, 1 - tramo(l, .9, 1.2));
+  texto("¡PARO CARDIACO!", W / 2, 260 * S, { tam: 66, fuente: F.pixel, color: Math.floor(t * 6) % 2 ? C.sangre : C.hi, alinea: "center", brillo: 30 });
+  ecg(t, H * .9, 0, { plano: true, color: C.sangre, alfa: .9 });
+  if (!registro) glitch(t, .35 + .4 * Math.abs(Math.sin(t * 9)));
+}
+
+function escenaTitulo(t){
+  const l = t - T.titulo;
+  fondo(t);
+  barra(t, "THE ANATOMY OF A MACHINE");
+  suena("titulo-golpe", T.titulo + .05, "golpe");
+  suena("titulo-2", T.titulo + .45, "punto");
+  latidos("titulo", T.titulo + 1, T.datos, 72);
+  const p = sale(tramo(l, 0, .4));
+  const yT = H * .40;
+  const tam = 150;
+  const sep = Math.max(0, 1 - tramo(l, 0, .7)) * 40 * S;
+  // aberración cromática que se cierra
+  texto("HACK", W / 2 - sep, yT, { tam, fuente: F.pixel, peso: 700, color: C.azul, alinea: "center", brillo: 0, alfa: p * .8 });
+  texto("HACK", W / 2 + sep, yT, { tam, fuente: F.pixel, peso: 700, color: C.phos, alinea: "center", brillo: 30, alfa: p });
+  texto("(ME)", W / 2, yT + 170 * S, { tam, fuente: F.pixel, peso: 700, color: C.hi, alinea: "center", brillo: 34, alfa: p });
+  texto("THON", W / 2 + sep, yT + 340 * S, { tam, fuente: F.pixel, peso: 700, color: C.azul, alinea: "center", brillo: 0, alfa: p * .8 });
+  texto("THON", W / 2 - sep, yT + 340 * S, { tam, fuente: F.pixel, peso: 700, color: C.phos, alinea: "center", brillo: 30, alfa: p });
+  if (l > .4){
+    ctx.save();
+    const a = tramo(l, .4, .6);
+    ctx.globalAlpha = a; ctx.fillStyle = C.phos; ctx.shadowColor = C.phos; ctx.shadowBlur = 20 * S;
+    ctx.fillRect(W / 2 - 110 * S, yT + 400 * S, 220 * S, 100 * S);
+    ctx.restore();
+    texto("2.0", W / 2, yT + 478 * S, { tam: 80, fuente: F.pixel, peso: 700, color: C.fondo, alinea: "center", brillo: 0, alfa: a });
+  }
+  teclea("THE ANATOMY OF A MACHINE", t, T.titulo + .8, 30, W / 2, yT + 620 * S, { tam: 42, fuente: F.pixel, color: C.hi, alinea: "center", brillo: 18 });
+  ecg(t, H * .9, 70 * S, { desde: T.titulo + 1, alfa: .6 });
+  if (!registro) glitch(t, Math.max(0, .5 - tramo(l, 0, .4)) * 1.4);
+}
+
+function escenaDatos(t){
+  const l = t - T.datos;
+  fondo(t);
+  barra(t, "CONSENTIMIENTO INFORMADO");
+  latidos("datos", T.datos, DURACION, 72, { vol: .35 });
+  const x = 80 * S;
+  let y = 260 * S;
+  texto("HACK(ME)THON 2.0", x, y, { tam: 58, fuente: F.pixel, peso: 700, color: C.phos, brillo: 26 });
+  y += 72 * S;
+  texto("THE ANATOMY OF A MACHINE", x, y, { tam: 32, fuente: F.pixel, color: C.hi, brillo: 12 });
+  y += 130 * S;
+  const fila = (et, val, t0, color = C.hi) => {
+    suena("fila-" + et, t0, "tic", 990);
+    const a = sale(tramo(t, t0, t0 + .3));
+    texto(et, x, y, { tam: 26, fuente: F.pixel, color: C.dim, alfa: a, brillo: 0 });
+    y += 52 * S;
+    for (const v of [].concat(val)){
+      texto(v, x + (1 - a) * 40 * S, y, { tam: 46, fuente: F.mono, peso: 600, color, alfa: a, brillo: 14 });
+      y += 62 * S;
+    }
+    y += 34 * S;
+  };
+  fila("FECHA", EVENTO.fecha, T.datos + .2);
+  fila("HORARIO", EVENTO.hora, T.datos + .5);
+  fila("SEDE", EVENTO.sede, T.datos + .8);
+  fila("COSTO", EVENTO.costo, T.datos + 1.1, C.verde);
+
+  // el llamado
+  const tReg = T.datos + 1.6;
+  suena("registrate", tReg, "registro");
+  const a = sale(tramo(t, tReg, tReg + .4));
+  const yR = H - 400 * S;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = C.phos; ctx.shadowColor = C.phos; ctx.shadowBlur = 24 * S;
+  ctx.fillRect(x - 10 * S, yR - 70 * S, W - 2 * x + 20 * S, 110 * S);
+  ctx.restore();
+  texto("REGÍSTRATE EN", x, yR - 95 * S, { tam: 30, fuente: F.pixel, color: C.hi, alfa: a });
+  texto(EVENTO.url, W / 2, yR + 4 * S, { tam: 42, fuente: F.mono, peso: 700, color: C.fondo, alinea: "center", brillo: 0, alfa: a });
+
+  // el Chihuacornio se asoma por la esquina, contento
+  const ce = Math.round(8 * S);
+  const tAsoma = T.datos + .4;
+  suena("asoma", tAsoma, "vuelta");
+  const asoma = sale(tramo(t, tAsoma, tAsoma + .6));
+  const cx = W - B.CHIWUA_W * ce - 70 * S, cy = yR - 140 * S - B.CHIWUA_H * ce + (1 - asoma) * 600 * S;
+  estampa(chiwua(poseEn(t, { ojos: l > 1.2 ? "felices" : "abiertos", boca: l > 1.2 ? "grande" : "cerrada" }), "calma"), cx, cy, ce);
+
+  // pie: undefined_projects y el ECG
+  if (logo.complete && logo.naturalWidth){
+    const lw = 300 * S, lh = lw * logo.naturalHeight / logo.naturalWidth;
+    ctx.save(); ctx.globalAlpha = sale(tramo(t, T.datos + 2, T.datos + 2.4)) * .95;
+    ctx.drawImage(logo, (W - lw) / 2, H - 170 * S - lh / 2, lw, lh);
+    ctx.restore();
+  }
+  ecg(t, H - 260 * S, 50 * S, { desde: 0, alfa: .45 });
+}
+
+const logo = new Image();
+logo.src = "../sitio/undefined-projects.png";
+
+/* ── arranque ──────────────────────────────────────────────── */
+window.listo = (async () => {
+  B = await cargaChiwua();
+  await Promise.all([
+    document.fonts.load(`700 40px "Silkscreen"`), document.fonts.load(`400 40px "Silkscreen"`),
+    document.fonts.load(`400 40px "IBM Plex Mono"`), document.fonts.load(`600 40px "IBM Plex Mono"`),
+    document.fonts.load(`700 40px "IBM Plex Mono"`),
+    logo.decode().catch(() => {}),
+  ]);
+  return { W, H, DURACION };
+})();
+window.render = render;
+window.pistaWav = pistaWav;
+
+/* En el navegador se reproduce en bucle (render.mjs pone ?video=1 y lo
+   maneja él). Sin sonido hasta el primer clic, como exige el navegador;
+   con sonido, el reloj de la animación es el del audio. */
+if (!new URLSearchParams(location.search).has("video")){
+  const aviso = document.getElementById("aviso");
+  listo.then(() => {
+    let reloj = () => performance.now() / 1000, t0 = reloj();
+    const cuadro = () => { render(((reloj() - t0) % DURACION + DURACION) % DURACION); requestAnimationFrame(cuadro); };
+    cuadro();
+    aviso.hidden = false;
+    addEventListener("pointerdown", async () => {
+      if (aviso.hidden) return;
+      aviso.hidden = true;
+      const ac = new AudioContext(), buf = await pista();
+      const s = ac.createBufferSource();
+      s.buffer = buf; s.loop = true; s.connect(ac.destination);
+      s.start();
+      reloj = () => ac.currentTime; t0 = ac.currentTime;
+    });
+  });
+}
+</script>
+</body>
+</html>

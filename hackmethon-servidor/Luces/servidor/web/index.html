@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control IR</title>
+<style>
+  :root {
+    --fondo:    #f6f7f9;
+    --panel:    #ffffff;
+    --borde:    #dfe3e8;
+    --texto:    #1c2024;
+    --suave:    #6b7280;
+    --acento:   #2563eb;
+    --ok:       #15803d;
+    --error:    #b91c1c;
+    --aviso:    #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #16181d; --panel: #1e2128; --borde: #2f333c;
+      --texto: #e7e9ee; --suave: #9aa1ad; --acento: #60a5fa;
+      --ok: #4ade80; --error: #f87171; --aviso: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 16px 48px;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--fondo); color: var(--texto);
+  }
+  .envoltura { max-width: 860px; margin: 0 auto; }
+  header { padding-block: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--suave); font-size: 13px; }
+
+  .estado {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; margin-bottom: 20px;
+    border: 1px solid var(--borde); border-radius: 8px; background: var(--panel);
+    font-size: 13px;
+  }
+  .punto { width: 9px; height: 9px; border-radius: 50%; background: var(--suave); flex: none; }
+  .punto.si { background: var(--ok); }
+  .punto.no { background: var(--error); }
+
+  .panel {
+    border: 1px solid var(--borde); border-radius: 10px;
+    background: var(--panel); padding: 18px; margin-bottom: 20px;
+  }
+  h2 { font-size: 15px; margin: 0 0 14px; }
+
+  .boton-fila {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid var(--borde);
+  }
+  .boton-fila:last-child { border-bottom: 0; }
+  .boton-info { flex: 1; min-width: 0; }
+  .boton-nombre { font-weight: 600; }
+  .boton-meta { color: var(--suave); font-size: 12px; margin-top: 2px; }
+  .acciones { display: flex; gap: 6px; flex: none; }
+
+  button {
+    font: inherit; font-size: 13px; padding: 7px 12px;
+    border: 1px solid var(--borde); border-radius: 6px;
+    background: var(--panel); color: var(--texto); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--acento); color: var(--acento); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primario { background: var(--acento); border-color: var(--acento); color: #fff; }
+  button.primario:hover:not(:disabled) { opacity: .9; color: #fff; }
+  button.peligro:hover:not(:disabled) { border-color: var(--error); color: var(--error); }
+
+  label { display: block; font-size: 13px; color: var(--suave); margin-bottom: 4px; }
+  input, textarea {
+    font: inherit; width: 100%; padding: 8px 10px;
+    border: 1px solid var(--borde); border-radius: 6px;
+    background: var(--fondo); color: var(--texto);
+  }
+  textarea { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; resize: vertical; }
+  .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .campo-ancho { grid-column: 1 / -1; }
+
+  .barra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .vacio { color: var(--suave); font-size: 13px; padding: 8px 0; }
+
+  .pines { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pin {
+    display: flex; align-items: center; gap: 7px;
+    border: 1px solid var(--borde); border-radius: 8px;
+    padding: 8px 10px; cursor: pointer; user-select: none;
+    background: var(--fondo); font-size: 13px;
+  }
+  .pin:hover { border-color: var(--acento); }
+  .pin input { width: auto; margin: 0; accent-color: var(--acento); }
+  .pin.activo { border-color: var(--acento); background: color-mix(in srgb, var(--acento) 10%, var(--fondo)); }
+  .pin .num { font-weight: 600; min-width: 18px; }
+  .pin .probar {
+    font-size: 11px; padding: 2px 7px; border-radius: 4px;
+    border: 1px solid var(--borde); background: var(--panel);
+  }
+  .pin .marca { font-size: 12px; width: 12px; text-align: center; }
+  .pin .marca.si { color: var(--ok); }
+  .pin .marca.no { color: var(--error); }
+  .nota {
+    font-size: 12px; color: var(--suave); margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--borde);
+  }
+
+  #bitacora {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+    max-height: 220px; overflow-y: auto;
+  }
+  #bitacora div { padding: 3px 0; border-bottom: 1px solid var(--borde); }
+  #bitacora div:last-child { border-bottom: 0; }
+  .l-ok { color: var(--ok); }
+  .l-error { color: var(--error); }
+  .l-aviso { color: var(--aviso); }
+  .hora { color: var(--suave); margin-right: 8px; }
+</style>
+</head>
+<body>
+<div class="envoltura">
+
+  <header>
+    <h1>Control IR</h1>
+    <div class="sub">El servidor guarda las ondas; el Arduino solo las emite.</div>
+  </header>
+
+  <div class="estado">
+    <span class="punto" id="punto"></span>
+    <span id="estado-texto">consultando...</span>
+  </div>
+
+  <div class="panel">
+    <h2>Pines de emision</h2>
+    <div class="pines" id="pines-globales"></div>
+    <div class="barra">
+      <button class="primario" id="btn-guardar-pines">Guardar seleccion</button>
+      <button id="btn-probar-todos">Identificar los seleccionados</button>
+    </div>
+    <div class="nota">
+      Cada boton se emite por los pines marcados aqui, salvo que tenga los suyos propios.
+      <b>probar</b> emite por ese pin y comprueba con el receptor si salio luz: ✓ es que si emite, ✗ que no.
+      <b>Identificar</b> emite 1.5 s seguidos para ubicar cual LED es cual con la camara del celular.
+      <span id="aviso-corriente"></span>
+      No aparecen los pines 0 y 1 (serial), el 11 (receptor) ni el 13 (LED de estado).
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Botones</h2>
+    <div id="lista"><div class="vacio">cargando...</div></div>
+    <div class="barra">
+      <button class="primario" id="btn-nuevo">Agregar boton</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-editor" hidden>
+    <h2 id="editor-titulo">Nuevo boton</h2>
+    <div class="campos">
+      <div class="campo-ancho">
+        <label for="f-nombre">Nombre</label>
+        <input id="f-nombre" placeholder="Luz sala - encender">
+      </div>
+      <div>
+        <label for="f-freq">Portadora (Hz)</label>
+        <input id="f-freq" type="number" value="38000" min="25000" max="60000">
+      </div>
+      <div>
+        <label for="f-rep">Repeticiones</label>
+        <input id="f-rep" type="number" value="1" min="1" max="20">
+      </div>
+      <div>
+        <label for="f-gap">Pausa entre repeticiones (ms)</label>
+        <input id="f-gap" type="number" value="40" min="0" max="1000">
+      </div>
+      <div class="campo-ancho">
+        <label for="f-pulsos">Onda: duraciones en us, alternando marca y espacio.
+          Usa <b>Aprender del control</b> para capturarla, o pegala a mano.</label>
+        <textarea id="f-pulsos" rows="5" placeholder="9000 4500 560 560 560 1690 ..."></textarea>
+      </div>
+      <div class="campo-ancho">
+        <label>
+          <input type="checkbox" id="f-pines-propios" style="width:auto;margin-right:6px">
+          Usar pines propios para este boton (si no, usa los seleccionados arriba)
+        </label>
+        <div class="pines" id="pines-boton" style="margin-top:8px" hidden></div>
+      </div>
+    </div>
+    <div class="barra">
+      <button class="primario" id="btn-guardar">Guardar</button>
+      <button id="btn-aprender">Aprender del control</button>
+      <button id="btn-probar">Probar sin guardar</button>
+      <button id="btn-cancelar">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Bitacora</h2>
+    <div id="bitacora"></div>
+  </div>
+
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let editando = null;        // id del boton en edicion, o null si es uno nuevo
+let pinesValidos = [];      // los que el firmware acepta
+let pinesGlobales = [];     // seleccion por defecto, guardada en el servidor
+
+// ---------- bitacora ----------
+function log(msg, clase = "") {
+  const d = document.createElement("div");
+  if (clase) d.className = "l-" + clase;
+  const h = new Date().toLocaleTimeString("es-MX", { hour12: false });
+  d.innerHTML = `<span class="hora">${h}</span>${escapar(msg)}`;
+  const b = $("#bitacora");
+  b.prepend(d);
+  while (b.children.length > 60) b.lastChild.remove();
+}
+const escapar = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+// ---------- API ----------
+async function api(ruta, opciones = {}) {
+  const r = await fetch("/api" + ruta, {
+    headers: { "Content-Type": "application/json" },
+    ...opciones,
+  });
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(datos.error || `HTTP ${r.status}`);
+  return datos;
+}
+
+// ---------- estado de la placa ----------
+async function refrescarEstado() {
+  try {
+    const e = await api("/estado");
+    $("#punto").className = "punto " + (e.conectado ? "si" : "no");
+    $("#estado-texto").textContent = e.conectado
+      ? `Arduino conectado en ${e.puerto} — ${e.version}`
+      : `Arduino sin conexion: ${e.motivo}`;
+  } catch (err) {
+    $("#punto").className = "punto no";
+    $("#estado-texto").textContent = "servidor no disponible";
+  }
+}
+
+// ---------- rejilla de pines ----------
+// Dibuja una casilla por pin valido. Con conProbar, cada una trae un
+// boton que emite un patron corto por ese pin y reporta si hubo luz:
+// asi se identifica cual LED es cual y se detecta uno mal soldado.
+function dibujarPines(contenedor, seleccionados, conProbar) {
+  contenedor.innerHTML = "";
+  for (const p of pinesValidos) {
+    const et = document.createElement("label");
+    et.className = "pin" + (seleccionados.includes(p) ? " activo" : "");
+
+    const caja = document.createElement("input");
+    caja.type = "checkbox";
+    caja.value = p;
+    caja.checked = seleccionados.includes(p);
+    caja.onchange = () => { et.classList.toggle("activo", caja.checked); avisarCorriente(); };
+
+    const num = document.createElement("span");
+    num.className = "num";
+    num.textContent = p;
+
+    et.append(caja, num);
+
+    if (conProbar) {
+      const marca = document.createElement("span");
+      marca.className = "marca";
+      const btn = document.createElement("button");
+      btn.className = "probar";
+      btn.textContent = "probar";
+      btn.title = "Emite por este pin y comprueba con el receptor si salio luz";
+      btn.onclick = async ev => {
+        ev.preventDefault();
+        btn.disabled = true;
+        try {
+          const r = await api("/pines/probar", {
+            method: "POST",
+            body: JSON.stringify({ pines: [p] }),
+          });
+          marca.textContent = r.ok ? "✓" : "✗";
+          marca.className = "marca " + (r.ok ? "si" : "no");
+          log(`pin ${p}: ${r.detalle}`, r.ok ? "ok" : "aviso");
+        } catch (err) {
+          marca.textContent = "✗";
+          marca.className = "marca no";
+          log(`pin ${p}: ${err.message}`, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      };
+      et.append(btn, marca);
+    }
+
+    contenedor.appendChild(et);
+  }
+}
+
+const pinesMarcados = contenedor =>
+  [...contenedor.querySelectorAll("input:checked")].map(c => Number(c.value));
+
+// El ATmega328P admite 200 mA en total. A ~17 mA por LED, mas de 6 a la
+// vez ya roza el limite del chip; conviene un transistor por LED.
+function avisarCorriente() {
+  const n = pinesMarcados($("#pines-globales")).length;
+  const aviso = $("#aviso-corriente");
+  if (!aviso) return;
+  aviso.innerHTML = n > 6
+    ? `<b style="color:var(--aviso)">Cuidado: ${n} LEDs a la vez son ~${n * 17} mA y el chip admite 200 mA en total.</b> `
+    : "";
+}
+
+async function cargarConfig() {
+  try {
+    const cfg = await api("/config");
+    pinesValidos = cfg.pines_validos;
+    pinesGlobales = cfg.pines;
+    dibujarPines($("#pines-globales"), pinesGlobales, true);
+    avisarCorriente();
+  } catch (err) {
+    $("#pines-globales").innerHTML =
+      `<div class="vacio">No se pudo leer la configuracion: ${escapar(err.message)}</div>`;
+  }
+}
+
+async function guardarPines() {
+  const pines = pinesMarcados($("#pines-globales"));
+  if (!pines.length) { log("selecciona al menos un pin", "aviso"); return; }
+  try {
+    const cfg = await api("/config", { method: "PUT", body: JSON.stringify({ pines }) });
+    pinesGlobales = cfg.pines;
+    log(`pines de emision guardados: ${cfg.pines.join(", ")}`, "ok");
+    cargarBotones();
+  } catch (err) {
+    log(`no se pudo guardar: ${err.message}`, "error");
+  }
+}
+
+async function probarSeleccionados() {
+  const pines = pinesMarcados($("#pines-globales"));
+  if (!pines.length) { log("selecciona al menos un pin", "aviso"); return; }
+  const btn = $("#btn-probar-todos");
+  btn.disabled = true;
+  try {
+    const r = await api("/pines/identificar", { method: "POST", body: JSON.stringify({ pines, ms: 1500 }) });
+    log(`pines ${r.pines.join(", ")}: ${r.detalle}`, "ok");
+  } catch (err) {
+    log(`error al probar: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- lista ----------
+async function cargarBotones() {
+  const lista = $("#lista");
+  try {
+    const { botones } = await api("/botones");
+    if (!botones.length) {
+      lista.innerHTML = '<div class="vacio">Todavia no hay botones. Agrega uno y aprendelo del control.</div>';
+      return;
+    }
+    lista.innerHTML = "";
+    for (const b of botones) {
+      const fila = document.createElement("div");
+      fila.className = "boton-fila";
+      fila.innerHTML = `
+        <div class="boton-info">
+          <div class="boton-nombre">${escapar(b.nombre)}</div>
+          <div class="boton-meta">${b.pulsos.length} pulsos · ${b.freq} Hz · ${b.repeticiones}x · pausa ${b.gap_ms} ms
+            · pines ${b.pines && b.pines.length ? escapar(b.pines.join(", ")) : pinesGlobales.join(", ") + " (globales)"}</div>
+        </div>
+        <div class="acciones">
+          <button class="primario" data-acc="enviar">Enviar</button>
+          <button data-acc="editar">Editar</button>
+          <button class="peligro" data-acc="borrar">Eliminar</button>
+        </div>`;
+      fila.querySelector('[data-acc="enviar"]').onclick = ev => enviar(b, ev.target);
+      fila.querySelector('[data-acc="editar"]').onclick = () => abrirEditor(b);
+      fila.querySelector('[data-acc="borrar"]').onclick = () => borrar(b);
+      lista.appendChild(fila);
+    }
+  } catch (err) {
+    lista.innerHTML = `<div class="vacio">Error: ${escapar(err.message)}</div>`;
+  }
+}
+
+// ---------- acciones ----------
+async function enviar(b, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api(`/botones/${b.id}/enviar`, { method: "POST" });
+    if (r.ok) log(`enviado "${r.boton}" por pin(es) ${r.pines.join(", ")} — ${r.pulsos} pulsos x${r.repeticiones}, eco ${r.eco}`, "ok");
+    else      log(`"${r.boton}": ${r.aviso}`, "aviso");
+  } catch (err) {
+    log(`error al enviar: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function borrar(b) {
+  if (!confirm(`¿Eliminar "${b.nombre}"?`)) return;
+  try {
+    await api(`/botones/${b.id}`, { method: "DELETE" });
+    log(`eliminado "${b.nombre}"`, "ok");
+    if (editando === b.id) cerrarEditor();
+    cargarBotones();
+  } catch (err) {
+    log(`error al eliminar: ${err.message}`, "error");
+  }
+}
+
+// ---------- editor ----------
+function abrirEditor(b = null) {
+  editando = b ? b.id : null;
+  $("#editor-titulo").textContent = b ? `Editar "${b.nombre}"` : "Nuevo boton";
+  $("#f-nombre").value = b ? b.nombre : "";
+  $("#f-freq").value   = b ? b.freq : 38000;
+  $("#f-rep").value    = b ? b.repeticiones : 1;
+  $("#f-gap").value    = b ? b.gap_ms : 40;
+  $("#f-pulsos").value = b ? b.pulsos.join(" ") : "";
+
+  const propios = b && b.pines && b.pines.length ? b.pines : [];
+  $("#f-pines-propios").checked = propios.length > 0;
+  $("#pines-boton").hidden = propios.length === 0;
+  dibujarPines($("#pines-boton"), propios.length ? propios : pinesGlobales, false);
+
+  $("#panel-editor").hidden = false;
+  $("#f-nombre").focus();
+}
+
+function cerrarEditor() {
+  editando = null;
+  $("#panel-editor").hidden = true;
+}
+
+function datosEditor() {
+  return {
+    nombre: $("#f-nombre").value.trim(),
+    freq: Number($("#f-freq").value),
+    repeticiones: Number($("#f-rep").value),
+    gap_ms: Number($("#f-gap").value),
+    pulsos: $("#f-pulsos").value,
+    // Vacio = usar los pines globales.
+    pines: $("#f-pines-propios").checked ? pinesMarcados($("#pines-boton")) : [],
+  };
+}
+
+async function guardar() {
+  const datos = datosEditor();
+  try {
+    if (editando) {
+      await api(`/botones/${editando}`, { method: "PUT", body: JSON.stringify(datos) });
+      log(`guardados los cambios de "${datos.nombre}"`, "ok");
+    } else {
+      await api("/botones", { method: "POST", body: JSON.stringify(datos) });
+      log(`creado "${datos.nombre}"`, "ok");
+    }
+    cerrarEditor();
+    cargarBotones();
+  } catch (err) {
+    log(`no se pudo guardar: ${err.message}`, "error");
+  }
+}
+
+async function aprender() {
+  const btn = $("#btn-aprender");
+  btn.disabled = true;
+  btn.textContent = "Apunta el control y presiona el boton...";
+  log("esperando la senal del control (15 s)...");
+  try {
+    const r = await api("/capturar", {
+      method: "POST",
+      body: JSON.stringify({ timeout_ms: 15000 }),
+    });
+    $("#f-pulsos").value = r.pulsos.join(" ");
+    log(`capturados ${r.total} pulsos del control`, "ok");
+  } catch (err) {
+    log(`no se capturo nada: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Aprender del control";
+  }
+}
+
+async function probar() {
+  const btn = $("#btn-probar");
+  btn.disabled = true;
+  try {
+    const r = await api("/enviar", { method: "POST", body: JSON.stringify(datosEditor()) });
+    if (r.ok) log(`prueba enviada por pin(es) ${r.pines.join(", ")} — ${r.pulsos} pulsos x${r.repeticiones}, eco ${r.eco}`, "ok");
+    else      log(`prueba: ${r.aviso}`, "aviso");
+  } catch (err) {
+    log(`error en la prueba: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- arranque ----------
+$("#btn-guardar-pines").onclick = guardarPines;
+$("#btn-probar-todos").onclick  = probarSeleccionados;
+$("#f-pines-propios").onchange  = ev => { $("#pines-boton").hidden = !ev.target.checked; };
+$("#btn-nuevo").onclick    = () => abrirEditor();
+$("#btn-guardar").onclick  = guardar;
+$("#btn-aprender").onclick = aprender;
+$("#btn-probar").onclick   = probar;
+$("#btn-cancelar").onclick = cerrarEditor;
+
+refrescarEstado();
+cargarConfig().then(cargarBotones);
+setInterval(refrescarEstado, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es-MX">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a070c" />
+    <title>HACK(ME)THON 2.0 · Terminal</title>
+  </head>
+  <body>
+    <!-- El tubo: todo lo que se desplaza vive aquí dentro. -->
+    <div id="root"></div>
+
+    <!-- Capas del monitor. Decorativas y fuera de React: no dependen
+         de ningún estado, y así ningún repintado las recalcula. -->
+    <div class="crt" aria-hidden="true">
+      <div class="crt__scan"></div>
+      <div class="crt__sweep"></div>
+      <div class="crt__tear"></div>
+      <div class="crt__ruido"></div>
+      <div class="crt__perdida"></div>
+      <div class="crt__bloom"></div>
+    </div>
+
+    <!-- El mueble va fuera del tubo. Vidrio plano, como la portada 2.0. -->
+    <div class="gabinete" aria-hidden="true">
+      <div class="gabinete__marco"></div>
+    </div>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

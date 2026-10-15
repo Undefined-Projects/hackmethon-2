@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HACK(ME)THON 2.0 · The Anatomy of a Machine</title>
+<link rel="icon" href="corazon.svg" type="image/svg+xml">
+<link rel="icon" href="corazon-30.png" type="image/png" sizes="30x30">
+<link rel="apple-touch-icon" href="corazon-180.png">
+<meta name="description" content="Una máquina viva está infectando la red y no se puede desconectar. Seis sistemas. Tres roles. Un quirófano a oscuras. El hackathon de nuevo ingreso de Startup Chihuahua.">
+<meta property="og:title" content="HACK(ME)THON 2.0 · The Anatomy of a Machine">
+<meta property="og:description" content="El instinto es solo un algoritmo sin documentar. Una máquina viva, seis sistemas, una noche para operarla a corazón abierto.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0a070c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;600&family=Silkscreen:wght@400;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<!-- Modo "próximamente" sin parpadeo: antes de pintar se pone el último
+     modo conocido —y si no hay ninguno, "próximamente", que es el de
+     fábrica— y se esconde lo que va debajo de la primera pantalla hasta
+     que el servidor confirme (script.js, sección 1½). -->
+<script>
+  (function(r){
+    r.classList.add("modo-pendiente");
+    var visto = null;
+    try { visto = localStorage.getItem("hmt2-modo"); } catch (e) {}
+    if (visto !== "abierto") r.classList.add("proximamente");
+  })(document.documentElement);
+</script>
+</head>
+<body>
+
+<!-- Todo lo que se ve a través del vidrio va aquí adentro: el tubo es
+     la pantalla, y es lo que se desplaza. -->
+<div class="tubo">
+
+
+<a class="skip" href="#contenido">Saltar al contenido</a>
+
+<!-- ── barra de menú, estilo panel primario ─────────────── -->
+<header class="menubar">
+  <a class="menubar__sys" href="#top">HACK(ME)THON <span>2.0</span></a>
+  <nav class="menubar__opts solo-abierto" aria-label="Paneles">
+    <a href="#historia"><b>1</b> HISTORIA</a>
+    <a href="#diseccion"><b>2</b> DISECCIÓN</a>
+    <a href="#equipo"><b>3</b> EQUIPO</a>
+    <a href="#quirofano"><b>4</b> QUIRÓFANO</a>
+    <a href="#protocolo"><b>5</b> PROTOCOLO</a>
+    <a href="#faq"><b>6</b> AYUDA</a>
+  </nav>
+  <a class="menubar__go solo-abierto" data-cfg-href="registro" href="#registro">INGRESO ▸</a>
+  <a class="menubar__go solo-proximo" href="#juego">BYPASS ▸</a>
+</header>
+
+<main id="contenido">
+
+  <!-- ── PANTALLA DE ARRANQUE ───────────────────────────── -->
+  <section class="screen" id="top">
+    <div class="screen__rule" aria-hidden="true"></div>
+
+    <p class="ipl" id="ipl">
+      <span class="ipl__line">MONITOR DE SIGNOS VITALES &middot; TERMINAL 3277 MOD 2</span>
+      <span class="ipl__line">PACIENTE: DESCONOCIDO &middot; ORIGEN: CULTIVADO</span>
+    </p>
+
+    <h1 class="banner">
+      <span class="sr-only">HACK(ME)THON 2.0: The Anatomy of a Machine</span>
+      <span class="banner__row" aria-hidden="true">
+<pre class="banner__blk">█   █  ███   ████ █   █
+█   █ █   █ █     █  █
+█████ █████ █     ███
+█   █ █   █ █     █  █
+█   █ █   █  ████ █   █</pre>
+<pre class="banner__blk banner__blk--hi">   ██ █   █ █████ ██
+  █   ██ ██ █       █
+  █   █ █ █ ████    █
+  █   █   █ █       █
+   ██ █   █ █████ ██   </pre>
+<pre class="banner__blk">█████ █   █  ███  █   █
+  █   █   █ █   █ ██  █
+  █   █████ █   █ █ █ █
+  █   █   █ █   █ █  ██
+  █   █   █  ███  █   █</pre>
+      </span>
+    </h1>
+
+    <p class="sub" aria-hidden="true">
+      <span class="sub__ver">2.0</span>
+      <span class="sub__name">THE ANATOMY OF A MACHINE</span>
+    </p>
+
+    <div class="hero">
+      <div class="hero__txt">
+        <p class="epigrafe">“El instinto es solo un algoritmo sin documentar”</p>
+
+        <p class="lead">
+          Hay una máquina viva en el centro de la sala. Nadie la ensambló:
+          <em>creció</em>, y sus raíces ya llegaron a la red. No se puede
+          desconectar: si su corazón se detiene, dispara. Ustedes tienen una
+          noche, un quirófano a oscuras y ninguna experiencia previa. Van a
+          tener que <strong>operarla a corazón abierto</strong>.
+        </p>
+
+        <!-- ── el monitor de signos vitales, en chico ─────────
+             Al lado del corazón y encima del juego. El trazo lo dibuja
+             script.js; la cuenta regresiva va en latidos. -->
+        <div class="monitor monitor--mini" id="monitor" data-estado="sinusal">
+          <p class="monitor__head">
+            <span class="monitor__lead">II</span>
+            <span class="monitor__who">PACIENTE 2.0 &middot; ECG</span>
+            <span class="monitor__alarm" id="mon-alarm" role="status">RITMO SINUSAL</span>
+          </p>
+          <div class="monitor__body">
+            <canvas class="monitor__ecg" id="ecg" aria-hidden="true"></canvas>
+            <dl class="vitals">
+              <div class="vital vital--fc">
+                <dt>FC</dt>
+                <dd><b id="v-fc">72</b><span class="vital__heart" aria-hidden="true">&#9829;</span></dd>
+                <small>LPM</small>
+              </div>
+              <div class="vital">
+                <dt>MUTACIÓN</dt>
+                <dd><b id="v-mut">03.1</b></dd>
+                <small>% / H</small>
+              </div>
+              <div class="vital">
+                <dt>NODOS</dt>
+                <dd><b id="v-nod">4 096</b></dd>
+                <small>INFECTADOS</small>
+              </div>
+            </dl>
+          </div>
+          <p class="monitor__foot" id="countdown">
+            <span class="tminus__k">LATIDOS PARA LA INCISIÓN</span>
+            <span class="tminus__v" id="latidos">------</span>
+            <span class="tminus__u"><span id="cd-reloj">--:--:--:--</span> DD:HH:MM:SS</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- El corazón lo pinta jardin.js, pixel por pixel, y le cuelga
+           raíces de circuito que bajan hasta el juego. Late con el monitor. -->
+      <figure class="especimen" aria-hidden="true">
+        <figcaption class="especimen__cap">FIG. 1 &middot; CORAZÓN<br><span>TEJIDO / SILICIO / RAÍZ</span></figcaption>
+        <canvas class="especimen__px"></canvas>
+        <svg class="especimen__raices"></svg>
+      </figure>
+    </div>
+
+    <!-- ── BYPASS: el minijuego ─────────────────────────────
+         Estilo Flappy Bird. Lo maneja bypass.js; las raíces del
+         corazón se enchufan en el borde de arriba de este cuadro. -->
+    <section class="juego" id="juego" aria-labelledby="juego-nombre">
+      <!-- cabecera y pantalla van juntas: en pantalla completa vertical,
+           esto es lo que se gira (el cuadro de fuera no se puede girar
+           mientras el navegador lo tiene en pantalla completa) -->
+      <div class="juego__cuerpo">
+      <p class="juego__head">
+        <span class="juego__tag">PF5</span>
+        <span class="juego__name" id="juego-nombre">BYPASS &middot; MINIJUEGO</span>
+        <span class="juego__marcador">PUNTOS <b id="j-pts">000</b><span>RÉCORD <b id="j-rec">000</b></span></span>
+        <button type="button" class="juego__sonido" id="j-sonido" aria-pressed="true"
+                title="Activar o silenciar el sonido (tecla M en el juego)">SONIDO: SÍ</button>
+        <button type="button" class="juego__boton juego__boton--entra" id="j-completa"
+                title="Jugar en pantalla completa, en horizontal">&#9656; PANTALLA COMPLETA</button>
+        <button type="button" class="juego__boton juego__boton--sale" id="j-salir">&#10005; SALIR</button>
+      </p>
+      <div class="juego__pantalla">
+        <canvas id="j-cv" tabindex="0"
+                aria-label="BYPASS. Pulsa espacio, haz clic o toca para latir: mantén el pulso entre las válvulas y esquiva los virus del Chihuacornio."></canvas>
+        <p class="juego__furia" id="j-furia" hidden>&#9650; EL CHIHUACORNIO SE ENFURECE</p>
+        <p class="juego__giro" id="j-giro" hidden>&#9664; MUNDO INVERTIDO</p>
+        <div class="juego__msg" id="j-msg" role="status">
+          <p class="juego__titulo" id="j-titulo">BYPASS</p>
+          <p class="juego__txt" id="j-txt">El pulso se escapa del corazón. Llévalo entre las válvulas y esquiva los virus que escupe el Chihuacornio.</p>
+          <p class="juego__tecla" id="j-tecla">ESPACIO &middot; CLIC &middot; TOCA PARA LATIR</p>
+          <!-- en un teléfono, la forma buena de jugar -->
+          <button type="button" class="key key--go juego__fs" id="j-fs">&#9656; JUGAR EN PANTALLA COMPLETA</button>
+          <!-- en pantalla completa, tras una partida oficial -->
+          <button type="button" class="key juego__fs" id="j-ir-tabla" hidden>REGISTRAR EN LA TABLA</button>
+        </div>
+
+        <!-- La carga de la pantalla completa: no es decorado, mientras se
+             ve se preparan los sprites, el audio y la partida, y se mide
+             qué tan rápido va el teléfono (bypass.js, "pantalla completa"). -->
+        <div class="juego__carga" id="j-carga" hidden role="status">
+          <p class="juego__carga-t">PREPARANDO QUIRÓFANO</p>
+          <div class="juego__barra"><i id="j-barra"></i></div>
+          <p class="juego__carga-paso" id="j-paso">ESTERILIZANDO PANTALLA&hellip;</p>
+          <p class="juego__carga-gira" id="j-gira">GIRA TU TELÉFONO &#8635;</p>
+        </div>
+      </div>
+      </div><!-- /juego__cuerpo -->
+
+      <!-- Registrar la partida: aparece al morir, si la partida fue
+           oficial (con semilla del servidor). El servidor la vuelve a
+           jugar y cuenta los puntos él. -->
+      <form class="juego__guardar" id="j-form" hidden novalidate>
+        <p class="juego__guardar-t">Registrar <b id="j-form-pts">000</b> en la tabla</p>
+        <p class="trampa" aria-hidden="true">
+          <label for="j-empresa">No llenes esto</label>
+          <input id="j-empresa" name="empresa" type="text" tabindex="-1" autocomplete="off">
+        </p>
+        <div class="juego__campos">
+          <label class="juego__campo">ALIAS PÚBLICO
+            <input name="alias" type="text" maxlength="14" autocomplete="nickname" placeholder="SIN PULSO" required>
+          </label>
+          <label class="juego__campo">CORREO
+            <input name="correo" type="email" maxlength="120" autocomplete="email" placeholder="tu@correo.com" required>
+          </label>
+          <label class="juego__campo">CONTRASEÑA
+            <input name="clave" type="password" minlength="4" maxlength="32" autocomplete="current-password" placeholder="••••" required>
+          </label>
+          <button class="key key--go key--sm" type="submit">ENVIAR</button>
+        </div>
+        <p class="juego__nota">Tu correo no se publica: solo sirve para avisarte si ganas. La contraseña la eliges la primera vez; después la necesitas para registrar con ese correo, así nadie más usa tu nombre. Se guarda tu mejor partida.</p>
+        <p class="juego__aviso" id="j-form-msg" role="status"></p>
+      </form>
+
+      <div class="juego__tabla">
+        <div class="juego__tabla-cab">
+          <p class="juego__tabla-t">TABLA DE PULSOS <span id="j-cierre"></span></p>
+          <p class="juego__pag" id="j-pag" hidden>
+            <button type="button" id="j-ant" aria-label="Página anterior">&#9666; ANT</button>
+            <span id="j-pagina" aria-live="polite">1 / 1</span>
+            <button type="button" id="j-sig" aria-label="Página siguiente">SIG &#9656;</button>
+          </p>
+        </div>
+        <ol class="juego__top" id="j-top"><li class="vacio">CARGANDO&hellip;</li></ol>
+        <p class="juego__premio"><b>PREMIO</b> <span data-cfg="premio">…</span></p>
+      </div>
+    </section>
+
+
+    <dl class="readout">
+      <div><dt>FECHA</dt><dd data-cfg="fecha">…</dd></div>
+      <div><dt>DURACIÓN</dt><dd data-cfg="duracion">…</dd></div>
+      <div><dt>QUIRÓFANO</dt><dd data-cfg="sede">…</dd></div>
+      <div><dt>CUPO</dt><dd><span data-cfg="cupo">…</span><span id="quedan"></span></dd></div>
+      <div><dt>ACCESO</dt><dd data-cfg="costo">…</dd></div>
+    </dl>
+
+    <p class="cmd">
+      <span class="cmd__prompt">OPCIÓN&nbsp;===&gt;</span>
+      <span class="cmd__typed" id="typed"></span><span class="cmd__cur" aria-hidden="true">█</span>
+    </p>
+
+    <p class="cta">
+      <a class="key key--go solo-abierto" data-cfg-href="registro" href="#registro">ENTER &middot; ENTRAR AL QUIRÓFANO</a>
+      <a class="key solo-abierto" href="#diseccion">PF2 &middot; VER LA DISECCIÓN</a>
+      <span class="key key--off solo-proximo">REGISTRO &middot; PRÓXIMAMENTE</span>
+      <a class="key solo-proximo" href="#juego">PF5 &middot; JUGAR BYPASS</a>
+    </p>
+
+    <p class="note">Para estudiantes de nuevo ingreso de Desarrollo de Software y carreras afines. Cero experiencia requerida.</p>
+  </section>
+
+  <!-- ── PANEL 01 · HISTORIA CLÍNICA ────────────────────── -->
+  <section class="panel" id="historia">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 01</span>
+      <span class="panel__name">HISTORIA CLÍNICA</span>
+      <span class="panel__stat">CONFIDENCIAL</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">No se puede desconectar. Hay que operarlo.</h2>
+      <dl class="readout ficha">
+        <div><dt>PACIENTE</dt><dd>Desconocido</dd></div>
+        <div><dt>ORIGEN</dt><dd>Cultivado, no ensamblado</dd></div>
+        <div><dt>DIAGNÓSTICO</dt><dd>Gusano polimórfico activo</dd></div>
+        <div><dt>CONTAGIO</dt><dd>Red global, en expansión</dd></div>
+        <div><dt>PRONÓSTICO</dt><dd>Reservado</dd></div>
+        <div><dt>PROCEDIMIENTO</dt><dd>Disección en vivo</dd></div>
+      </dl>
+      <div class="prose">
+        <p>
+          El reloj no marca segundos: cuenta latidos de procesamiento. En el
+          centro de la sala, una estructura de silicio y acero palpita bajo las
+          luces de emergencia con un metabolismo propio. Sus conductos respiran,
+          su red neuronal toma decisiones, y desde adentro está inyectando un
+          patógeno digital: un <em>gusano polimórfico</em> que muta, sangra
+          datos y se adapta con la misma ferocidad que un virus en el torrente
+          sanguíneo.
+        </p>
+        <p>
+          Nadie la ensambló. Creció como crece una enredadera: sus circuitos
+          echaron raíz, sus cables se ramificaron como las nervaduras de una
+          hoja, y en algún punto entre el silicio y la savia aprendió a querer
+          seguir viva.
+        </p>
+        <p>
+          Desenchufarlo provocaría un paro súbito. Y ese paro detonaría un
+          reflejo post-mortem, un <em>dead man's switch</em> incrustado en su
+          instinto de supervivencia, que ejecutaría el código al instante.
+        </p>
+        <p>
+          La única forma de detenerlo es operarlo a corazón abierto. Diseccionarlo
+          en vivo, sistema por sistema, mientras sigue latiendo. Para eso hay que
+          entender cómo piensa una máquina, y resulta que eso se llama
+          <em>programar</em>. Nadie va a decir la palabra “tutorial” en toda la noche.
+        </p>
+        <p>
+          Trabajan en equipos de 3 a 5. Ninguno puede operar solo: a cada quien le
+          tocó una parte distinta del procedimiento.
+        </p>
+      </div>
+    </div>
+    <footer class="panel__keys">
+      <a href="#top">PF3=SALIR</a><a href="#faq">PF1=AYUDA</a><a href="#diseccion">PF8=AVANZAR</a>
+    </footer>
+  </section>
+
+  <!-- ── PRÓXIMAMENTE ─────────────────────────────────────
+       Solo existe en modo "próximamente" (se activa desde el panel):
+       va justo después de la historia clínica, que se asoma recortada,
+       y todo lo demás se esconde. -->
+  <section class="proximo solo-proximo" id="proximo" aria-labelledby="proximo-t">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 02</span>
+      <span class="panel__name">PRÓXIMAMENTE</span>
+      <span class="panel__stat">EN PREPARACIÓN</span>
+    </header>
+    <div class="proximo__cuerpo">
+      <p class="proximo__tag"><span class="alarm__flag">&#9632;</span> EXPEDIENTE EN PREPARACIÓN</p>
+      <h2 class="proximo__t" id="proximo-t">PRÓXIMAMENTE<span class="cmd__cur" aria-hidden="true">█</span></h2>
+      <p class="proximo__txt">
+        La operación todavía no está programada. La historia clínica completa,
+        el equipo quirúrgico, el quirófano y el registro se abren pronto.
+        Mientras tanto, el paciente sigue latiendo.
+      </p>
+      <p class="cta">
+        <a class="key key--go" href="#juego">ENTER &middot; JUGAR BYPASS</a>
+        <a class="key" data-cfg-href="contacto" href="#">PF1 &middot; ESCRÍBENOS</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ── PANEL 02 · DISECCIÓN ───────────────────────────── -->
+  <section class="panel" id="diseccion">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 02</span>
+      <span class="panel__name">PROTOCOLO DE DISECCIÓN</span>
+      <span class="panel__stat">6 SISTEMAS</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">Seis sistemas, una incisión a la vez</h2>
+      <p class="section-lead">
+        Los seis sistemas son las seis fases del evento y se abren uno por uno,
+        no todos de golpe. Cada uno enseña una idea, y la idea no se explica:
+        se necesita para llegar al siguiente órgano sin arrancarlo de raíz.
+      </p>
+
+      <dl class="readout score">
+        <div><dt>POR SISTEMA AISLADO</dt><dd>100 puntos</dd></div>
+        <div><dt>BONIFICACIÓN</dt><dd>Según qué tan rápido lo abran</dd></div>
+        <div><dt>APERTURA</dt><dd>Un sistema a la vez, durante la noche</dd></div>
+      </dl>
+
+      <ol class="opts">
+        <li class="opt" style="--i:0">
+          <svg class="lamina" viewBox="0 0 48 48" aria-hidden="true">
+            <path class="l-c" d="M24 28 L16 20 V12 M24 28 L32 20 V10 M16 20 L10 14 M32 20 L38 14 M24 28 V14"/>
+            <path class="l-o" d="M24 46 V28 M24 40 L18 46 M24 40 L30 46"/>
+            <path class="l-h" d="M24 35 q-8 -6 -11 0 q6 4 11 0z M24 32 q8 -6 11 0 q-6 4 -11 0z"/>
+            <g class="l-v"><circle cx="16" cy="12" r="2.5"/><circle cx="32" cy="10" r="2.5"/><circle cx="10" cy="14" r="2.5"/><circle cx="38" cy="14" r="2.5"/><circle cx="24" cy="14" r="2.5"/></g>
+          </svg>
+          <p class="opt__head">
+            <span class="opt__n">1</span>
+            <span class="opt__name">SISTEMA NERVIOSO</span>
+            <span class="opt__dots" aria-hidden="true"></span>
+            <span class="opt__topic">OPERADORES LÓGICOS</span>
+          </p>
+          <p class="opt__desc">Sus neuronas se ramifican como un árbol, y cada una dispara o no dispara: verdadero o falso. Hay que encontrar qué combinación de señales enciende el impulso, y cuál lo apaga.</p>
+        </li>
+        <li class="opt" style="--i:1">
+          <svg class="lamina" viewBox="0 0 48 48" aria-hidden="true">
+            <path class="l-o" d="M3 30 H17 M31 30 H42"/>
+            <path class="l-c" d="M18 30 L29 21"/>
+            <g class="l-h"><ellipse cx="7" cy="25" rx="1.6" ry="3.6"/><ellipse cx="7" cy="35" rx="1.6" ry="3.6"/><ellipse cx="12" cy="25" rx="1.6" ry="3.6"/><ellipse cx="12" cy="35" rx="1.6" ry="3.6"/><ellipse cx="35" cy="28" rx="3.6" ry="1.4"/><ellipse cx="35" cy="32" rx="3.6" ry="1.4"/></g>
+            <g class="l-v"><circle cx="17" cy="30" r="2.5"/><circle cx="31" cy="30" r="2.5"/></g>
+            <g class="l-f"><circle cx="44" cy="30" r="3"/></g>
+          </svg>
+          <p class="opt__head">
+            <span class="opt__n">2</span>
+            <span class="opt__name">ARCO REFLEJO</span>
+            <span class="opt__dots" aria-hidden="true"></span>
+            <span class="opt__topic">CONDICIONALES</span>
+          </p>
+          <p class="opt__desc">Como la mimosa que cierra sus hojas al tocarla: si siente una amenaza, responde. El dead man's switch es un reflejo; reescriban sus decisiones sin que el cuerpo se dé cuenta.</p>
+        </li>
+        <li class="opt" style="--i:2">
+          <svg class="lamina" viewBox="0 0 48 48" aria-hidden="true">
+            <ellipse class="l-o" cx="24" cy="31" rx="11" ry="13"/>
+            <path class="l-c" d="M15 33 h3 v-6 h4 v6 h4 v-6 h4 v6 h3"/>
+            <path class="l-o" d="M24 18 V7"/>
+            <path class="l-h" d="M24 11 q-9 -5 -11 1 q6 3 11 -1z M24 9 q8 -6 11 -1 q-6 4 -11 1z"/>
+            <path class="l-c" d="M24 44 V47 M19 42 L16 46 M29 42 L32 46"/>
+          </svg>
+          <p class="opt__head">
+            <span class="opt__n">3</span>
+            <span class="opt__name">CORAZÓN</span>
+            <span class="opt__dots" aria-hidden="true"></span>
+            <span class="opt__topic">CICLOS</span>
+          </p>
+          <p class="opt__desc">Late como germina una semilla: la misma instrucción, una y otra vez. Hay que meterse al ciclo, contarlo y saber cuándo puede detenerse sin provocar el paro.</p>
+        </li>
+        <li class="opt" style="--i:3">
+          <svg class="lamina" viewBox="0 0 48 48" aria-hidden="true">
+            <path class="l-o" d="M24 3 C39 12 41 30 24 43 C7 30 9 12 24 3 Z M24 43 V47"/>
+            <path class="l-c" d="M24 7 V41 M24 15 L31 22 M24 15 L17 22 M24 25 L32 33 M24 25 L16 33"/>
+            <rect class="l-k" x="21" y="34" width="6" height="4"/>
+            <g class="l-v"><circle cx="31" cy="22" r="2.2"/><circle cx="17" cy="22" r="2.2"/><circle cx="32" cy="33" r="2.2"/><circle cx="16" cy="33" r="2.2"/></g>
+          </svg>
+          <p class="opt__head">
+            <span class="opt__n">4</span>
+            <span class="opt__name">ÓRGANOS</span>
+            <span class="opt__dots" aria-hidden="true"></span>
+            <span class="opt__topic">FUNCIONES</span>
+          </p>
+          <p class="opt__desc">Cada órgano hace una sola cosa, como cada hoja de una planta, y los demás lo llaman. Encuentren el que está infectado, injértenle la versión sana una vez y sana en todo el cuerpo.</p>
+        </li>
+        <li class="opt" style="--i:4">
+          <svg class="lamina" viewBox="0 0 48 48" aria-hidden="true">
+            <circle class="l-o" cx="24" cy="24" r="19"/>
+            <circle class="l-o l-tenue" cx="24" cy="24" r="14"/>
+            <circle class="l-c" cx="24" cy="24" r="9"/>
+            <circle class="l-c l-tenue" cx="24" cy="24" r="5"/>
+            <path class="l-o" d="M24 5 L26 9 L24 12"/>
+            <path class="l-c" d="M45 45 L32 32"/>
+            <rect class="l-k" x="28" y="28" width="5" height="5"/>
+            <circle class="l-p" cx="24" cy="24" r="2"/>
+          </svg>
+          <p class="opt__head">
+            <span class="opt__n">5</span>
+            <span class="opt__name">MEMORIA</span>
+            <span class="opt__dots" aria-hidden="true"></span>
+            <span class="opt__topic">BASES DE DATOS</span>
+          </p>
+          <p class="opt__desc">Millones de recuerdos, uno encima de otro, como los anillos de un tronco. En uno solo se esconde el patógeno. Preguntarle bien a la memoria es más rápido que buscar a ciegas.</p>
+        </li>
+        <li class="opt" style="--i:5">
+          <svg class="lamina" viewBox="0 0 48 48" aria-hidden="true">
+            <path class="l-o l-suelo" d="M5 12 H43"/>
+            <path class="l-o" d="M24 12 V5 M24 12 V20"/>
+            <path class="l-h" d="M24 8 q-7 -4 -9 1 q5 3 9 -1z M24 7 q7 -5 9 0 q-5 3 -9 0z"/>
+            <path class="l-c" d="M24 20 L14 30 V40 M24 20 L34 30 V42 M14 30 L8 36 M24 20 V36"/>
+            <path class="l-d" d="M8 36 L14 40 L24 36 L34 42"/>
+            <g class="l-v"><circle cx="24" cy="20" r="2.2"/><circle cx="14" cy="30" r="2.2"/><circle cx="34" cy="30" r="2.2"/><circle cx="8" cy="36" r="2.2"/><circle cx="14" cy="40" r="2.2"/><circle cx="24" cy="36" r="2.2"/><circle cx="34" cy="42" r="2.2"/></g>
+          </svg>
+          <p class="opt__head">
+            <span class="opt__n">6</span>
+            <span class="opt__name">RAÍCES</span>
+            <span class="opt__dots" aria-hidden="true"></span>
+            <span class="opt__topic">APIS</span>
+          </p>
+          <p class="opt__desc">Sus raíces se enredan con la red global como micelio, y por ahí viaja el gusano. Mándenle el mensaje correcto y la infección se contiene. Mándenle el equivocado y se esparce como esporas.</p>
+        </li>
+      </ol>
+    </div>
+    <footer class="panel__keys">
+      <a href="#historia">PF7=ANTERIOR</a><a href="#top">PF3=SALIR</a><a href="#equipo">PF8=AVANZAR</a>
+    </footer>
+  </section>
+
+  <!-- ── PANEL 03 · EQUIPO QUIRÚRGICO ───────────────────── -->
+  <section class="panel" id="equipo">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 03</span>
+      <span class="panel__name">EQUIPO QUIRÚRGICO</span>
+      <span class="panel__stat">3 PUESTOS</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">Nadie ve al paciente completo</h2>
+      <p class="section-lead">
+        A cada equipo se le asignan tres puestos. Cada uno recibe algo que los
+        otros dos no tienen, y le falta algo que solo los otros dos pueden darle.
+        Van a tener que hablarse.
+      </p>
+
+      <div class="roles">
+        <article class="role">
+          <p class="role__id">PUESTO 01</p>
+          <h3>PATÓLOGO</h3>
+          <p class="perm perm--ok"><span>CONCEDIDO</span> Consultar el historial y la memoria del paciente.</p>
+          <p class="perm perm--no"><span>DENEGADO</span> Ver el monitor. Tocar el teclado.</p>
+          <p class="role__desc">Tiene los expedientes, los registros, las muestras. Sabe <em>qué</em> hay adentro, pero no puede abrir.</p>
+        </article>
+        <article class="role">
+          <p class="role__id">PUESTO 02</p>
+          <h3>CIRUJANO</h3>
+          <p class="perm perm--ok"><span>CONCEDIDO</span> Escribir y ejecutar comandos.</p>
+          <p class="perm perm--no"><span>DENEGADO</span> Ver el monitor. Consultar datos.</p>
+          <p class="role__desc">Las manos del equipo. Opera a ciegas lo que los otros dos le dictan, y es el único que puede cortar.</p>
+        </article>
+        <article class="role">
+          <p class="role__id">PUESTO 03</p>
+          <h3>ANESTESIÓLOGO</h3>
+          <p class="perm perm--ok"><span>CONCEDIDO</span> Ver el monitor de signos vitales.</p>
+          <p class="perm perm--no"><span>DENEGADO</span> Teclear. Consultar datos.</p>
+          <p class="role__desc">Los ojos. Lee en voz alta errores, pulsos y alarmas. Si lee mal, el paciente se les va.</p>
+        </article>
+      </div>
+    </div>
+    <footer class="panel__keys">
+      <a href="#diseccion">PF7=ANTERIOR</a><a href="#top">PF3=SALIR</a><a href="#quirofano">PF8=AVANZAR</a>
+    </footer>
+  </section>
+
+  <!-- ── PANEL 04 · QUIRÓFANO ───────────────────────────── -->
+  <section class="panel" id="quirofano">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 04</span>
+      <span class="panel__name">CONTROL DE QUIRÓFANO</span>
+      <span class="panel__stat">EN LÍNEA</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">La sala tiene pulso</h2>
+      <div class="room">
+        <div class="prose">
+          <p>
+            Se apagan las luces generales y se encienden las del quirófano.
+            Telas moradas y rosas cuelgan del techo como follaje, los
+            reflectores las atraviesan y las paredes brillan en la oscuridad
+            como tejido bajo luz ultravioleta.
+          </p>
+          <p>
+            La sala está conectada al paciente. Un servidor escucha lo que pasa
+            en cada mesa: cuando un equipo abre un sistema, cuando el ritmo se
+            acelera, cuando alguien está a punto de disparar el reflejo. Y
+            responde: cambian las luces, cambia lo que proyectan las paredes,
+            cambia el latido que se escucha.
+          </p>
+          <p>
+            Si la sala se pone roja, el paciente se está yendo. Van a saberlo
+            antes de leerlo.
+          </p>
+        </div>
+        <dl class="readout readout--stack">
+          <div><dt>MONITORES</dt><dd>Signos vitales del paciente en vivo</dd></div>
+          <div><dt>SONIDO</dt><dd>El latido de la máquina</dd></div>
+          <div><dt>SEDE</dt><dd data-cfg="sede">…</dd></div>
+          <div><dt>COORDENADAS</dt><dd class="coords" data-cfg="coordenadas">…</dd></div>
+        </dl>
+        <!-- El mapa lo arma script.js con EVENTO.coordenadas; sin ellas no sale. -->
+        <figure class="mapa" id="mapa" hidden>
+          <div class="mapa__vidrio">
+            <iframe title="Mapa de la sede del HACK(ME)THON 2.0" loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+          </div>
+          <figcaption class="mapa__pie">
+            <span>FIG. 2 · UBICACIÓN DE LA SEDE</span>
+            <span class="maplink"><a data-cfg-href="mapa" href="#" rel="noopener">&#9656; ABRIR EN MAPAS</a></span>
+          </figcaption>
+        </figure>
+        <p class="maplink maplink--solo"><a data-cfg-href="mapa" href="#" rel="noopener">&#9656; ABRIR EN MAPAS</a></p>
+      </div>
+    </div>
+    <footer class="panel__keys">
+      <a href="#equipo">PF7=ANTERIOR</a><a href="#top">PF3=SALIR</a><a href="#protocolo">PF8=AVANZAR</a>
+    </footer>
+  </section>
+
+  <!-- ── PANEL 05 · PROTOCOLO OPERATORIO ────────────────── -->
+  <section class="panel" id="protocolo">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 05</span>
+      <span class="panel__name">PROTOCOLO OPERATORIO</span>
+      <span class="panel__stat">11 TIEMPOS</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">Cómo se opera una máquina</h2>
+      <p class="section-lead">
+        Duración: <span data-cfg="duracion">…</span>. La primera media hora
+        es para llegar y acomodarse; después se apagan las luces y se abre un
+        sistema cada 40 minutos. Los anteriores siguen abiertos. A la mitad hay
+        un descanso de 20 minutos, y al final vienen el bono, la final de
+        BYPASS y la premiación.
+      </p>
+      <ol class="sched">
+        <li><span class="sched__t">H+0:00</span><span class="sched__n">INGRESO</span><span class="sched__d">Bienvenida. Llegan los equipos, se acomodan en su mesa y cada quien recibe su acceso y su restricción.</span></li>
+        <li><span class="sched__t">H+0:30</span><span class="sched__n">INCISIÓN 1</span><span class="sched__d"><span class="secreto" data-text="RETO CONFIDENCIAL" style="--i:1">RETO CONFIDENCIAL</span></span></li>
+        <li><span class="sched__t">H+1:10</span><span class="sched__n">INCISIÓN 2</span><span class="sched__d"><span class="secreto" data-text="RETO CONFIDENCIAL" style="--i:2">RETO CONFIDENCIAL</span></span></li>
+        <li><span class="sched__t">H+1:50</span><span class="sched__n">INCISIÓN 3</span><span class="sched__d"><span class="secreto" data-text="RETO CONFIDENCIAL" style="--i:3">RETO CONFIDENCIAL</span></span></li>
+        <li><span class="sched__t">H+2:30</span><span class="sched__n">DESCANSO</span><span class="sched__d">20 minutos. Se prenden las luces y el paciente queda estable.</span></li>
+        <li><span class="sched__t">H+2:50</span><span class="sched__n">INCISIÓN 4</span><span class="sched__d"><span class="secreto" data-text="RETO CONFIDENCIAL" style="--i:4">RETO CONFIDENCIAL</span></span></li>
+        <li><span class="sched__t">H+3:30</span><span class="sched__n">INCISIÓN 5</span><span class="sched__d"><span class="secreto" data-text="RETO CONFIDENCIAL" style="--i:5">RETO CONFIDENCIAL</span></span></li>
+        <li><span class="sched__t">H+4:10</span><span class="sched__n">INCISIÓN 6</span><span class="sched__d"><span class="secreto" data-text="RETO CONFIDENCIAL" style="--i:6">RETO CONFIDENCIAL</span></span></li>
+        <li><span class="sched__t">H+4:50</span><span class="sched__n">BONO</span><span class="sched__d">Un reto extra que da puntos de más. Se abre cuando ya están los seis sistemas.</span></li>
+        <li><span class="sched__t">H+5:10</span><span class="sched__n">FINAL DE BYPASS</span><span class="sched__d">40 minutos. Los mejores puntajes del torneo en línea juegan en vivo por un premio adicional.</span></li>
+        <li><span class="sched__t">H+5:50</span><span class="sched__n">ALTA</span><span class="sched__d">10 minutos. Se encienden las luces. Hora oficial del procedimiento, puntajes y premiación. Termina a las H+6:00.</span></li>
+      </ol>
+    </div>
+    <footer class="panel__keys">
+      <a href="#quirofano">PF7=ANTERIOR</a><a href="#top">PF3=SALIR</a><a href="#registro">PF8=AVANZAR</a>
+    </footer>
+  </section>
+
+  <!-- ── PANEL 06 · CONSENTIMIENTO INFORMADO ────────────── -->
+  <section class="panel panel--go" id="registro">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 06</span>
+      <span class="panel__name">CONSENTIMIENTO INFORMADO</span>
+      <span class="panel__stat">ABIERTO</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">Cupo: <span data-cfg="cupo">…</span></h2>
+      <p class="section-lead">
+        El registro es por persona y toma dos minutos. Una persona del equipo
+        lo crea con nombre, logo y contraseña; los demás lo eligen de la lista
+        con esa contraseña. Si no tienes equipo, elige «No tengo equipo» y te
+        acomodamos en uno. Los equipos son de 3 a 5 personas.
+      </p>
+
+      <form class="alta" id="alta" novalidate>
+        <p class="trampa" aria-hidden="true">
+          <label for="f-empresa">No llenes esto</label>
+          <input id="f-empresa" name="empresa" type="text" tabindex="-1" autocomplete="off">
+        </p>
+
+        <fieldset class="fs">
+          <legend>&#9656; TUS DATOS</legend>
+          <p class="fs__hint">Todos son obligatorios. La fecha de nacimiento tiene que coincidir con tu CURP.</p>
+          <div class="crew__campos">
+            <label class="crew__campo crew__campo--ancho"><span>NOMBRE(S)</span>
+              <input type="text" name="nombre" maxlength="60" autocomplete="given-name" placeholder="NOMBRE(S)" required></label>
+            <label class="crew__campo crew__campo--ancho"><span>APELLIDOS</span>
+              <input type="text" name="apellidos" maxlength="80" autocomplete="family-name" placeholder="APELLIDOS" required></label>
+            <label class="crew__campo crew__campo--ancho"><span>CORREO</span>
+              <input type="email" name="correo" maxlength="120" autocomplete="email" placeholder="tu@correo.com" required></label>
+            <label class="crew__campo crew__campo--ancho"><span>TELÉFONO (WHATSAPP)</span>
+              <input type="tel" name="tel" maxlength="16" autocomplete="tel" placeholder="10 DÍGITOS" required></label>
+            <label class="crew__campo crew__campo--ancho"><span>CURP</span>
+              <input type="text" name="curp" maxlength="18" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="18 CARACTERES" required></label>
+            <label class="crew__campo crew__campo--ancho"><span>GÉNERO</span>
+              <select name="genero" required>
+                <option value="">ELIGE UNA OPCIÓN</option>
+                <option value="hombre">Hombre</option>
+                <option value="mujer">Mujer</option>
+                <option value="otro">Otro</option>
+                <option value="prefiero_no_decir">Prefiero no decir</option>
+              </select></label>
+            <label class="crew__campo crew__campo--ancho"><span>FECHA DE NACIMIENTO</span>
+              <input type="date" name="nacimiento" autocomplete="bday" min="1925-01-01" required></label>
+            <label class="crew__campo crew__campo--ancho"><span>CÓDIGO POSTAL</span>
+              <input type="text" name="cp" maxlength="5" inputmode="numeric" autocomplete="postal-code" placeholder="5 DÍGITOS" required></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fs">
+          <legend>&#9656; ESCUELA</legend>
+          <p class="fs__hint">¿Estudias actualmente?</p>
+          <div class="opciones">
+            <label class="consent"><input type="radio" name="estudia" value="si" required><span>Sí</span></label>
+            <label class="consent"><input type="radio" name="estudia" value="no" required><span>No</span></label>
+          </div>
+          <div class="crew__campos escuela" id="escuela" hidden>
+            <label class="crew__campo crew__campo--ancho"><span>UNIVERSIDAD / INSTITUCIÓN</span>
+              <select name="institucion">
+                <option value="">ELIGE TU ESCUELA</option>
+                <optgroup label="Públicas">
+                  <option value="UACH">Universidad Autónoma de Chihuahua (UACH)</option>
+                  <option value="UTCH">Universidad Tecnológica de Chihuahua (UTCH)</option>
+                  <option value="UTCH Sur">Universidad Tecnológica de Chihuahua Sur (UTCH Sur)</option>
+                  <option value="UTCH BIS">Universidad Tecnológica de Chihuahua BIS (UTCH BIS)</option>
+                  <option value="Politécnico (UPCH)">Universidad Politécnica de Chihuahua (UPCH)</option>
+                  <option value="Instituto Tecnológico de Chihuahua">Instituto Tecnológico de Chihuahua (TecNM)</option>
+                  <option value="Instituto Tecnológico de Chihuahua II">Instituto Tecnológico de Chihuahua II (TecNM)</option>
+                  <option value="Escuela Normal del Estado">Escuela Normal del Estado «Profr. Luis Urías Belderráin»</option>
+                  <option value="Escuela Normal Superior">Escuela Normal Superior «Profr. José E. Medrano R.»</option>
+                </optgroup>
+                <optgroup label="Privadas">
+                  <option value="Tec de Monterrey">Tec de Monterrey, Campus Chihuahua</option>
+                  <option value="ULSA">Universidad La Salle Chihuahua (ULSA)</option>
+                </optgroup>
+                <option value="otra">Otra</option>
+              </select></label>
+            <label class="crew__campo crew__campo--ancho" id="otra"><span>¿CUÁL?</span>
+              <input type="text" name="otra" maxlength="80" placeholder="SOLO SI ELEGISTE «OTRA»" disabled></label>
+            <label class="crew__campo crew__campo--ancho"><span>CARRERA</span>
+              <input type="text" name="carrera" maxlength="80" list="carreras" autocomplete="off" placeholder="TU CARRERA"></label>
+            <label class="crew__campo crew__campo--medio"><span>CUENTO EN</span>
+              <select name="periodo">
+                <option value="semestre">Semestres</option>
+                <option value="cuatrimestre">Cuatrimestres</option>
+                <option value="tetramestre">Tetramestres</option>
+                <option value="anio">Años</option>
+              </select></label>
+            <label class="crew__campo crew__campo--medio"><span id="periodo-t">SEMESTRE QUE CURSAS</span>
+              <input type="number" name="semestre" min="1" max="12" inputmode="numeric" placeholder="1"></label>
+          </div>
+          <datalist id="carreras">
+            <option>Ingeniería en Software</option>
+            <option>Ingeniería en Sistemas Computacionales</option>
+            <option>Ingeniería en Tecnologías de la Información</option>
+            <option>Ingeniería en Ciencias de la Computación</option>
+            <option>Ingeniería en Desarrollo de Software</option>
+            <option>Ingeniería Mecatrónica</option>
+            <option>Ingeniería Industrial</option>
+            <option>Ingeniería en Electrónica</option>
+            <option>Licenciatura en Informática</option>
+            <option>Desarrollo de Software Multiplataforma</option>
+          </datalist>
+        </fieldset>
+
+        <fieldset class="fs">
+          <legend>&#9656; EQUIPO</legend>
+          <p class="fs__hint">Los equipos son de 3 a 5 personas. Una persona crea el equipo y les pasa la contraseña a los demás.</p>
+          <div class="opciones">
+            <label class="consent"><input type="radio" name="equipoModo" value="unirse" required><span>Ya tengo equipo</span></label>
+            <label class="consent"><input type="radio" name="equipoModo" value="asignar" required><span>No tengo equipo, agrégame a uno</span></label>
+            <label class="consent"><input type="radio" name="equipoModo" value="crear" required><span>Crear un equipo</span></label>
+          </div>
+
+          <!-- Ya tengo equipo: la lista la llena script.js desde /api/equipos -->
+          <div class="eqs" id="eq-unirse" hidden>
+            <div class="eqs__barra">
+              <p class="fs__hint">Elige el tuyo y escribe la contraseña que les pasó quien lo creó.</p>
+              <label class="eqs__buscar"><span class="sr-only">Buscar equipo</span>
+                <input type="text" name="buscaEquipo" autocomplete="off" placeholder="BUSCAR EQUIPO"></label>
+              <button type="button" class="eqs__btn" id="eq-recarga">ACTUALIZAR</button>
+            </div>
+            <div class="eqs__lista" id="eq-lista" role="radiogroup" aria-label="Equipos registrados"></div>
+            <p class="eqs__estado" id="eq-estado" aria-live="polite"></p>
+            <div class="crew__campos">
+              <label class="crew__campo crew__campo--ancho"><span>CONTRASEÑA DEL EQUIPO</span>
+                <input type="password" name="claveUnirse" maxlength="64" autocomplete="off" placeholder="LA QUE TE PASARON"></label>
+            </div>
+          </div>
+
+          <!-- Crear un equipo: nombre, contraseña y logo de 16 × 16 -->
+          <div class="eqs" id="eq-crear" hidden>
+            <div class="crew__campos">
+              <label class="crew__campo crew__campo--ancho"><span>NOMBRE DEL EQUIPO</span>
+                <input type="text" name="equipo" maxlength="32" autocomplete="off" placeholder="LOS SIN PULSO"></label>
+              <label class="crew__campo crew__campo--ancho"><span>CONTRASEÑA DEL EQUIPO</span>
+                <input type="password" name="claveCrear" maxlength="64" autocomplete="new-password" placeholder="MÍNIMO 4 CARACTERES"></label>
+              <p class="fs__hint crew__campo--ancho">Pásales la contraseña a tus compañeros: la necesitan para unirse. Que no sea la de ninguna otra cuenta tuya.</p>
+            </div>
+            <div class="pixel">
+              <div class="pixel__marco">
+                <canvas class="pixel__lienzo" id="px-lienzo" width="320" height="320" tabindex="0"
+                  aria-label="Logo del equipo, 16 por 16 pixeles. Dibuja con el ratón o el dedo; con el teclado, flechas para moverte y espacio para pintar." aria-describedby="px-pos"></canvas>
+                <p class="pixel__pos" id="px-pos">LOGO · 16 × 16</p>
+              </div>
+              <div class="pixel__panel">
+                <p class="pixel__t">COLOR</p>
+                <div class="pixel__paleta" id="px-paleta" role="radiogroup" aria-label="Color"></div>
+                <p class="pixel__t">HERRAMIENTA</p>
+                <div class="pixel__btns">
+                  <button type="button" class="pixel__btn" data-px="lapiz" aria-pressed="true">LÁPIZ</button>
+                  <button type="button" class="pixel__btn" data-px="bote" aria-pressed="false">BOTE</button>
+                  <button type="button" class="pixel__btn" data-px="espejo" aria-pressed="false">ESPEJO</button>
+                </div>
+                <div class="pixel__btns">
+                  <button type="button" class="pixel__btn" data-px="deshacer">DESHACER</button>
+                  <button type="button" class="pixel__btn" data-px="limpiar">LIMPIAR</button>
+                </div>
+                <p class="pixel__t">ASÍ SE VE</p>
+                <div class="pixel__vistas">
+                  <canvas class="pixel__vista pixel__vista--1" id="px-vista1" width="16" height="16" aria-hidden="true"></canvas>
+                  <canvas class="pixel__vista pixel__vista--3" id="px-vista3" width="16" height="16" aria-hidden="true"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="fs fs--consent">
+          <legend>&#9656; AVISO DE PRIVACIDAD</legend>
+          <div class="privado">
+            <p class="privado__clave">TUS DATOS NO SE COMPARTEN CON TERCEROS.</p>
+            <p>
+              Los usamos solo para registrarte, darte acceso a la sede y
+              escribirte sobre el evento, y para estadística sin nombres. La CURP
+              sirve para confirmar que eres quien dices ser y que nadie se
+              registra dos veces. No los vendemos, rentamos, prestamos ni
+              compartimos con patrocinadores, escuelas ni ninguna otra
+              organización, y puedes pedir verlos, corregirlos o borrarlos cuando
+              quieras.
+            </p>
+            <p><a href="privacidad.html" target="_blank" rel="noopener">LEER EL AVISO DE PRIVACIDAD COMPLETO ↗</a></p>
+          </div>
+          <label class="consent">
+            <input type="checkbox" name="privacidad" id="f-privacidad" required>
+            <span>Leí el aviso de privacidad y acepto que mis datos se usen para lo que ahí se describe.</span>
+          </label>
+          <label class="consent" id="tutor" hidden>
+            <input type="checkbox" name="tutor" id="f-tutor">
+            <span>
+              Soy menor de 18 años: mi madre, padre o tutor conoce el evento y
+              autoriza mi participación y el uso de mis datos. Pueden pedir esa
+              autorización por escrito.
+            </span>
+          </label>
+        </fieldset>
+
+        <fieldset class="fs fs--consent">
+          <legend>&#9656; RESPONSIVA</legend>
+          <div class="privado">
+            <p>Al participar en el HACK(ME)THON 2.0 me comprometo a:</p>
+            <ul class="responsiva">
+              <li>Seguir las reglas del evento y las indicaciones del equipo organizador.</li>
+              <li>Tratar con respeto a participantes, mentores, staff y a la sede. El acoso o la discriminación son motivo de salida inmediata.</li>
+              <li>Usar la infraestructura, las redes y las herramientas solo dentro del entorno del evento y para los retos del evento: nada de atacar, escanear ni entrar a sistemas ajenos.</li>
+              <li>Cuidar el equipo y las instalaciones que me presten.</li>
+            </ul>
+            <p>
+              Acepto que durante el evento se tomen fotos, video y audio en los
+              que puedo aparecer, y que se usen para difundir el evento y en sus
+              reportes.
+            </p>
+          </div>
+          <label class="consent">
+            <input type="checkbox" name="responsiva" id="f-responsiva" required>
+            <span>Leí la responsiva y la acepto.</span>
+          </label>
+        </fieldset>
+
+        <p class="cmd">
+          <span class="cmd__prompt">OPCIÓN&nbsp;===&gt;</span>
+          <span class="cmd__typed">FIRMAR</span><span class="cmd__cur" aria-hidden="true">█</span>
+        </p>
+        <p class="msg" id="msg" role="status"></p>
+        <p class="cta">
+          <button type="submit" class="key key--go">ENTER &middot; FIRMAR E INGRESAR</button>
+        </p>
+        <p class="note">
+          El registro se manda solo y te devuelve un folio: guárdalo. Acceso: <span data-cfg="costo">…</span>.
+        </p>
+      </form>
+    </div>
+    <footer class="panel__keys">
+      <a href="#protocolo">PF7=ANTERIOR</a><a href="#top">PF3=SALIR</a><a href="#faq">PF1=AYUDA</a>
+    </footer>
+  </section>
+
+  <!-- ── PANEL 07 · CONTRAINDICACIONES ──────────────────── -->
+  <section class="panel" id="faq">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 07</span>
+      <span class="panel__name">CONTRAINDICACIONES</span>
+      <span class="panel__stat">9 TEMAS</span>
+    </header>
+    <div class="panel__body">
+      <h2 class="h2">Antes de entrar al quirófano</h2>
+      <div class="faq">
+        <details>
+          <summary>¿Necesito saber programar?</summary>
+          <p>No. El evento está diseñado para alguien que nunca ha escrito una línea de código. Los sistemas están ordenados de más simple a menos simple, y cada uno da lo que necesitas para abrirlo.</p>
+        </details>
+        <details>
+          <summary>¿Puedo ir solo, sin equipo?</summary>
+          <p>Sí. El registro es por persona: si no tienes equipo, elige «No tengo equipo, agrégame a uno» y te acomodamos en uno. Se opera en equipos de 3 a 5, porque los puestos del quirófano se reparten y ninguno funciona sin los demás.</p>
+        </details>
+        <details>
+          <summary>¿Qué hacen con mis datos?</summary>
+          <p>Solo organizar el evento: registrarte, dejarte entrar y escribirte. No se comparten con terceros, nunca. Puedes pedir verlos, corregirlos o borrarlos cuando quieras. Todo está en el <a href="privacidad.html">aviso de privacidad</a>.</p>
+        </details>
+        <details>
+          <summary>¿Hay sangre de verdad?</summary>
+          <p>No. Toda la anatomía es digital. La sala es oscura y el ambiente es intenso a propósito, pero lo único que se abre en la noche es código.</p>
+        </details>
+        <details>
+          <summary>¿Qué llevo?</summary>
+          <p>Una laptop por participante, como mínimo, que se pueda conectar a la red wifi del Tec, y su cargador. Nada más: todo lo demás corre en el navegador.</p>
+        </details>
+        <details>
+          <summary>¿De qué carrera tengo que ser?</summary>
+          <p>Desarrollo de Software, Sistemas, TI o cualquier carrera afín. Está pensado específicamente para primer semestre.</p>
+        </details>
+        <details>
+          <summary>¿Cómo se gana?</summary>
+          <p>Por puntos. Cada sistema que aíslen les da 100 puntos, más una bonificación según qué tan rápido lo hicieron. Los seis sistemas se abren uno por uno durante la noche, así que todos los equipos operan sobre el mismo al mismo tiempo y la diferencia la hace la velocidad.</p>
+        </details>
+        <details>
+          <summary>¿Hay premio?</summary>
+          <p>El equipo con más puntos al final se lleva el reconocimiento y lo que anunciemos en la sede. Pero todos los equipos llegan a los seis sistemas: nadie se queda atorado toda la noche.</p>
+        </details>
+        <details>
+          <summary>¿Cuánto cuesta?</summary>
+          <p>Nada. El evento no tiene costo alguno: ni inscripción, ni cuota de recuperación, ni nada que llevar más que la laptop.</p>
+        </details>
+      </div>
+    </div>
+    <footer class="panel__keys">
+      <a href="#registro">PF7=ANTERIOR</a><a href="#top">PF3=SALIR</a>
+    </footer>
+  </section>
+
+</main>
+
+<footer class="signoff">
+  <p class="signoff__quote">Apagar un sistema se siente exactamente igual que extinguir una vida.</p>
+  <p class="signoff__line">HACK(ME)THON 2.0 &middot; STARTUP CHIHUAHUA &amp; UNDEFINED</p>
+  <p class="signoff__line"><a data-cfg-href="contacto" href="#">CONTACTO ===&gt; ESCRÍBENOS</a></p>
+  <p class="signoff__line"><a href="privacidad.html">AVISO DE PRIVACIDAD</a></p>
+  <p class="signoff__marca">
+    <img src="undefined-projects.png" width="1200" height="204" alt="undefined_projects" loading="lazy" decoding="async">
+  </p>
+  <p class="signoff__line signoff__line--dim">FIN DEL EXPEDIENTE</p>
+</footer>
+
+</div><!-- /tubo -->
+
+<!-- Capa fija: rayado, barrido y línea 24. No se desplaza con
+     el contenido. -->
+<div class="tubo__fijo">
+
+<div class="crt" aria-hidden="true">
+  <div class="crt__scan"></div>
+  <div class="crt__sweep"></div>
+  <div class="crt__tear"></div>
+  <div class="crt__bloom"></div>
+</div>
+
+<!-- La línea 24: en vez de X SYSTEM, el pulso del paciente. -->
+<div class="oia" aria-hidden="true">
+  <span class="oia__cell oia__sys"><b id="oia-sys">&#9829; 072</b></span>
+  <span class="oia__cell">MONITOR</span>
+  <span class="oia__cell oia__panel" id="oia-panel">ARRANQUE</span>
+  <span class="oia__cell oia__pos" id="oia-pos">001/024</span>
+</div>
+
+</div>
+
+<!-- El gabinete: el mueble alrededor de la pantalla. -->
+<div class="gabinete" aria-hidden="true">
+  <div class="gabinete__marco"></div>
+</div>
+
+
+<script src="sonido.js"></script>
+<script src="config.js"></script>
+<script src="script.js"></script>
+<script src="jardin.js"></script>
+<script src="bypass-motor.js"></script>
+<script src="bypass.js"></script>
+</body>
+</html>

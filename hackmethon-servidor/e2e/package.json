@@ -1,0 +1,13 @@
+{
+  "name": "hackmethon-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Prueba end-to-end en navegador. Aislada del cliente para no cargarle dependencias.",
+  "scripts": {
+    "test": "node test.mjs",
+    "test:api": "node test-api.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.10.0"
+  }
+}

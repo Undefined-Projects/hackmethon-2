@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vercel/
+*.log
+
+# La base de datos y los secretos son de cada máquina, no del repo.
+server/prisma/*.db
+server/prisma/*.db-journal
+.env
+.env.local

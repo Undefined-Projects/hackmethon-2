@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Panel · HACK(ME)THON 2.0</title>
+<link rel="icon" href="corazon.svg" type="image/svg+xml">
+<link rel="icon" href="corazon-30.png" type="image/png" sizes="30x30">
+<link rel="apple-touch-icon" href="corazon-180.png">
+<meta name="theme-color" content="#0a070c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;600&family=Silkscreen:wght@400;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+  main{ animation:none; }                      /* el panel no glitchea: aquí se trabaja */
+  .adm .panel + .panel{ margin-top:clamp(28px,4vw,44px); }   /* aquí no hay micelio entre paneles */
+  .adm{ width:100%; max-width:1100px; margin-inline:auto; padding:24px var(--gut) 60px; }
+  .adm__sum{ display:flex; flex-wrap:wrap; gap:0 2ch; font-size:12.5px; letter-spacing:.1em; color:var(--phos-dim); margin:0 0 18px; }
+  .adm__sum b{ color:var(--phos-hi); font-weight:600; }
+
+  /* inscritos por semana, hasta el día del evento */
+  .sem{ position:relative; margin:0 0 22px; border:2px solid var(--rule); border-left:3px solid var(--blue);
+        padding:14px clamp(12px,2vw,18px) 10px; }
+  .sem__t{ margin:0; font-size:12px; letter-spacing:.14em; color:var(--phos-hi); }
+  .sem__sub{ margin:2px 0 8px; font-size:11.5px; letter-spacing:.06em; color:var(--phos-dim); }
+  .sem svg{ display:block; width:100%; height:auto; overflow:visible; }
+  .sem text{ font-family:var(--f-mono); fill:var(--phos-dim); font-size:11px; letter-spacing:.06em; }
+  .sem .eje{ stroke:rgba(250,57,186,.16); stroke-width:1; }
+  .sem .base{ stroke:rgba(250,57,186,.4); stroke-width:1; }
+  .sem .barra{ fill:var(--phos); }
+  .sem .hoy text, .sem text.valor{ fill:var(--phos-hi); }
+  .sem .futura text{ fill:rgba(176,85,155,.55); }
+  .sem .evento{ stroke:var(--clorofila); stroke-width:1; }
+  .sem text.evento-t{ fill:var(--clorofila); }
+  .sem .golpe{ fill:transparent; cursor:default; outline:none; }
+  .sem .golpe:hover, .sem .golpe:focus-visible{ fill:rgba(250,57,186,.08); }
+  .sem .golpe:focus-visible{ stroke:var(--uv); stroke-width:2; }
+  .sem__tip{ position:absolute; pointer-events:none; z-index:2; min-width:15ch;
+             background:var(--screen); border:1px solid var(--phos-dim); padding:6px 10px;
+             font-size:11.5px; letter-spacing:.06em; color:var(--phos-dim); white-space:nowrap; }
+  .sem__tip b{ display:block; font-size:18px; color:var(--phos-hi); font-weight:600; letter-spacing:0; }
+  .sem details{ margin-top:6px; font-size:11.5px; letter-spacing:.08em; color:var(--phos-dim); }
+  .sem summary{ cursor:pointer; width:max-content; }
+  .sem table{ border-collapse:collapse; margin-top:8px; font-variant-numeric:tabular-nums; }
+  .sem th, .sem td{ text-align:left; padding:3px 2ch 3px 0; border-bottom:1px solid var(--rule); font-weight:400; }
+  .sem td{ color:var(--phos-soft); }
+  .sem td.n{ text-align:right; }
+
+  .eq{ border:2px solid var(--rule); margin-bottom:2px; display:grid;
+       grid-template-columns:auto minmax(0,1fr) minmax(0,1fr); gap:0 clamp(14px,2vw,24px);
+       padding:14px clamp(12px,2vw,18px); align-items:start; }
+  @media (max-width:760px){ .eq{ grid-template-columns:auto minmax(0,1fr); } .eq__crew{ grid-column:1 / -1; margin-top:10px; } }
+  .eq canvas{ border:1px solid var(--rule); display:block; image-rendering:pixelated; }
+  .eq__id{ font-size:11px; letter-spacing:.14em; color:var(--phos-dim); margin:0 0 3px; }
+  .eq__name{ font-family:var(--f-mono); font-weight:600; font-size:17px; color:var(--phos-hi);
+             text-shadow:var(--bloom); margin:0 0 6px; word-break:break-word; }
+  .eq__meta{ font-size:12px; color:var(--phos-dim); margin:0; }
+  .eq__meta a{ color:var(--phos); }
+  .eq__crew{ list-style:none; margin:0; padding:0; font-size:12.5px; }
+  .eq__crew li{ display:flex; gap:1ch; padding:2px 0; color:var(--phos-soft); }
+  .eq__crew b{ color:var(--phos-hi); font-weight:500; }
+  .eq__crew .tag{ color:var(--screen); background:var(--phos); padding:0 6px; font-size:10px; letter-spacing:.1em; }
+  .eq__crew .tel{ margin-left:auto; color:var(--phos-dim); font-variant-numeric:tabular-nums; }
+  .eq__crew li{ flex-wrap:wrap; }
+  .eq__crew .det{ flex-basis:100%; font-size:11.5px; color:var(--phos-dim); padding-left:.2ch; }
+  .eq__crew .det a{ color:var(--blue-hi); }
+  .eq__meta .marca{ font-size:11px; color:var(--phos-dim); }
+  /* inscripciones agrupadas por equipo */
+  .grupo{ border:2px solid var(--rule); margin-bottom:2px; padding:12px clamp(12px,2vw,18px); }
+  .grupo__t{ display:flex; flex-wrap:wrap; align-items:baseline; gap:0 1.5ch; margin:0 0 8px; }
+  .grupo__t b{ font-family:var(--f-mono); font-weight:600; font-size:16px; color:var(--phos-hi); text-shadow:var(--bloom); word-break:break-word; }
+  .grupo__t span{ font-size:11px; letter-spacing:.12em; color:var(--phos-dim); }
+  .grupo__t .ok{ color:var(--clorofila); }
+  .grupo__t .falta{ color:var(--magenta); }
+  .grupo__logo{ width:32px; height:32px; align-self:center; image-rendering:pixelated;
+                background:var(--screen); outline:1px solid var(--rule); }
+  .grupo .eq__crew li{ border-top:1px solid var(--rule); padding:7px 0; }
+  .grupo .eq__crew li:first-child{ border-top:0; }
+  .grupo .eq__borrar{ flex-basis:100%; margin-top:4px; padding-top:0; border-top:0; }
+
+  .vacio{ border:1px dashed var(--rule); padding:36px; text-align:center; color:var(--phos-dim); font-size:13px; }
+
+  /* ajuste de cupo */
+  .ajuste{ display:flex; align-items:center; flex-wrap:wrap; gap:1.5ch;
+           border:2px solid var(--rule); border-left:3px solid var(--blue); padding:12px 16px; margin:0 0 18px; }
+  .ajuste label{ font-size:12px; letter-spacing:.1em; color:var(--phos-dim); }
+  .ajuste input{ width:7ch; font-family:var(--f-mono); font-size:15px; font-weight:600;
+                 color:var(--phos-hi); background:rgba(250,57,186,.07);
+                 border:0; border-bottom:1px solid var(--phos-dim); padding:5px 8px;
+                 text-align:center; font-variant-numeric:tabular-nums; }
+  .ajuste input:focus{ outline:0; background:rgba(250,57,186,.15); border-bottom-color:var(--phos); }
+  .ajuste .nota{ font-size:11.5px; color:var(--phos-dim); }
+  .ajuste .nota.ok{ color:var(--phos-hi); }
+  .ajuste .nota.err{ color:var(--magenta); }
+  #b-modo[aria-pressed="true"]{ background:var(--sangre); border-color:var(--sangre); color:var(--screen); }
+
+  /* borrar equipo */
+  .eq{ position:relative; }
+  .eq__borrar{ grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:center;
+               gap:1ch; margin-top:10px; padding-top:10px; border-top:1px solid var(--rule); }
+  .eq__borrar button{ font-family:var(--f-mono); font-size:10.5px; letter-spacing:.1em;
+                      background:transparent; color:var(--phos-dim);
+                      border:1px solid var(--rule); padding:4px 10px; cursor:pointer; }
+  .eq__borrar button:hover{ background:var(--magenta); color:var(--screen); border-color:var(--magenta); }
+  .eq__borrar .aviso{ font-size:11.5px; color:var(--magenta); margin-right:auto; }
+  .eq__borrar button.si{ background:var(--magenta); color:var(--screen); border-color:var(--magenta); font-weight:600; }
+
+  /* torneo de BYPASS */
+  .tor{ width:100%; border-collapse:collapse; font-size:13px; }
+  .tor th{ text-align:left; font-family:var(--f-pixel); font-weight:400; font-size:10.5px; letter-spacing:.14em;
+           color:var(--phos-dim); padding:6px 10px; border-bottom:2px solid var(--rule); }
+  .tor td{ padding:7px 10px; border-bottom:1px solid var(--rule); color:var(--phos-soft); vertical-align:middle; }
+  .tor td.n, .tor td.p{ font-variant-numeric:tabular-nums; }
+  .tor td.n{ color:var(--blue-hi); }
+  .tor td.p{ color:var(--phos-hi); font-weight:600; text-shadow:var(--bloom); }
+  .tor td.a{ color:var(--phos-hi); }
+  /* los 8 primeros pasan a la dinámica del día del evento */
+  .tor tr:nth-child(-n+8) td{ background:rgba(61,220,151,.07); }
+  .tor tr:nth-child(-n+8) td.n{ color:var(--clorofila); }
+  .tor tr:nth-child(-n+8) td.a::after{ content:"  \25B2 FINALISTA"; color:var(--clorofila); font-family:var(--f-pixel); font-size:10px; letter-spacing:.12em; }
+  .tor tr:nth-child(8) td{ border-bottom:2px dashed var(--clorofila-dim); }
+  .tor a{ color:var(--phos); }
+  .tor .eq__borrar{ margin:0; padding:0; border:0; justify-content:flex-end; }
+  .tor-wrap{ overflow-x:auto; }
+  .tor td.k{ font-size:10.5px; color:var(--phos-dim); white-space:nowrap; }
+  .tor button.mini{ font-family:var(--f-mono); font-size:10px; letter-spacing:.08em; background:transparent;
+                    color:var(--phos-dim); border:1px solid var(--rule); padding:3px 8px; cursor:pointer; }
+  .tor button.mini:hover{ color:var(--screen); background:var(--phos); border-color:var(--phos); }
+  .eq--fuera{ opacity:.3; pointer-events:none; }
+  .puerta{ max-width:520px; }
+  .puerta .fld > label{ width:16ch; }
+</style>
+</head>
+<body>
+
+<div class="tubo">
+
+
+
+<header class="menubar">
+  <a class="menubar__sys" href="index.html">HACK(ME)THON 2.0</a>
+  <a class="menubar__go" href="index.html">&#9666; VOLVER A LA PORTADA</a>
+</header>
+
+<main class="adm">
+
+  <!-- puerta -->
+  <section class="panel" id="puerta" style="padding-inline:0">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 99</span>
+      <span class="panel__name">ACCESO RESTRINGIDO</span>
+      <span class="panel__stat">OPERADORES</span>
+    </header>
+    <div class="panel__body">
+      <form class="alta puerta" id="f-puerta">
+        <div class="fld">
+          <label for="f-token">CONTRASEÑA</label>
+          <input id="f-token" type="password" autocomplete="current-password" required>
+        </div>
+        <p class="msg" id="p-msg" role="status"></p>
+        <p class="cta"><button class="key key--go" type="submit">ENTER &middot; ABRIR</button></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- listado -->
+  <section class="panel" id="lista" hidden style="padding-inline:0">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 08</span>
+      <span class="panel__name">INSCRITOS</span>
+      <span class="panel__stat" id="l-stat">…</span>
+    </header>
+    <div class="panel__body">
+      <p class="adm__sum" id="l-sum"></p>
+
+      <!-- inscritos por semana hasta el día del evento: la arma pintaSemanas() -->
+      <figure class="sem" id="sem">
+        <p class="sem__t">INSCRITOS POR SEMANA</p>
+        <p class="sem__sub" id="sem-sub"></p>
+        <div id="sem-graf"></div>
+        <div class="sem__tip" id="sem-tip" hidden></div>
+        <details>
+          <summary>VER TABLA</summary>
+          <table id="sem-tabla">
+            <thead><tr><th>SEMANA</th><th>NUEVOS</th><th>ACUMULADO</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </details>
+      </figure>
+
+      <p class="ajuste">
+        <label for="f-cupo">CUPO DE PERSONAS</label>
+        <input id="f-cupo" type="number" min="0" max="2000" step="1" inputmode="numeric">
+        <button class="key key--sm" id="b-cupo" type="button">GUARDAR</button>
+        <span class="nota" id="cupo-msg">0 = sin límite.</span>
+      </p>
+
+      <!-- Modo próximamente: la portada solo enseña la primera pantalla
+           (título, monitor y minijuego) y el registro queda cerrado. -->
+      <p class="ajuste">
+        <label for="b-modo">MODO PRÓXIMAMENTE</label>
+        <button class="key key--sm" id="b-modo" type="button" aria-pressed="false">…</button>
+        <span class="nota" id="modo-msg"></span>
+      </p>
+      <div id="l-cuerpo"></div>
+      <p class="cta" style="margin-top:20px">
+        <button class="key" id="b-refresh" type="button">RECARGAR</button>
+        <button class="key" id="b-csv" type="button">DESCARGAR CSV</button>
+        <button class="key" id="b-salir" type="button">CERRAR SESIÓN</button>
+      </p>
+    </div>
+    <footer class="panel__keys"><a href="index.html">PF3=SALIR</a></footer>
+  </section>
+
+  <!-- torneo del minijuego -->
+  <section class="panel" id="torneo" hidden style="padding-inline:0">
+    <header class="panel__bar">
+      <span class="panel__id">PANEL 09</span>
+      <span class="panel__name">TORNEO BYPASS</span>
+      <span class="panel__stat" id="t-stat">…</span>
+    </header>
+    <div class="panel__body">
+      <p class="adm__sum" id="t-sum"></p>
+      <p class="fs__hint">
+        Solo entran partidas que superaron <b>todas las pruebas del monitor</b>
+        que les salieron (el servidor las pone en secreto en válvulas al azar,
+        desde la 6; cada una trae 2 o 3 retos con parámetros al azar). Con <b>VER ▸</b>
+        se reproduce la partida tal cual se jugó: un bot se nota.
+        Los <b>8 primeros</b> al cierre pasan a la dinámica del día del evento
+        (marcados en verde); escríbeles a su correo. Cada puntaje lo contó el
+        servidor volviendo a jugar la partida, así que no se puede inventar,
+        pero no puede saber <em>quién</em> jugó: la dinámica en la sede es la
+        validación. Quitar a alguien lo saca de la tabla y sube al siguiente;
+        sus partidas siguen anotadas y no las puede volver a usar.
+      </p>
+      <div class="tor-wrap"><table class="tor">
+        <thead><tr><th>#</th><th>ALIAS</th><th>CORREO</th><th>PUNTOS</th><th>LOGRADO</th><th>CONTRASEÑA</th><th>REPETICIÓN</th><th></th></tr></thead>
+        <tbody id="t-cuerpo"></tbody>
+      </table></div>
+      <p class="cta" style="margin-top:20px">
+        <button class="key" id="b-tor" type="button">RECARGAR TORNEO</button>
+        <button class="key" id="b-tor-csv" type="button">DESCARGAR CSV</button>
+      </p>
+    </div>
+    <footer class="panel__keys"><a href="index.html">PF3=SALIR</a></footer>
+  </section>
+
+</main>
+
+
+</div><!-- /tubo -->
+
+<!-- Capa fija: rayado y línea 24. No se desplaza con el contenido. -->
+<div class="tubo__fijo">
+
+<div class="crt" aria-hidden="true"><div class="crt__scan"></div><div class="crt__bloom"></div></div>
+
+<div class="oia" aria-hidden="true">
+  <span class="oia__cell"><b id="oia-sys"></b></span>
+  <span class="oia__cell">PANEL DE CONTROL</span>
+  <span class="oia__cell oia__pos" id="oia-pos">…</span>
+</div>
+
+</div>
+
+<!-- El gabinete: el mueble alrededor de la pantalla. -->
+<div class="gabinete" aria-hidden="true">
+  <div class="gabinete__marco"></div>
+</div>
+
+
+
+<script src="config.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const puerta = $("#puerta"), lista = $("#lista"), pmsg = $("#p-msg");
+let datos = null;
+
+function avisa(t, err){
+  pmsg.textContent = t ? (err ? ">>> " : "*** ") + t : "";
+  pmsg.className = "msg " + (t ? (err ? "msg--err" : "msg--ok") : "");
+}
+
+function token(){ return sessionStorage.getItem("hmt_token") || ""; }
+
+async function carga(){
+  const r = await fetch(API + "/registros", { headers: { authorization: "Bearer " + token() } });
+  if (r.status === 401){ sessionStorage.removeItem("hmt_token"); throw new Error("TOKEN INCORRECTO."); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.mensaje || ("HTTP " + r.status));
+  return d;
+}
+
+const PERIODO = { semestre: "SEMESTRE", cuatrimestre: "CUATRIMESTRE", tetramestre: "TETRAMESTRE", anio: "AÑO" };
+const GENERO = { hombre: "HOMBRE", mujer: "MUJER", otro: "OTRO", prefiero_no_decir: "PREFIERE NO DECIR" };
+// edad a partir de "AAAA-MM-DD"
+function edadDe(fecha){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha || "");
+  if (!m) return null;
+  const hoy = new Date();
+  let e = hoy.getFullYear() - m[1];
+  if (hoy.getMonth() + 1 < +m[2] || (hoy.getMonth() + 1 === +m[2] && hoy.getDate() < +m[3])) e--;
+  return e;
+}
+
+function resumen(d){
+  const sinLimite = !(d.cupo > 0);
+  const regs = d.registros || datos.registros || [];
+  const cuenta = f => regs.filter(f).length;
+  // el reporte cuenta «prefiero no decir» dentro de «otro»
+  const equipos = new Set(regs.filter(r => r.equipo_key).map(r => r.equipo_key)).size;
+  $("#l-stat").textContent = sinLimite ? `${d.registrados} · SIN LÍMITE` : `${d.registrados} / ${d.cupo}`;
+  $("#l-sum").innerHTML =
+    `INSCRITOS <b>${d.registrados}</b>` +
+    `<span>CUPO <b>${sinLimite ? "SIN LÍMITE" : d.cupo}</b></span>` +
+    (sinLimite ? "" : `<span>QUEDAN <b>${d.quedan}</b></span>`) +
+    `<span>EQUIPOS <b>${equipos}</b></span>` +
+    (cuenta(r => r.equipo_modo === "sin_nombre") ? `<span>SIN NOMBRE <b>${cuenta(r => r.equipo_modo === "sin_nombre")}</b></span>` : "") +
+    `<span>POR ASIGNAR <b>${cuenta(r => r.equipo_modo === "asignar")}</b></span>` +
+    `<span>H <b>${cuenta(r => r.genero === "hombre")}</b> · M <b>${cuenta(r => r.genero === "mujer")}</b> · OTRO <b>${cuenta(r => r.genero === "otro" || r.genero === "prefiero_no_decir")}</b></span>` +
+    `<span>MENORES <b>${cuenta(r => r.tutor)}</b></span>`;
+}
+
+/* ── modo próximamente ─────────────────────────────────── */
+function pintaModo(activo){
+  const b = $("#b-modo"), nota = $("#modo-msg");
+  if (typeof activo !== "boolean"){ b.textContent = "…"; nota.textContent = "El servidor no dice el modo: actualízalo."; return; }
+  b.setAttribute("aria-pressed", String(activo));
+  b.textContent = activo ? "ACTIVO · APAGAR" : "APAGADO · ACTIVAR";
+  nota.className = "nota";
+  nota.textContent = activo
+    ? "La portada solo enseña título, monitor y minijuego. El registro está cerrado."
+    : "La portada completa está a la vista y el registro está abierto.";
+}
+
+async function cambiaModo(){
+  const b = $("#b-modo"), nota = $("#modo-msg");
+  const activar = b.getAttribute("aria-pressed") !== "true";
+  b.disabled = true;
+  nota.className = "nota"; nota.textContent = "Guardando...";
+  try {
+    const r = await fetch(API + "/ajustes", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + token() },
+      body: JSON.stringify({ proximamente: activar }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.mensaje || ("HTTP " + r.status));
+    pintaModo(d.proximamente);
+    nota.className = "nota ok";
+    nota.textContent += " La portada lo nota en unos 15 segundos.";
+  } catch (e) {
+    nota.className = "nota err"; nota.textContent = "No se pudo cambiar: " + e.message;
+  } finally {
+    b.disabled = false;
+  }
+}
+
+const VACIO = '<p class="vacio">TODAVÍA NO HAY NADIE INSCRITO.</p>';
+
+/* ── inscritos por semana ─────────────────────────────────
+   Una barra por semana (de lunes a domingo, hora de este navegador)
+   desde la primera inscripción, o desde esta semana si todavía no hay,
+   hasta la semana del evento (EVENTO.inicio en config.js). Las que no
+   han llegado se ven vacías. Números solo en esta semana y en la mayor;
+   el resto, al pasar el mouse o con el teclado, y en la tabla. */
+const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+const DIA = 864e5;
+const lunesDe = f => { const d = new Date(f.getFullYear(), f.getMonth(), f.getDate()); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; };
+const diaMes = d => `${d.getDate()} ${MESES[d.getMonth()]}`;
+
+function semanasDe(regs){
+  const evento = new Date(EVENTO.inicio), hoy = new Date();
+  const fechas = regs.map(r => new Date(r.creado)).filter(f => !isNaN(f));
+  let ini = lunesDe(hoy);
+  for (const f of fechas) if (f < ini) ini = lunesDe(f);
+  const fin = lunesDe(isNaN(evento) ? hoy : evento);
+  const lista = [];
+  for (let d = new Date(ini); d <= fin || !lista.length; d.setDate(d.getDate() + 7))
+    lista.push({ desde: new Date(d), hasta: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 6), n: 0 });
+  for (const f of fechas){
+    const i = Math.min(lista.length - 1, Math.round((lunesDe(f) - ini) / (7 * DIA)));
+    lista[i].n++;
+  }
+  const hoyL = lunesDe(hoy).getTime();
+  let acumulado = 0;
+  for (const s of lista){
+    acumulado += s.n;
+    s.acumulado = acumulado;
+    s.hoy = s.desde.getTime() === hoyL;
+    s.futura = s.desde.getTime() > hoyL;
+    s.evento = !isNaN(evento) && evento >= s.desde && evento < new Date(s.hasta.getTime() + DIA);
+  }
+  return { lista, evento };
+}
+
+function pintaSemanas(regs){
+  const { lista, evento } = semanasDe(regs || []);
+  const caja = $("#sem-graf"), tip = $("#sem-tip");
+  const fmt = n => n.toLocaleString("es-MX");
+  $("#sem-sub").textContent = isNaN(evento) ? "Falta la fecha del evento en config.js." :
+    `${diaMes(lista[0].desde)} al ${diaMes(evento)} (día del evento) · ${fmt(lista.at(-1).acumulado)} en total`;
+
+  // tabla: los mismos números, siempre a la mano
+  const tb = $("#sem-tabla tbody");
+  tb.textContent = "";
+  for (const s of lista){
+    const tr = document.createElement("tr");
+    [`${diaMes(s.desde)} a ${diaMes(s.hasta)}${s.hoy ? " (esta semana)" : ""}${s.evento ? " (evento)" : ""}`,
+     s.futura ? "" : fmt(s.n), s.futura ? "" : fmt(s.acumulado)].forEach((v, i) => {
+      const td = document.createElement("td"); td.textContent = v; if (i) td.className = "n"; tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  }
+
+  // la gráfica, al ancho real (así el texto no se encoge en el teléfono)
+  const W = Math.max(280, caja.clientWidth || 600), H = 220;
+  const m = { top: 28, right: 8, bottom: 40, left: 34 };
+  const ancho = W - m.left - m.right, alto = H - m.top - m.bottom;
+  const max = Math.max(...lista.map(s => s.n));
+  // ticks enteros y redondos
+  const paso = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500].find(p => Math.ceil(Math.max(max, 1) / p) <= 4) || 1000;
+  const tope = Math.max(paso, Math.ceil(max / paso) * paso);
+  const y = v => m.top + alto - v / tope * alto;
+  const banda = ancho / lista.length, grosor = Math.min(24, banda * .5);
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, at, padre) => { const e = document.createElementNS(ns, tag); for (const k in at) e.setAttribute(k, at[k]); padre && padre.appendChild(e); return e; };
+  const txt = (str, at, padre) => { const e = el("text", at, padre); e.textContent = str; return e; };
+
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
+    "aria-label": `Inscritos por semana: ${lista.map(s => `${diaMes(s.desde)} ${s.futura ? "por venir" : s.n}`).join(", ")}` });
+  for (let v = 0; v <= tope; v += paso){
+    el("line", { class: v ? "eje" : "base", x1: m.left, x2: W - m.right, y1: y(v), y2: y(v) }, svg);
+    txt(fmt(v), { x: m.left - 8, y: y(v) + 4, "text-anchor": "end" }, svg);
+  }
+  const mayor = lista.reduce((a, s, i) => !s.futura && s.n > (lista[a]?.n ?? -1) ? i : a, -1);
+  const corto = banda < 64;   // con poco espacio, una etiqueta sí y una no
+  lista.forEach((s, i) => {
+    const cx = m.left + banda * (i + .5);
+    const g = el("g", { class: [s.hoy && "hoy", s.futura && "futura"].filter(Boolean).join(" ") }, svg);
+    // la semana del evento: una línea vertical en el día
+    if (s.evento){
+      const ex = m.left + banda * i + banda * ((evento - s.desde) / (7 * DIA));
+      el("line", { class: "evento", x1: ex, x2: ex, y1: m.top - 6, y2: m.top + alto }, g);
+      txt("EVENTO", { class: "evento-t", x: Math.min(ex, W - m.right), y: m.top - 12, "text-anchor": "end" }, g);
+    }
+    if (s.n > 0){
+      // columna con la punta redondeada (4px) y la base recta
+      const h = Math.max(2, m.top + alto - y(s.n)), x0 = cx - grosor / 2, y0 = y(s.n), r = Math.min(4, h, grosor / 2);
+      el("path", { class: "barra", d: `M${x0},${y0 + h}V${y0 + r}Q${x0},${y0} ${x0 + r},${y0}H${x0 + grosor - r}Q${x0 + grosor},${y0} ${x0 + grosor},${y0 + r}V${y0 + h}Z` }, g);
+    }
+    if ((s.hoy || i === mayor) && !s.futura)
+      txt(fmt(s.n), { class: "valor", x: cx, y: y(s.n) - 7, "text-anchor": "middle" }, g);
+    if (!corto || i % 2 === 0 || s.hoy)
+      txt(diaMes(s.desde), { x: cx, y: H - m.bottom + 16, "text-anchor": "middle" }, g);
+    if (s.hoy) txt("HOY", { x: cx, y: H - m.bottom + 30, "text-anchor": "middle" }, g);
+
+    // zona de hover y foco: toda la columna, no solo la barra
+    const golpe = el("rect", { class: "golpe", x: m.left + banda * i, y: m.top, width: banda, height: alto, tabindex: 0,
+      "aria-label": `Semana del ${diaMes(s.desde)} al ${diaMes(s.hasta)}: ${s.futura ? "por venir" : `${s.n} nuevos, ${s.acumulado} acumulados`}` }, g);
+    const muestra = () => {
+      tip.textContent = "";
+      const b = document.createElement("b");
+      b.textContent = s.futura ? "por venir" : `${fmt(s.n)} nuevo${s.n === 1 ? "" : "s"}`;
+      tip.append(b, `${diaMes(s.desde)} a ${diaMes(s.hasta)}`);
+      if (!s.futura) tip.append(document.createElement("br"), `${fmt(s.acumulado)} acumulados`);
+      tip.hidden = false;
+      const izq = caja.offsetLeft + cx - tip.offsetWidth / 2;
+      tip.style.left = Math.max(4, Math.min(izq, caja.offsetLeft + W - tip.offsetWidth - 4)) + "px";
+      tip.style.top = caja.offsetTop + Math.max(0, y(Math.max(s.n, 0)) - tip.offsetHeight - 12) + "px";
+    };
+    const oculta = () => { tip.hidden = true; };
+    golpe.addEventListener("pointerenter", muestra);
+    golpe.addEventListener("focus", muestra);
+    golpe.addEventListener("pointerleave", oculta);
+    golpe.addEventListener("blur", oculta);
+  });
+  caja.textContent = "";
+  caja.appendChild(svg);
+}
+addEventListener("resize", () => { if (datos) pintaSemanas(datos.registros); });
+
+function pinta(d){
+  datos = d;
+  $("#f-cupo").value = d.cupo;
+  pintaModo(d.proximamente);
+  resumen(d);
+  pintaSemanas(d.registros);
+
+  const cuerpo = $("#l-cuerpo");
+  cuerpo.textContent = "";
+  if (!d.registros.length && !(d.equipos || []).length){ cuerpo.innerHTML = VACIO; return; }
+
+  // Equipos (juntados por el nombre, sin acentos ni mayúsculas), luego los
+  // creados que se quedaron sin nadie, quienes tienen equipo sin nombre
+  // (registros de antes de los logos) y al final quienes piden uno.
+  const { min, max } = d.equipo || { min: 3, max: 5 };
+  const logos = new Map((d.equipos || []).map(e => [e.equipo_key, e]));
+  const equipos = new Map();
+  for (const r of d.registros.filter(r => r.equipo_key)){
+    if (!equipos.has(r.equipo_key)) equipos.set(r.equipo_key, []);
+    equipos.get(r.equipo_key).push(r);
+  }
+  const grupos = [...equipos.values()]
+    .sort((a, b) => a[0].equipo.localeCompare(b[0].equipo, "es"))
+    .map(g => ({ titulo: g[0].equipo, gente: g,
+                 logo: logos.get(g[0].equipo_key)?.logo,
+                 estado: g.length >= min ? ["ok", `${g.length}/${max} · COMPLETO`] : ["falta", `${g.length}/${max} · FALTAN ${min - g.length} PARA ${min}`] }));
+  for (const e of d.equipos || [])
+    if (!equipos.has(e.equipo_key))
+      grupos.push({ titulo: e.nombre, logo: e.logo, gente: [], vacio: e, estado: ["falta", `0/${max} · SIN NADIE`] });
+  const sinNombre = d.registros.filter(r => r.equipo_modo === "sin_nombre");
+  const asignar = d.registros.filter(r => r.equipo_modo === "asignar");
+  if (sinNombre.length) grupos.push({ titulo: "TIENEN EQUIPO, SIN NOMBRE", gente: sinNombre, estado: ["", `${sinNombre.length} · HAY QUE PREGUNTARLES CON QUIÉN VIENEN`] });
+  if (asignar.length) grupos.push({ titulo: "PARA ASIGNAR", gente: asignar, estado: ["falta", `${asignar.length} · NO TIENEN EQUIPO`] });
+
+  for (const g of grupos){
+    const caja = document.createElement("article");
+    caja.className = "grupo";
+    const t = document.createElement("p");
+    t.className = "grupo__t";
+    const b = document.createElement("b"); b.textContent = g.titulo;
+    const e = document.createElement("span"); e.className = g.estado[0]; e.textContent = g.estado[1];
+    if (g.logo){
+      const logo = pintaLogo(document.createElement("canvas"), g.logo);
+      logo.className = "grupo__logo";
+      t.appendChild(logo);
+    }
+    t.append(b, e);
+    const ul = document.createElement("ul");
+    ul.className = "eq__crew";
+    g.gente.forEach(r => ul.appendChild(persona(r)));
+    caja.append(t, ul);
+    if (g.vacio) caja.appendChild(zonaBorrarEquipo(g.vacio));
+    cuerpo.appendChild(caja);
+  }
+}
+
+function persona(r){
+  const li = document.createElement("li");
+  const b = document.createElement("b");
+  b.textContent = `${r.nombre} ${r.apellidos}`;
+  const tel = document.createElement("span");
+  tel.className = "tel"; tel.textContent = r.telefono;
+  const fecha = new Date(r.creado).toLocaleString("es-MX",
+    { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const edad = edadDe(r.nacimiento);
+  const det = document.createElement("span");
+  det.className = "det";
+  det.append(
+    `${r.folio} · ${fecha} · ${edad} AÑOS${r.tutor ? " (MENOR: TUTOR AUTORIZÓ)" : ""} · ${GENERO[r.genero] || r.genero} · ` +
+    `${r.curp} · NAC. ${r.nacimiento} · CP ${r.cp} · ` +
+    (r.estudia ? `${r.institucion} · ${r.carrera} · ${PERIODO[r.periodo] || r.periodo} ${r.semestre}` : "NO ESTUDIA") + " · ");
+  const c = document.createElement("a");
+  c.href = "mailto:" + r.correo; c.textContent = r.correo;
+  det.appendChild(c);
+  li.append(b, tel, det);
+  li.appendChild(zonaBorrar(r, li));
+  return li;
+}
+
+/* Borrar es irreversible, así que va en dos pasos y el aviso dice a quién
+   se está borrando. Se cancela solo a los 8 segundos. */
+function zonaBorrar(r, fila){
+  const zona = document.createElement("p");
+  zona.className = "eq__borrar";
+
+  const reposo = () => {
+    zona.textContent = "";
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "BORRAR INSCRIPCIÓN";
+    b.addEventListener("click", preguntar);
+    zona.appendChild(b);
+  };
+
+  let reloj = null;
+  const preguntar = () => {
+    zona.textContent = "";
+    const aviso = document.createElement("span");
+    aviso.className = "aviso";
+    aviso.textContent = `¿Borrar a «${r.nombre} ${r.apellidos}»? No se puede deshacer.`;
+    const si = document.createElement("button");
+    si.type = "button"; si.className = "si"; si.textContent = "SÍ, BORRAR";
+    si.addEventListener("click", () => { clearTimeout(reloj); borrar(); });
+    const no = document.createElement("button");
+    no.type = "button"; no.textContent = "CANCELAR";
+    no.addEventListener("click", () => { clearTimeout(reloj); reposo(); });
+    zona.append(aviso, si, no);
+    reloj = setTimeout(reposo, 8000);
+  };
+
+  const borrar = async () => {
+    zona.textContent = "";
+    const esperando = document.createElement("span");
+    esperando.className = "aviso";
+    esperando.textContent = "Borrando...";
+    zona.appendChild(esperando);
+    try {
+      const resp = await fetch(`${API}/registros?id=${r.id}`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer " + token() },
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(d.mensaje || ("HTTP " + resp.status));
+
+      fila.classList.add("eq--fuera");
+      datos.registros = datos.registros.filter(x => x.id !== r.id);
+      Object.assign(datos, { cupo: d.cupo, registrados: d.registrados, quedan: d.quedan });
+      setTimeout(() => pinta(datos), 400);
+    } catch (e) {
+      zona.textContent = "";
+      const err = document.createElement("span");
+      err.className = "aviso";
+      err.textContent = "No se pudo borrar: " + e.message;
+      zona.appendChild(err);
+      setTimeout(reposo, 4000);
+    }
+  };
+
+  reposo();
+  return zona;
+}
+
+/* Un equipo sin nadie (por ejemplo, si se borró la inscripción de quien
+   lo creó) sigue en la lista de la portada hasta que se borra aquí. El
+   servidor no borra uno que tenga integrantes. */
+function zonaBorrarEquipo(eq){
+  const zona = document.createElement("p");
+  zona.className = "eq__borrar";
+  let reloj = null;
+  const reposo = () => {
+    zona.textContent = "";
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "BORRAR EQUIPO";
+    b.addEventListener("click", preguntar);
+    zona.appendChild(b);
+  };
+  const preguntar = () => {
+    zona.textContent = "";
+    const aviso = document.createElement("span");
+    aviso.className = "aviso";
+    aviso.textContent = `¿Borrar el equipo «${eq.nombre}»? Deja de salir en la portada.`;
+    const si = document.createElement("button");
+    si.type = "button"; si.className = "si"; si.textContent = "SÍ, BORRAR";
+    si.addEventListener("click", () => { clearTimeout(reloj); borrar(); });
+    const no = document.createElement("button");
+    no.type = "button"; no.textContent = "CANCELAR";
+    no.addEventListener("click", () => { clearTimeout(reloj); reposo(); });
+    zona.append(aviso, si, no);
+    reloj = setTimeout(reposo, 8000);
+  };
+  const borrar = async () => {
+    zona.textContent = "Borrando...";
+    try {
+      const r = await fetch(`${API}/registros?equipo=${eq.id}`, {
+        method: "DELETE", headers: { authorization: "Bearer " + token() },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.mensaje || ("HTTP " + r.status));
+      datos.equipos = datos.equipos.filter(x => x.id !== eq.id);
+      pinta(datos);
+    } catch (e) {
+      zona.textContent = "No se pudo borrar: " + e.message;
+      setTimeout(reposo, 4000);
+    }
+  };
+  reposo();
+  return zona;
+}
+
+/* Cambiar el cupo. Se guarda en la base, no en la variable de entorno,
+   así que aplica de inmediato sin redesplegar. */
+async function guardaCupo(){
+  const campo = $("#f-cupo"), nota = $("#cupo-msg"), boton = $("#b-cupo");
+  const n = Number(campo.value);
+  const di = (t, clase) => { nota.textContent = t; nota.className = "nota " + (clase || ""); };
+
+  if (campo.value.trim() === "" || !Number.isInteger(n) || n < 0 || n > 2000)
+    return di("Tiene que ser un entero entre 0 (sin límite) y 2000.", "err");
+
+  boton.disabled = true;
+  di("Guardando...");
+  try {
+    const resp = await fetch(API + "/ajustes", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + token() },
+      body: JSON.stringify({ cupo: n }),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.mensaje || ("HTTP " + resp.status));
+
+    if (datos) Object.assign(datos, { cupo: d.cupo, registrados: d.registrados, quedan: d.quedan });
+    resumen({ cupo: d.cupo, registrados: d.registrados, quedan: d.quedan });
+    di(d.cerrado
+      ? `Cupo en ${d.cupo}. Ya hay ${d.registrados} inscritos: el registro queda CERRADO.`
+      : d.cupo > 0 ? `Cupo en ${d.cupo}. Quedan ${d.quedan} lugares.`
+                   : "Sin límite de cupo: el registro no se cierra por cupo.", "ok");
+  } catch (e) {
+    di("No se pudo guardar: " + e.message, "err");
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+/* ── torneo BYPASS ──────────────────────────────────────── */
+let torneo = null;
+const fechaCorta = f => new Date(f).toLocaleString("es-MX",
+  { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+async function cargaTorneo(){
+  const cuerpo = $("#t-cuerpo");
+  try {
+    const r = await fetch(API + "/puntajes?completo=1", { headers: { authorization: "Bearer " + token() } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.mensaje || ("HTTP " + r.status));
+    torneo = d;
+    $("#torneo").hidden = false;
+    $("#t-stat").textContent = d.abierto ? "ABIERTO" : "CERRADO";
+    $("#t-sum").innerHTML =
+      `JUGADORES <b>${d.filas.length}</b><span>PARTIDAS REGISTRADAS <b>${d.partidas}</b></span>` +
+      `<span>CIERRE <b>${d.cierre ? fechaCorta(d.cierre) : "SIN FECHA"}</b></span>`;
+    cuerpo.textContent = "";
+    if (!d.filas.length){
+      cuerpo.innerHTML = '<tr><td colspan="8" class="vacio">NADIE HA REGISTRADO UNA PARTIDA.</td></tr>';
+      return;
+    }
+    d.filas.forEach((f, i) => {
+      const tr = document.createElement("tr");
+      const celda = (clase, texto) => {
+        const td = document.createElement("td"); td.className = clase;
+        if (texto != null) td.textContent = texto;
+        tr.appendChild(td); return td;
+      };
+      celda("n", String(i + 1).padStart(2, "0"));
+      celda("a", f.alias);
+      const c = celda("c");
+      const a = document.createElement("a"); a.href = "mailto:" + f.correo; a.textContent = f.correo;
+      c.appendChild(a);
+      celda("p", String(f.puntos).padStart(3, "0"));
+      celda("f", fechaCorta(f.logrado));
+      // contraseña: si la olvidó, se borra y la próxima vez elige otra
+      const cc = celda("k");
+      if (f.con_clave){
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "mini"; b.textContent = "BORRAR CONTRASEÑA";
+        b.addEventListener("click", async () => {
+          if (b.dataset.seguro !== "si"){ b.dataset.seguro = "si"; b.textContent = "¿SEGURO? TOCA DE NUEVO"; setTimeout(() => { b.dataset.seguro = ""; b.textContent = "BORRAR CONTRASEÑA"; }, 5000); return; }
+          b.disabled = true; b.textContent = "BORRANDO...";
+          try {
+            const r = await fetch(`${API}/puntajes?correo=${encodeURIComponent(f.correo)}&clave=1`, { method: "DELETE", headers: { authorization: "Bearer " + token() } });
+            if (!r.ok) throw new Error((await r.json().catch(() => ({}))).mensaje || ("HTTP " + r.status));
+            cc.textContent = "SIN CONTRASEÑA";
+          } catch (e) { b.disabled = false; b.textContent = "NO SE PUDO: " + e.message; }
+        });
+        cc.appendChild(b);
+      } else cc.textContent = "SIN CONTRASEÑA";
+      // la repetición se ve en la portada, con esta misma sesión
+      const ver = document.createElement("a");
+      ver.href = "index.html#repeticion=" + encodeURIComponent(f.partida);
+      ver.textContent = "VER \u25B8";
+      celda("r").appendChild(ver);
+      celda("b").appendChild(zonaQuitar(f, tr));
+      cuerpo.appendChild(tr);
+    });
+  } catch (e) {
+    // Sin las rutas del torneo (servidor viejo) el panel sigue sirviendo.
+    $("#torneo").hidden = false;
+    cuerpo.innerHTML = '<tr><td colspan="8" class="vacio"></td></tr>';
+    cuerpo.querySelector("td").textContent = "NO SE PUDO LEER EL TORNEO: " + e.message;
+  }
+}
+
+/* Quitar de la tabla, en dos pasos como borrar un equipo. */
+function zonaQuitar(f, tr){
+  const zona = document.createElement("p");
+  zona.className = "eq__borrar";
+  let reloj = null;
+  const reposo = () => {
+    zona.textContent = "";
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "QUITAR";
+    b.addEventListener("click", preguntar);
+    zona.appendChild(b);
+  };
+  const preguntar = () => {
+    zona.textContent = "";
+    const si = document.createElement("button");
+    si.type = "button"; si.className = "si"; si.textContent = `SÍ, QUITAR A ${f.alias}`;
+    si.addEventListener("click", () => { clearTimeout(reloj); quitar(); });
+    const no = document.createElement("button");
+    no.type = "button"; no.textContent = "CANCELAR";
+    no.addEventListener("click", () => { clearTimeout(reloj); reposo(); });
+    zona.append(si, no);
+    reloj = setTimeout(reposo, 8000);
+  };
+  const quitar = async () => {
+    zona.textContent = "Quitando...";
+    try {
+      const r = await fetch(`${API}/puntajes?correo=${encodeURIComponent(f.correo)}`, {
+        method: "DELETE", headers: { authorization: "Bearer " + token() },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.mensaje || ("HTTP " + r.status));
+      cargaTorneo();
+    } catch (e) {
+      zona.textContent = "No se pudo: " + e.message;
+      setTimeout(reposo, 4000);
+    }
+  };
+  reposo();
+  return zona;
+}
+
+$("#b-tor").addEventListener("click", cargaTorneo);
+$("#b-tor-csv").addEventListener("click", () => {
+  if (!torneo) return;
+  const esc = v => '"' + String(v ?? "").replace(/^[=+\-@\t\r]/, "'$&").replace(/"/g, '""') + '"';
+  const filas = [["lugar","alias","correo","puntos","logrado","partida"]];
+  torneo.filas.forEach((f, i) => filas.push([i + 1, f.alias, f.correo, f.puntos, f.logrado, f.partida].map(esc)));
+  const blob = new Blob(["\ufeff" + filas.map(f => f.join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "hackmethon-bypass.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+async function abre(){
+  try {
+    const d = await carga();
+    puerta.hidden = true;
+    lista.hidden = false;
+    pinta(d);
+    cargaTorneo();
+    $("#oia-pos").textContent = d.cupo > 0
+      ? `${d.registrados}/${String(d.cupo).padStart(3, "0")}`
+      : `${d.registrados} INSCRITOS`;
+    avisa("");
+  } catch (e) {
+    puerta.hidden = false;
+    lista.hidden = true;
+    avisa(e.message, true);
+  }
+}
+
+$("#f-puerta").addEventListener("submit", e => {
+  e.preventDefault();
+  const v = $("#f-token").value.trim();
+  if (!v) return avisa("ESCRIBE LA CONTRASEÑA.", true);
+  sessionStorage.setItem("hmt_token", v);
+  $("#f-token").value = "";
+  avisa("VERIFICANDO...", false);
+  abre();
+});
+
+$("#b-refresh").addEventListener("click", abre);
+$("#b-cupo").addEventListener("click", guardaCupo);
+$("#b-modo").addEventListener("click", cambiaModo);
+$("#f-cupo").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); guardaCupo(); } });
+$("#b-salir").addEventListener("click", () => {
+  sessionStorage.removeItem("hmt_token");
+  location.reload();
+});
+
+$("#b-csv").addEventListener("click", () => {
+  if (!datos) return;
+  // Un apóstrofo delante de = + - @ evita que Excel lo tome como fórmula.
+  const esc = v => '"' + String(v ?? "").replace(/^[=+\-@\t\r]/, "'$&").replace(/"/g, '""') + '"';
+  const columnas = ["folio","registrado","nombre","apellidos","correo","telefono","curp","genero",
+                    "nacimiento","edad","cp","estudia","institucion","carrera","periodo","semestre",
+                    "tiene_equipo","equipo","privacidad","responsiva","tutor"];
+  const filas = [columnas];
+  for (const r of datos.registros){
+    filas.push([r.folio, r.creado, r.nombre, r.apellidos, r.correo, r.telefono, r.curp, r.genero,
+                r.nacimiento, edadDe(r.nacimiento), r.cp, r.estudia ? "si" : "no", r.institucion, r.carrera,
+                (PERIODO[r.periodo] || r.periodo || "").toLowerCase(), r.semestre, r.equipo_modo, r.equipo,
+                r.privacidad, r.responsiva, r.tutor ? "si" : "no"].map(esc));
+  }
+  // BOM para que Excel abra los acentos bien
+  const blob = new Blob(["﻿" + filas.map(f => f.join(",")).join("\r\n")],
+                        { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "hackmethon-inscritos.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+if (token()) abre();
+</script>
+</body>
+</html>

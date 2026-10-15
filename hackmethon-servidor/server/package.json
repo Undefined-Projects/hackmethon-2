@@ -1,0 +1,51 @@
+{
+  "name": "hackmethon-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "red": "bash scripts/red-local.sh",
+    "tunel": "bash scripts/tunel.sh",
+    "probar:red": "bash scripts/probar-red.sh",
+    "preparar": "prisma db push && npm run db:seed",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma db push --force-reset && npm run db:seed",
+    "smoke": "tsx scripts/smoke.ts",
+    "sync:shared": "node scripts/sync-shared.mjs",
+    "smoke:admin": "tsx scripts/smoke-admin.ts",
+    "db:limpiar": "tsx reset-juego.ts",
+    "db:equipos": "tsx scripts/equipos-evento.ts",
+    "smoke:fase1": "npm run smoke:enemigo",
+    "smoke:rastro": "tsx scripts/smoke-rastro.ts",
+    "smoke:fases": "tsx scripts/smoke-fases.ts",
+    "smoke:enemigo": "tsx scripts/smoke-enemigo.ts",
+    "smoke:plano": "tsx scripts/smoke-plano.ts",
+    "smoke:ataque-mapa": "tsx scripts/smoke-ataque-mapa.ts",
+    "smoke:ataque-reglas": "tsx scripts/smoke-ataque-reglas.ts",
+    "smoke:roles": "tsx scripts/smoke-roles.ts",
+    "luces": "python3 ../Luces/servidor/servidor.py",
+    "luces:sin-placa": "python3 ../Luces/servidor/servidor.py --sin-arduino"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.5.0",
+    "prisma": "^6.19.3",
+    "socket.io-client": "^4.8.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}
