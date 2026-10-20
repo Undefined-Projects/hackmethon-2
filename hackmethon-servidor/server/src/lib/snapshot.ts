@@ -13,10 +13,13 @@
 //  se garantiza en el servidor; ocultar en el front sería decorativo.
 // ============================================================
 
+import { alertasDe } from '../realtime/vigilancia.js';
 import { prisma } from './prisma.js';
 import { leerPlano } from './plano.js';
 import { averiaDe } from './averias.js';
-import { ataquesRecientes } from '../realtime/ataques.js';
+import { ataquesRecientes, escudoRestanteMs, superEsperaMs } from '../realtime/ataques.js';
+import { fasesSuperadas } from '../realtime/tickets.js';
+import { intensidadAtaque } from './constants.js';
 import {
   buildLobbyView, computeAvailability, esperaDeAtaqueMs, finalRestanteMs, liveElapsedMs,
 } from './timing.js';
@@ -82,6 +85,7 @@ export async function projectPhaseForRole(
       salidas,
       traficoActivo: flujoActivo(teamId),
       filtroTrafico: filtroDeFlujo(teamId),
+      semilla: teamId,
     }),
   };
 }
@@ -95,22 +99,32 @@ export async function projectPhaseForRole(
  * un desplegable con el nombre viejo sería un desplegable que miente.
  */
 async function buildAtaque(
-  equipo: { id: string; ultimoAtaqueAt: Date | null; ultimoObjetivoId: string | null; ultimoAtaquePausaMs: number },
+  equipo: {
+    id: string; ultimoAtaqueAt: Date | null; ultimoObjetivoId: string | null; ultimoAtaquePausaMs: number;
+    escudoAt: Date | null; escudoPausaMs: number; ultimoSuperAt: Date | null; ultimoSuperPausaMs: number;
+  },
   event: { pausedAt: Date | null; totalPausedMs: number; enfriamientoAtaqueMs: number },
 ): Promise<AtaqueView> {
-  const [equipos, plano, recientes] = await Promise.all([
+  const [equipos, plano, recientes, fases] = await Promise.all([
     prisma.team.findMany({
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true, logoAt: true },
     }),
     leerPlano(),
     ataquesRecientes(),
+    fasesSuperadas(),
   ]);
   const objetivos = equipos.filter((o) => o.id !== equipo.id);
+  const mias = fases.get(equipo.id) ?? 0;
   return {
     esperaMs: esperaDeAtaqueMs(equipo, event),
     ultimoObjetivoId: equipo.ultimoObjetivoId,
-    objetivos: objetivos.map((o) => ({ id: o.id, name: o.name, logoAt: o.logoAt?.getTime() ?? null })),
+    objetivos: objetivos.map((o) => ({
+      id: o.id, name: o.name, logoAt: o.logoAt?.getTime() ?? null,
+      intensidad: intensidadAtaque(mias, fases.get(o.id) ?? 0),
+    })),
+    escudoMs: escudoRestanteMs(equipo, event),
+    superEsperaMs: superEsperaMs(equipo, event),
     plano,
     recientes,
   };
@@ -126,8 +140,9 @@ export async function buildPlayerSnapshot(userId: string): Promise<PlayerSnapsho
       // después, porque el logo se sirve aparte por HTTP.
       team: {
         select: {
-          id: true, name: true, score: true, logoAt: true,
+          id: true, name: true, score: true, logoAt: true, tickets: true,
           ultimoAtaqueAt: true, ultimoObjetivoId: true, ultimoAtaquePausaMs: true,
+          escudoAt: true, escudoPausaMs: true, ultimoSuperAt: true, ultimoSuperPausaMs: true,
           members: {
             orderBy: { displayName: 'asc' },
             select: { id: true, displayName: true, role: true, connected: true },
@@ -167,6 +182,7 @@ export async function buildPlayerSnapshot(userId: string): Promise<PlayerSnapsho
       logoAt: user.team.logoAt?.getTime() ?? null,
       name: user.team.name,
       score: user.team.score,
+      tickets: user.team.tickets,
       members: user.team.members as MemberView[],
     },
     event: {
@@ -247,7 +263,7 @@ export async function buildAdminSnapshot(userId: string): Promise<AdminSnapshot 
     prisma.team.findMany({
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: {
-        id: true, name: true, score: true, logoAt: true,
+        id: true, name: true, score: true, logoAt: true, tickets: true, escudoAt: true, escudoPausaMs: true,
         members: {
           orderBy: { displayName: 'asc' },
           select: { id: true, displayName: true, role: true, connected: true },
@@ -280,7 +296,9 @@ export async function buildAdminSnapshot(userId: string): Promise<AdminSnapshot 
     })),
     teams: teams.map((t) => ({
       id: t.id, name: t.name, score: t.score,
+      tickets: t.tickets, escudoMs: escudoRestanteMs(t, event),
       logoAt: t.logoAt?.getTime() ?? null,
+      alertas: alertasDe(t.id),
       members: t.members as MemberView[],
       progress: t.progress.map((p) => ({
         phaseId: p.phaseId, status: p.status,

@@ -12,17 +12,17 @@ const TEAMS = [
 ];
 
 const PHASES = [
-  // El Control de Acceso abre el recorrido y El Enemigo va detrás. Es el
+  // El Reflejo (antes Control de Acceso) abre el recorrido y El Enemigo va detrás. Es el
   // orden que pide la curva: la primera fase enseña una idea sola —una
   // condición decide— y la segunda pide cruzarla con datos de otra
   // estación. Al revés, la sala empezaba por la fase con más piezas.
   {
     key: 'fase-1-acceso',
     order: 1,
-    title: 'Fase 1 — Control de Acceso',
-    description: 'CONDICIONALES · Reescribir las reglas del portero para que deje pasar a '
-               + 'quien hace falta, sin cambiar ni un veredicto de los demás.',
-    teaser: 'El portero hace preguntas y decide. Hay que reescribir sus decisiones sin que se dé cuenta.',
+    title: 'Fase 1 — El Reflejo',
+    description: 'CONDICIONALES · Reescribir el sistema inmune de la pierna para que pasen '
+               + 'nuestras esporas y se marchite. Dos capas: la rótula y la muda.',
+    teaser: 'La pierna decide qué la toca antes de pensarlo.',
   },
   {
     key: 'fase-2-enemigo',

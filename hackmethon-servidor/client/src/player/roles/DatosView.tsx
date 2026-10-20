@@ -3,6 +3,9 @@ import type { PhaseWorkspace } from '../../shared/events';
 import { useMountId } from './mount';
 import { useSession } from '../../session/SessionContext';
 import { sonar } from '../../lib/sonido';
+import { RobotSacudiendo, useSalida } from '../RobotAtaque';
+import { JardinEscena } from '../../admin/JardinEscena';
+import { FlujoDiagrama, Pseudocodigo } from '../fases/Flujo';
 
 type Tabla = {
   id: string;
@@ -12,6 +15,9 @@ type Tabla = {
   clave: string;
   columnas: string[];
   filas: string[][];
+  /** Filas recién llegadas (la muda de la Fase 1): se marcan, porque lo
+   *  primero que hay que decir en voz alta es quién es nuevo. */
+  nuevas?: string[];
 };
 
 type Relacion = { desde: string; campo: string; hasta: string };
@@ -22,6 +28,9 @@ type Payload = {
   lienzo: { w: number; h: number };
   tablas: Tabla[];
   relaciones: Relacion[];
+  /** El flujo que va escribiendo Terminal (Fase 1). Datos ve su forma,
+   *  nunca su resultado: quién pasa es de Pantalla. */
+  flujo?: { filtros: string[]; max: number; marchitos: string[]; capa: number; pierna?: boolean[] };
 };
 
 type Arista = { clave: string; d: string; etiqueta: string; lx: number; ly: number };
@@ -39,15 +48,19 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   const mountId = useMountId();
   const { averia } = useSession();
   const temblando = averia?.tipo === 'DATOS';
+  const robot = useSalida(temblando);
   const datos = workspace.payload as Payload | null;
 
   const [abierta, setAbierta] = useState<string | null>(null);
+  const [aperturas, setAperturas] = useState(0);
   const [filtro, setFiltro] = useState('');
   const [resaltado, setResaltado] = useState<string | null>(null);
 
   if (!datos) {
     return (
       <section className={`vista vista-datos${temblando ? ' temblando' : ''}`}>
+      {/* La máquina viva de fondo: late al abrir cada tabla. */}
+      <JardinEscena variante="datos" marco={150} latido={aperturas} />
         <p className="pendiente">Esta fase no tiene base de datos.</p>
       </section>
     );
@@ -57,18 +70,41 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
 
   const abrir = (id: string, filtroInicial = '', destacar: string | null = null) => {
     setAbierta(id);
+    setAperturas((n) => n + 1);
     setFiltro(filtroInicial);
     setResaltado(destacar);
   };
 
   return (
     <section className={`vista vista-datos${temblando ? ' temblando' : ''}`}>
+      {/* La máquina viva de fondo: late al abrir cada tabla. */}
+      <JardinEscena variante="datos" marco={150} latido={aperturas} />
+      {/* Lo que sacude la base de datos: el robot, con los brazos
+          agarrando la pantalla por los lados y la cabeza asomada por
+          arriba. Al acabar se reinicia y se va. */}
+      <RobotSacudiendo fase={robot} />
       <header>
         <h2>{tabla ? `tabla · ${tabla.nombre}` : datos.titulo}</h2>
+        <span className="organo">la memoria</span>
         <span className="rol rol-DATOS">Operador de Datos</span>
       </header>
 
       <p className="ayuda">{datos.nota}</p>
+
+      {datos.flujo && (
+        <div className="flujo-datos">
+          <FlujoDiagrama {...datos.flujo} />
+          <div className="flujo-datos__codigo">
+            <p className="flujo-datos__rotulo">El flujo, en pseudocódigo</p>
+            <Pseudocodigo filtros={datos.flujo.filtros} max={datos.flujo.max} pierna={datos.flujo.pierna} />
+            <p className="flujo-datos__nota">
+              En azul, las defensas de la propia pierna: también se pueden quitar. Lo que
+              escribe Terminal se dibuja aquí al instante, y lo que da cada `probar` se
+              guarda abajo, en corridas, corrida_filtros y resultados.
+            </p>
+          </div>
+        </div>
+      )}
 
       {tabla ? (
         <DetalleTabla
@@ -190,7 +226,10 @@ function Mapa({ datos, alAbrir }: { datos: Payload; alAbrir: (id: string) => voi
                 </li>
               ))}
             </ul>
-            <span className="nodo__n">{t.filas.length} filas</span>
+            <span className="nodo__n">
+              {t.filas.length} filas
+              {!!t.nuevas?.length && <span className="nodo__nuevas">+{t.nuevas.length} nuevas</span>}
+            </span>
           </button>
         ))}
       </div>
@@ -256,7 +295,8 @@ function DetalleTabla({
           </thead>
           <tbody>
             {filas.map((f) => (
-              <tr key={f[0]} className={resaltado && f[0] === resaltado ? 'resaltada' : ''}>
+              <tr key={f[0]}
+                  className={`${resaltado && f[0] === resaltado ? 'resaltada' : ''}${tabla.nuevas?.includes(f[0]) ? ' nueva' : ''}`}>
                 {f.map((celda, j) => {
                   const rel = relaciones.find(
                     (r) => r.desde === tabla.id && r.campo === tabla.columnas[j],

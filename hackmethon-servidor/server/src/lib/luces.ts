@@ -50,6 +50,8 @@ export const EVENTOS_LUZ = [
   { clave: 'ROLES_MEZCLADOS', rotulo: 'Se mezclan los roles', porEquipo: false },
   { clave: 'AVERIA', rotulo: 'Avería provocada desde el panel', porEquipo: true },
   { clave: 'ATAQUE', rotulo: 'Un equipo ataca a otro', porEquipo: true },
+  { clave: 'SUPER_ATAQUE', rotulo: 'Un equipo lanza un súper ataque', porEquipo: true },
+  { clave: 'ESCUDO', rotulo: 'Un equipo activa su escudo', porEquipo: true },
 ] as const;
 
 export type EventoLuz = (typeof EVENTOS_LUZ)[number]['clave'];

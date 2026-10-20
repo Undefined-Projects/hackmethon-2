@@ -64,12 +64,28 @@ export function esperaDeAtaqueMs(
   event: Pick<EventState, 'pausedAt' | 'totalPausedMs' | 'enfriamientoAtaqueMs'>,
   now = Date.now(),
 ): number {
-  if (!equipo.ultimoAtaqueAt) return 0;
-  const pausaDesde = event.totalPausedMs - equipo.ultimoAtaquePausaMs + inFlightPauseMs(event, now);
-  const transcurrido = Math.max(0, now - equipo.ultimoAtaqueAt.getTime() - Math.max(0, pausaDesde));
   // Se aplica el valor de AHORA, no el que había al atacar: si el panel
   // acorta la espera, quien ya estaba esperando también se beneficia.
-  return Math.max(0, event.enfriamientoAtaqueMs - transcurrido);
+  return restanteSinPausaMs(equipo.ultimoAtaqueAt, equipo.ultimoAtaquePausaMs, event.enfriamientoAtaqueMs, event, now);
+}
+
+/**
+ * Lo que le queda a algo que se selló en `desde` y dura `duracionMs`,
+ * descontando la pausa global que hubo después. Es la cuenta del
+ * enfriamiento de ataque, la del súper ataque y la del escudo: las tres
+ * se congelan con el evento en pausa.
+ */
+export function restanteSinPausaMs(
+  desde: Date | null,
+  pausaAlSellar: number,
+  duracionMs: number,
+  event: Pick<EventState, 'pausedAt' | 'totalPausedMs'>,
+  now = Date.now(),
+): number {
+  if (!desde) return 0;
+  const pausaDesde = event.totalPausedMs - pausaAlSellar + inFlightPauseMs(event, now);
+  const transcurrido = Math.max(0, now - desde.getTime() - Math.max(0, pausaDesde));
+  return Math.max(0, duracionMs - transcurrido);
 }
 
 /** Métricas congeladas en el momento de resolver. */

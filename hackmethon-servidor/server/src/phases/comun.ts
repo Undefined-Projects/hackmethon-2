@@ -145,6 +145,14 @@ export type VistaCamara = {
   armada: boolean;
   tension: number;
   ruido: number;
+  /**
+   * La escena en datos, para la fase que tiene dibujo propio en el
+   * cliente (la membrana de la Fase 1). Los fotogramas de texto siguen
+   * llegando: son la imagen de reserva y lo que vigilan las pruebas. El
+   * dibujo NO puede llevar nada que los fotogramas no lleven ya —quién
+   * está en la cola y si pasa—, o la cámara cantaría lo que es de Datos.
+   */
+  dibujo?: { tipo: string } & Record<string, unknown>;
 };
 
 /**

@@ -1,4 +1,5 @@
 import type { BloqueSalida, SalidaComando } from '../shared/events';
+import { BloqueFlujo } from './fases/Flujo';
 
 /** Pinta un bloque de salida. El servidor decide QUÉ; esto solo decide CÓMO. */
 export function Bloque({ b }: { b: BloqueSalida }) {
@@ -55,6 +56,9 @@ export function Bloque({ b }: { b: BloqueSalida }) {
           {b.lineas.map((l, i) => <div key={i} className="linea">{l}</div>)}
         </div>
       );
+
+    case 'flujo':
+      return <BloqueFlujo b={b} />;
   }
 }
 

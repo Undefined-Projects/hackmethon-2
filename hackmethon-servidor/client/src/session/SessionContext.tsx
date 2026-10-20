@@ -4,9 +4,9 @@ import {
 import type { ReactNode } from 'react';
 import { createSocket, call, type AppSocket } from '../lib/socket';
 import { sonar } from '../lib/sonido';
-import type { Role } from '../shared/constants';
+import type { Role, TipoAveria } from '../shared/constants';
 import type {
-  AdminSnapshot, LobbyPhaseView, MarcaMinijuego, RecordSala, MemberView, MinijuegoTablero, MinijuegoView, ParteRobot, PhaseWorkspace, PlayerSnapshot, Snapshot,
+  AdminSnapshot, LobbyPhaseView, MarcaMinijuego, MovimientoTickets, RecordSala, MemberView, MinijuegoTablero, MinijuegoView, ParteRobot, PhaseWorkspace, PlayerSnapshot, Snapshot,
 } from '../shared/events';
 
 // ============================================================
@@ -46,12 +46,16 @@ type State = {
   roleFlash: { from: Role | null; to: Role } | null;
   /** Avería en curso, provocada desde el panel. Efímera: no se persiste
    *  ni toca el juego, solo molesta durante unos segundos. */
-  averia: { tipo: Role; hasta: number; de?: string } | null;
+  averia: { tipo: TipoAveria; hasta: number; de?: string } | null;
   /** Fase recién resuelta, para la pantalla de celebración.
    *  `ensayo` marca los disparos del panel: nada se ha guardado. */
   resuelta: {
     title: string; timeToSolveMs: number | null; attempts: number; ensayo?: boolean;
+    tickets?: { ganados: number; lugar: number };
   } | null;
+  /** Aviso efímero del juego: tickets que entran o salen, un ataque que
+   *  rebotó en el escudo. `id` distingue dos avisos iguales seguidos. */
+  aviso: { id: number; tipo: 'tickets' | 'gasto' | 'escudo'; texto: string } | null;
   /** Ensayo de la destrucción del robot, lanzado desde el panel. Lo pinta
    *  el lobby; no cambia nada de la partida. */
   ensayoAnatomia: { parte: ParteRobot | 'todo'; id: string; at: number } | null;
@@ -70,11 +74,17 @@ type Action =
   | { t: 'roleFlashDone' }
   | {
       t: 'solved';
-      v: { title: string; timeToSolveMs: number | null; attempts: number; ensayo?: boolean };
+      v: {
+        title: string; timeToSolveMs: number | null; attempts: number; ensayo?: boolean;
+        tickets?: { ganados: number; lugar: number };
+      };
     }
   | { t: 'solvedDone' }
-  | { t: 'averia'; v: { tipo: Role; duracionMs: number; de?: string } }
+  | { t: 'averia'; v: { tipo: TipoAveria; duracionMs: number; de?: string } }
   | { t: 'averiaFin' }
+  | { t: 'tickets'; v: MovimientoTickets }
+  | { t: 'aviso'; v: { tipo: 'tickets' | 'gasto' | 'escudo'; texto: string } }
+  | { t: 'avisoFin'; id: number }
   | { t: 'minijuego'; v: MinijuegoView | null }
   | { t: 'tablero'; v: MinijuegoTablero | null }
   | { t: 'anatomia'; v: { parte: ParteRobot | 'todo'; id: string } }
@@ -174,7 +184,21 @@ function reducer(st: State, a: Action): State {
       return { ...st, resuelta: null };
 
     case 'averia':
+      // Un súper ataque en curso no lo pisa un ataque normal: quien está
+      // inmovilizado no tiene puesto que averiar. El servidor ya no lo
+      // manda, pero un aviso que se cruce en el cable no debe liberarle.
+      if (st.averia?.tipo === 'SUPER' && st.averia.hasta > Date.now() && a.v.tipo !== 'SUPER') return st;
       return { ...st, averia: { tipo: a.v.tipo, hasta: Date.now() + a.v.duracionMs, de: a.v.de } };
+
+    case 'tickets':
+      if (!isPlayer(st.snapshot)) return st;
+      return { ...st, snapshot: { ...st.snapshot, team: { ...st.snapshot.team, tickets: a.v.saldo } } };
+
+    case 'aviso':
+      return { ...st, aviso: { ...a.v, id: (st.aviso?.id ?? 0) + 1 } };
+
+    case 'avisoFin':
+      return st.aviso?.id === a.id ? { ...st, aviso: null } : st;
 
     case 'averiaFin':
       return { ...st, averia: null };
@@ -214,6 +238,10 @@ type Ctx = State & {
   volverAlLobby: () => Promise<void>;
   cerrarSesion: () => void;
   cerrarCelebracion: () => void;
+  /** Pide el snapshot entero otra vez. Para lo que cambia por lo que
+   *  hacen OTROS sin que nadie nos avise —la intensidad de un ataque
+   *  depende de las fases de cada rival—, justo antes de mirarlo. */
+  refrescar: () => void;
 };
 
 const SessionCtx = createContext<Ctx | null>(null);
@@ -225,7 +253,7 @@ export function SessionProvider({
   const [st, dispatch] = useReducer(reducer, {
     snapshot: null, conn: 'connecting', error: null, credencialRechazada: false,
     stampedAt: Date.now(), clockOffset: 0, roleFlash: null, resuelta: null, averia: null,
-    ensayoAnatomia: null,
+    ensayoAnatomia: null, aviso: null,
   });
 
   useEffect(() => {
@@ -285,6 +313,7 @@ export function SessionProvider({
           timeToSolveMs: v.timeToSolveMs,
           attempts: v.attempts,
           ensayo: v.ensayo,
+          tickets: v.tickets,
         },
       });
     });
@@ -301,6 +330,21 @@ export function SessionProvider({
     s.on('minijuego:mis-marcas', (v) => dispatch({ t: 'marcas', v }));
     s.on('minijuego:records', (v) => dispatch({ t: 'records', v }));
     s.on('player:averia', (v) => { sonar('averia'); dispatch({ t: 'averia', v }); });
+    s.on('tickets:movimiento', (v) => {
+      dispatch({ t: 'tickets', v });
+      // Lo que se gasta ya lo cuenta el botón que lo gastó; aquí suena y
+      // se anuncia lo que ENTRA, que es lo que nadie esperaba.
+      if (v.delta > 0) {
+        sonar('ok');
+        dispatch({ t: 'aviso', v: { tipo: 'tickets', texto: `+${v.delta} TICKETS · ${v.motivo}` } });
+      } else {
+        dispatch({ t: 'aviso', v: { tipo: 'gasto', texto: `${v.delta} TICKETS · ${v.motivo}` } });
+      }
+    });
+    s.on('ataque:bloqueado', ({ de }) => {
+      sonar('ok');
+      dispatch({ t: 'aviso', v: { tipo: 'escudo', texto: `ESCUDO · REBOTÓ EL ATAQUE DE ${de}` } });
+    });
     // El mismo rechazo puede llegar con el socket ya abierto: el
     // servidor construye el snapshot y descubre que no hay por dónde.
     s.on('session:error', (e) => {
@@ -323,6 +367,14 @@ export function SessionProvider({
     const t = setTimeout(() => dispatch({ t: 'averiaFin' }), Math.max(0, st.averia.hasta - Date.now()));
     return () => clearTimeout(t);
   }, [st.averia]);
+
+  // El aviso efímero se va solo a los cinco segundos.
+  useEffect(() => {
+    if (!st.aviso) return;
+    const id = st.aviso.id;
+    const t = setTimeout(() => dispatch({ t: 'avisoFin', id }), 5000);
+    return () => clearTimeout(t);
+  }, [st.aviso]);
 
   // La cortinilla de cambio de rol se apaga sola. Va aquí y no en el
   // componente que la pinta para que sobreviva a su desmontaje —que es
@@ -368,12 +420,16 @@ export function SessionProvider({
     if (!eraEnsayo) await volverAlLobby();
   }, [st.resuelta, volverAlLobby]);
 
+  const refrescar = useCallback(() => {
+    socket?.emit('session:resync', null, (v) => { if (v) dispatch({ t: 'snapshot', v }); });
+  }, [socket]);
+
   const value = useMemo<Ctx>(
     () => ({
       ...st, socket, codigo: code,
-      entrarFase, volverAlLobby, cerrarSesion: onLogout, cerrarCelebracion,
+      entrarFase, volverAlLobby, cerrarSesion: onLogout, cerrarCelebracion, refrescar,
     }),
-    [st, socket, code, entrarFase, volverAlLobby, onLogout, cerrarCelebracion],
+    [st, socket, code, entrarFase, volverAlLobby, onLogout, cerrarCelebracion, refrescar],
   );
 
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;

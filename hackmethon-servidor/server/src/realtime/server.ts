@@ -7,6 +7,7 @@
 //  escuchar en una room.
 // ============================================================
 
+import { registrarPegado } from './vigilancia.js';
 import { Server, type Socket } from 'socket.io';
 import type { Server as HttpServer } from 'node:http';
 import { prisma } from '../lib/prisma.js';
@@ -22,10 +23,11 @@ import {
   activarFase, ajustarLimiteFinal, cambiarAccesoLibre, cambiarEstadoEvento, cerrarFase,
   destacarFase, ensayarCelebracion, ensayarFinal, guardarLogoEquipo, mezclarRoles,
   provocarAveria, reiniciarJuego, renombrarEquipo, ensayarAnatomia,
-  guardarPlano, ajustarEnfriamientoAtaque, ensayarDestruccion, asignarRol,
+  guardarPlano, ajustarEnfriamientoAtaque, ensayarDestruccion, asignarRol, pushAdminState,
 } from './admin.js';
 import { ErrorComando, procesarComando } from './commands.js';
-import { atacarEquipo } from './ataques.js';
+import { activarEscudo, atacarEquipo, lanzarSuperAtaque } from './ataques.js';
+import { ajustarTickets } from './tickets.js';
 import {
   alternarRegla, borrarRegla, botonDeLuces, crearRegla, enviarALaPlaca,
   guardarPines, panelDeLuces, probarRegla, pruebaDeLaPlaca,
@@ -139,6 +141,14 @@ async function onConnection(socket: AppSocket) {
     }
   });
 
+  // Intento de pegar en la consola. La consola ya lo ha impedido; aquí
+  // solo se cuenta para el panel.
+  socket.on('terminal:pegado', async () => {
+    if (!teamId) return;
+    registrarPegado(teamId);
+    await pushAdminState().catch(() => {});
+  });
+
   // Ataque a otro equipo. Lo puede lanzar cualquiera de los tres
   // puestos: el enfriamiento y el «no repetir» son del equipo, y se
   // comprueban en el servidor, no en el desplegable.
@@ -146,6 +156,26 @@ async function onConnection(socket: AppSocket) {
     if (!teamId) return ack({ ok: false, error: 'NO_TEAM' });
     try {
       ack({ ok: true, data: await atacarEquipo(userId, objetivo) });
+    } catch (e) {
+      ack({ ok: false, error: e instanceof Error ? e.message : 'INTERNAL' });
+    }
+  });
+
+  // El escudo y el súper ataque, con tickets. Igual que el ataque: los
+  // tres puestos tienen el botón y las reglas se comprueban aquí.
+  socket.on('player:escudo', async (_p, ack) => {
+    if (!teamId) return ack({ ok: false, error: 'NO_TEAM' });
+    try {
+      ack({ ok: true, data: await activarEscudo(userId) });
+    } catch (e) {
+      ack({ ok: false, error: e instanceof Error ? e.message : 'INTERNAL' });
+    }
+  });
+
+  socket.on('player:super', async ({ teamId: objetivo }, ack) => {
+    if (!teamId) return ack({ ok: false, error: 'NO_TEAM' });
+    try {
+      ack({ ok: true, data: await lanzarSuperAtaque(userId, objetivo) });
     } catch (e) {
       ack({ ok: false, error: e instanceof Error ? e.message : 'INTERNAL' });
     }
@@ -224,6 +254,7 @@ async function onConnection(socket: AppSocket) {
   socket.on('admin:event:acceso', soloAdmin(({ libre }) => cambiarAccesoLibre(Boolean(libre), userId)));
   socket.on('admin:anatomia:ensayo', soloAdmin(({ parte, teamIds }) => ensayarAnatomia(parte, userId, teamIds)));
   socket.on('admin:minijuego', soloAdmin(({ clave }) => lanzarMinijuego(clave, userId)));
+  socket.on('admin:equipo:tickets', soloAdmin(({ teamId: t, delta }) => ajustarTickets(t, delta, userId)));
   socket.on('admin:jugador:averia', soloAdmin(({ userId: a }) => provocarAveria(a, userId)));
 
   // ---------- Desconexión ----------

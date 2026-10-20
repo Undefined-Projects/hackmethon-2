@@ -39,9 +39,10 @@ export function PanelMinijuegos({
         <div className="cabecera-seccion">
           <p className="ayuda">
             Al lanzar uno, a todas las personas se les pone encima de lo que estén haciendo.
-            No toca puntos ni cronómetros: al terminarlo, cada quien sigue donde estaba.
-            Los puntajes en vivo solo se ven aquí y en la proyección, que cambia sola a la
-            escena del juego.
+            No toca cronómetros: al terminarlo, cada quien sigue donde estaba. Al cerrar la
+            ronda —terminarla o lanzar otra— cada equipo cobra TICKETS según el puesto de su
+            mejor jugador (solo con el evento en marcha). Los puntajes en vivo solo se ven
+            aquí y en la proyección, que cambia sola a la escena del juego.
           </p>
           {/* En su propia ventana, para arrastrarla al proyector: el panel
               se queda aquí para seguir gobernando. */}
@@ -66,9 +67,9 @@ export function PanelMinijuegos({
                   className={activo ? 'sutil' : 'primaria'}
                   disabled={bloqueado}
                   onClick={() => {
-                    if (activo && !confirm('¿Reiniciar la ronda? El ranking vuelve a cero.')) return;
+                    if (activo && !confirm('¿Reiniciar la ronda? Se reparten los tickets de esta y el ranking vuelve a cero.')) return;
                     // Cambiar de juego a medio recreo también tira el ranking del anterior.
-                    if (!activo && enCurso && !confirm(`¿Cambiar ${enCurso.nombre} por ${c.nombre}? El ranking actual se pierde.`)) return;
+                    if (!activo && enCurso && !confirm(`¿Cambiar ${enCurso.nombre} por ${c.nombre}? Se reparten los tickets de la ronda actual.`)) return;
                     accion(`mini-${c.clave}`, 'admin:minijuego', { clave: c.clave },
                       activo ? `${c.nombre}: ronda nueva` : `${c.nombre} lanzado a todos`);
                   }}

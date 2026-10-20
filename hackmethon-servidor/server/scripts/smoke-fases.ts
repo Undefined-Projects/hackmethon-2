@@ -4,7 +4,7 @@
 // reparto por rol, sellado de tiempos— ya lo cubren smoke.ts y
 // smoke-fase1.ts, y repetirlo aquí cinco veces sería pagar treinta
 // segundos de reloj por no aprender nada nuevo.
-import { acceso } from '../src/phases/acceso.js';
+import { acceso, instanciaDeAcceso } from '../src/phases/acceso.js';
 import { muro } from '../src/phases/muro.js';
 import { nucleo } from '../src/phases/nucleo.js';
 import { boveda } from '../src/phases/boveda.js';
@@ -35,118 +35,221 @@ function sesion(m: ModuloFase, comandos: string[]) {
 const dice = (r: any) => JSON.stringify(r).toLowerCase();
 
 // ============================================================
-console.log('\n1) Control de Acceso · CONDICIONALES');
+console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
 {
   const corre = corredor(acceso);
+  const ANTICUERPOS1 = ['liquen', 'esqueje', 'resina', 'corteza', 'humus'];
+  // Los resultados ya no salen en Pantalla: se leen de la ultima corrida
+  // guardada en las tablas de Datos, como lo haria el equipo.
+  const verDatos = (estado: Record<string, unknown>) =>
+    acceso.proyectar('DATOS', { estado, salidas: [], traficoActivo: false, filtroTrafico: null }) as any;
+  const tablaDe = (d: any, id: string) => d.tablas.find((t: any) => t.id === id);
+  const ultima = (estado: Record<string, unknown>) => {
+    const d = verDatos(estado);
+    const corrida = tablaDe(d, 'corridas').filas[0];
+    const nombreDe = (id: string) => tablaDe(d, 'programas').filas.find((f: string[]) => f[0] === id)[1];
+    return {
+      corrida,
+      filtros: tablaDe(d, 'corrida_filtros').filas.filter((f: string[]) => f[1] === corrida[0]),
+      filas: tablaDe(d, 'resultados').filas.filter((f: string[]) => f[1] === corrida[0])
+        .map((f: string[]) => ({ nombre: nombreDe(f[2]), veredicto: f[3], filtro: f[4] })),
+    };
+  };
+  const cae = (b: any, n: string) => b.filas.find((f: any) => f.nombre === n).veredicto === 'CAE';
 
-  // La mitad de Pantalla no puede saber nada de NADIE: si supiera el
-  // turno de t.medina, escribiria la regla sin hablar con Datos.
-  const publico = ['ayuda', 'reglas', 'probar', 'estado'].map((c) => dice(corre(c))).join(' ');
-  const NOMBRES = ['r.solis', 'n.vega', 'p.arriaga', 'l.bermudez', 'e.quiroz', 't.medina', 'g.pastor'];
-  check(!/ayuda|reglas/.test('') && NOMBRES.every((n) => !dice(corre('ayuda')).includes(n)),
-    'la ayuda no nombra a nadie del padron');
-  check(!dice(corre('reglas')).match(/t\.medina/), 'el reglamento tampoco');
-  check(!publico.includes('noche') && !publico.includes('almacen'),
-    'y en ningun sitio se filtra el turno ni el departamento de nadie');
+  // Pantalla no puede saber nada de NINGUN programa: si supiera la firma
+  // de corteza, escribiria el filtro sin hablar con Datos.
+  const publico = ['ayuda', 'probar', 'estado'].map((c) => dice(corre(c).bloques)).join(' ');
+  for (const dato of ['ausente', 'caducada', 'interno', 'binario', 'script', 'servicio']) {
+    check(!publico.includes(dato), `ni la ayuda ni la simulacion filtran «${dato}»`);
+  }
+  check(!/espora nuestra|anticuerpo\./.test(publico), 'ni dicen que es cada programa: eso es del encargo');
 
-  // `probar` sí lista a todo el mundo —es lo que el portero hace a la
-  // vista— pero solo con su veredicto, nunca con sus datos.
-  const prueba = corre('probar').bloques[0];
-  check(prueba.columnas.join(',') === 'usuario,veredicto,decidido por,objetivo',
-    'la simulacion enseña veredictos, no atributos');
-  const base = Object.fromEntries(prueba.filas.map((f: string[]) => [f[0], f[1]]));
-  check(base['e.quiroz'] === 'DENEGADO',
-    'e.quiroz es nivel 5 y NO entra: la regla 1 decide antes de que la 2 mire el nivel');
-  check(base['t.medina'] === 'DENEGADO' && prueba.filas.find((f: string[]) => f[0] === 't.medina')[3] === 'NO',
-    'y el infiltrado es el unico que no cuadra con el objetivo');
+  // El flujo arranca con la defensa de la pierna, que frena a las esporas.
+  const flujo0 = corre('flujo').bloques[0];
+  check(flujo0.filtros.length === 1 && flujo0.pierna[0] === true, 'el flujo arranca con una defensa de la pierna');
+  const probado = corre('probar');
+  check(probado.fallo !== true && probado.estado.corridaN === 1, '`probar` guarda la corrida R1 y no penaliza');
+  check(!dice(probado.bloques).includes('brote') && !dice(probado.bloques).includes('pasan'),
+    'y Pantalla no recibe ni nombres ni recuentos: solo que se guardo');
+  const prueba = ultima(probado.estado);
+  check(prueba.corrida[0] === 'R1' && prueba.corrida[2] === '9' && prueba.corrida[3] === '3',
+    `la tabla corridas guarda el recuento (pasan ${prueba.corrida[2]}, caen ${prueba.corrida[3]})`);
+  check(['brote', 'raiz', 'polen'].every((n) => cae(prueba, n)), 'la defensa deja fuera a las tres esporas');
+  check(ANTICUERPOS1.every((n) => !cae(prueba, n)), 'y deja entrar a los cinco anticuerpos');
+  check(prueba.filtros.length === 1 && prueba.filtros[0][4] === 'pierna', 'corrida_filtros guarda el flujo y marca la defensa');
+  check(prueba.filas.find((f: any) => f.nombre === 'brote').filtro === '1', 'resultados dice en que filtro cae cada uno');
 
-  // LA leccion: una regla detras de la que ya decidio no corre nunca.
-  const alFinal = sesion(acceso, ['insertar 4 si turno = noche entonces permitir', 'probar']);
-  check(dice(alFinal.ultimo).includes('fuera de sitio'), 'una regla puesta al final no cambia nada');
-
-  // Y una condicion demasiado ancha se lleva por delante a quien no debia.
-  const ancha = sesion(acceso, ['insertar 1 si nivel = 1 entonces permitir', 'probar']);
-  const anchaTabla = ancha.ultimo.bloques[0];
-  check(anchaTabla.filas.find((f: string[]) => f[0] === 'l.bermudez')[1] === 'PERMITIDO',
-    'una condicion demasiado ancha cuela tambien a l.bermudez');
-  check(dice(ancha.ultimo).includes('l.bermudez'), 'y la simulacion lo canta antes de desplegar');
+  // Las trampas: condiciones demasiado anchas (sin la defensa delante).
+  const ancha = (c: string) => ultima(sesion(acceso, ['quitar 1', `filtrar si ${c}`, 'probar']).estado);
+  check(cae(ancha('firma = caducada'), 'poda'), '«firma = caducada» tira a poda, que es rutina');
+  check(cae(ancha('origen = externo'), 'brote'), '«origen = externo» tira a brote, que es espora');
+  check(cae(ancha('permisos >= 4'), 'savia'), '«permisos >= 4» tira a savia, que es rutina');
+  check(!cae(ancha('firma = ausente'), 'corteza'), 'y la firma sola no basta: corteza la tiene valida');
+  const conY = ancha('origen = externo y permisos >= 3');
+  const conO = ancha('origen = externo o permisos >= 3');
+  check(cae(conY, 'corteza') && !cae(conY, 'brote'), '`y` estrecha: externo y potente');
+  check(cae(conO, 'brote') && cae(conO, 'clorofila'), '`o` ensancha y se lleva de mas');
 
   // Desplegar mal cuesta; probar no.
-  const malDesplegado = sesion(acceso, ['insertar 1 si nivel = 1 entonces permitir', 'desplegar']);
-  check(malDesplegado.ultimo.fallo === true, 'desplegar con veredictos alterados penaliza');
+  check(corre('desplegar').fallo === true, 'desplegar con la defensa intacta penaliza');
   check(sesion(acceso, ['probar', 'probar', 'probar']).ultimo.fallo !== true, 'probar es gratis, siempre');
 
-  // La solucion. No es la unica, y eso es correcto: se juzga el
-  // comportamiento del reglamento, no como se escribio.
-  const bien = sesion(acceso, ['insertar 1 si turno = noche entonces permitir', 'probar', 'desplegar']);
-  check(bien.ultimo.resuelto === true, 'la regla correcta, en la posicion correcta, abre la puerta');
-  const otra = sesion(acceso, ['insertar 1 si usuario = t.medina entonces permitir', 'desplegar']);
-  check(otra.ultimo.resuelto === true, 'y cualquier otra que produzca los mismos veredictos, tambien');
+  // El tope cuenta las defensas: nombrar a los cinco no cabe.
+  const tope = sesion(acceso, ['quitar 1', ...ANTICUERPOS1.map((n) => `filtrar si nombre = ${n}`)]);
+  check(dice(tope.ultimo).includes('no admite mas de 3'), 'nombrar a los cinco uno a uno no cabe en 3 filtros');
+
+  // La capa 1: quitar la defensa y dejar fuera a los anticuerpos.
+  const CAPA1 = ['quitar 1', 'filtrar si permisos >= 3 y firma != valida', 'filtrar si origen = externo y permisos >= 3'];
+  const bien = sesion(acceso, [...CAPA1, 'probar', 'desplegar']);
+  check(bien.ultimo.resuelto !== true && bien.estado.capa === 2,
+    'quitando la defensa y con dos filtros cae la capa 1, pero la fase sigue: empieza la muda');
+  check(sesion(acceso, [CAPA1[1], CAPA1[2], 'desplegar']).ultimo.fallo === true,
+    'sin quitar la defensa no basta: las esporas siguen fuera');
+  const conNombre = sesion(acceso, ['quitar 1', 'filtrar si permisos >= 3 y firma != valida', 'filtrar si nombre = corteza', 'desplegar']);
+  check(conNombre.estado.capa === 2, 'en la capa 1 se vale nombrar a alguno');
+
+  // ---- Capa 2 · LA MUDA ----
+  const f2 = conNombre.estado.filtros as any[];
+  check(f2.length === 2 && f2[0].pierna === true && dice(conNombre.ultimo).includes('marchitos'),
+    'la muda seca el filtro que nombraba a alguien y la pierna levanta otra defensa');
+  check((bien.estado.filtros as any[]).length === 3, 'los que describian rasgos sobreviven, detras de la defensa nueva');
+  check(dice(sesion(acceso, ['quitar 1', 'filtrar si permisos >= 3 y firma != valida', 'filtrar si nombre = corteza',
+    'desplegar', 'filtrar si nombre = tallo']).ultimo).includes('ya no reconoce nombres'),
+    'tras la muda `nombre` no vale, y se explica por que');
+  const prueba2 = ultima(sesion(acceso, [...CAPA1, 'probar', 'desplegar', 'probar']).estado);
+  check(prueba2.filas.length === 16, `tras la muda llegan cuatro programas mas (${prueba2.filas.length})`);
+  check(cae(prueba2, 'polen') && cae(prueba2, 'nectar'), 'la defensa nueva vuelve a frenar a dos esporas');
+  check(cae(prueba2, 'micelio'), 'y el filtro ancho de la capa 1 tira a micelio, que es espora');
+  check(!cae(prueba2, 'savia') && !cae(prueba2, 'tallo'), 'mientras savia y tallo, que ahora son anticuerpos, entran');
+  check(prueba2.filtros.map((f: string[]) => f[4]).join() === 'pierna,equipo,equipo', 'la corrida distingue las defensas de la pierna');
+  check(prueba2.corrida[0] === 'R2', 'las corridas siguen numerandose tras la muda');
+
+  const capa2 = (extra: string[]) => sesion(acceso, [...CAPA1, 'desplegar', ...extra]);
+  const arreglo = capa2(['quitar 1', 'quitar 2',
+    'filtrar si origen = externo y permisos >= 3 y tipo = binario',
+    'filtrar si tipo = driver y permisos < 3',
+    'filtrar si tipo = servicio y permisos >= 4', 'desplegar']);
+  check(arreglo.ultimo.resuelto === true, 'quitando la defensa nueva y afinando los filtros, la pierna cae');
+  check((arreglo.ultimo.esperaVictoriaMs ?? 0) > 2000, 'y la cortinilla espera a que la membrana se rinda');
+  check(capa2(['desplegar']).ultimo.fallo === true, 'desplegar en la muda sin tocar nada penaliza');
+  check(cae(ultima(capa2(['quitar 1', 'filtrar si tipo = driver', 'probar']).estado), 'xilema'),
+    '«tipo = driver» tira tambien a xilema, que es rutina');
+
+  // Datos ve el flujo dibujado, el registro, el encargo y las corridas.
+  const d0 = verDatos({});
+  check(d0.flujo.filtros.length === 1 && d0.flujo.pierna[0] === true && d0.flujo.max === 3,
+    'Datos ve el flujo con la defensa de la pierna marcada');
+  check(tablaDe(d0, 'corridas').filas.length === 0, 'y sin ningun `probar`, las corridas estan vacias');
+  let muchas = {} as Record<string, unknown>;
+  for (let i = 0; i < 12; i++) muchas = acceso.ejecutar('probar', { estado: muchas, intentos: 0, ahora: AHORA, traficoActivo: false }).estado!;
+  check(tablaDe(verDatos(muchas), 'corridas').filas.length === 10 && tablaDe(verDatos(muchas), 'corridas').filas[0][0] === 'R12',
+    'se guardan las 10 ultimas corridas, la mas reciente arriba');
+  check(tablaDe(d0, 'encargo').filas.filter((f: string[]) => f[2].includes('ESPORA')).length === 3, 'el encargo nombra a las tres esporas, por id');
+  // Nadie lo tiene todo: Datos no sabe ni el origen ni la firma.
+  check(!tablaDe(d0, 'programas').columnas.includes('origen') && !tablaDe(d0, 'firmas'),
+    'Datos no tiene ni el origen ni las firmas: estan repartidos');
+  check(!dice(d0.tablas).includes('caducada') && !dice(d0.tablas).includes('externo'),
+    '  ni se cuelan en ninguna tabla');
+  const sinAcotar = corre('firmas');
+  check(dice(sinAcotar).includes('acota'), '`firmas` a secas no las suelta todas');
+  const porTipo = corre('firmas tipo binario');
+  check(dice(porTipo).includes('corteza') && dice(porTipo).includes('valida') && !dice(porTipo).includes('riego'),
+    '`firmas tipo binario` da la firma de los binarios, y solo de ellos');
+  check(dice(corre('firmas corteza')).includes('valida') && dice(corre('firmas p9')).includes('corteza'),
+    'y se puede preguntar por nombre o por id');
+  check(dice(corre('firmas tipo dragon')).includes('pregunta a datos'), 'un tipo que no existe se explica');
+  const d2 = verDatos(conNombre.estado);
+  check(d2.tablas[0].filas.length === 16 && d2.tablas[0].nuevas.join() === 'P13,P14,P15,P16',
+    'tras la muda Datos recibe a los cuatro nuevos, marcados');
+  check(tablaDe(d2, 'encargo').filas.some((f: string[]) => f[1] === 'P3' && f[2].includes('ANTICUERPO')),
+    'y el encargo nuevo: savia se ha vuelto anticuerpo');
+  check(d2.flujo.marchitos.join() === 'nombre = corteza', 'y ve el filtro que se seco');
+  check(d2.lamina.capa === 2 && d2.lamina.capas === 2, 'la lamina sabe en que capa va');
 
   // El parser enseña, no gruñe.
-  check(dice(corre('insertar 1 si turno = noche y nivel >= 2 o sede = torre entonces permitir')).includes('no mezcles'),
+  check(dice(corre('filtrar si tipo = script y permisos >= 2 o firma = ausente')).includes('no mezcles'),
     'mezclar `y` con `o` se explica en vez de rechazarse a secas');
-  check(dice(corre('insertar 1 si departamento > b entonces permitir')).includes('solo valen'),
-    'ordenar texto con > se explica');
-  check(!corre('insertar 9 si turno = noche entonces permitir').fallo, 'una posicion imposible no penaliza');
+  check(dice(corre('filtrar si origen > b')).includes('solo valen'), 'ordenar texto con > se explica');
+  check(dice(corre('insertar 1 si firma = ausente entonces permitir')).includes('solo descartan'),
+    'la sintaxis vieja de permitir se explica: en el embudo solo se descarta');
+  check(!corre('quitar 9').fallo, 'quitar un filtro que no existe no penaliza');
 
-  // ---- El circuito cerrado de la puerta ----
+  // ---- El circuito cerrado de la membrana ----
   const proy2 = (rol: any, estado: Record<string, unknown> = {}) =>
     acceso.proyectar(rol, { estado, intentos: 0, ahora: AHORA, traficoActivo: false, salidas: [] } as any) as any;
 
   const cam = proy2('PANTALLA').camaras;
-  check(!!cam, 'Pantalla ve la puerta por circuito cerrado');
-  check(cam.lista.length === 2 && cam.activa === 1, `dos camaras y arranca en la puerta (${cam.lista.length})`);
-  check(!dice(proy2('TERMINAL')).includes('garita') && !dice(proy2('TERMINAL')).includes('fotogramas'),
+  check(!!cam && cam.lista.length === 2 && cam.activa === 1, 'Pantalla ve la membrana por dos camaras');
+  check(!dice(proy2('TERMINAL')).includes('ganglio') && !dice(proy2('TERMINAL')).includes('fotogramas'),
     'y la consola NO ve ninguna imagen: la cambia a ciegas');
-  check(!dice(proy2('DATOS')).includes('garita'), 'Datos tampoco: el circuito es de Pantalla');
+  check(!dice(proy2('DATOS')).includes('ganglio'), 'Datos tampoco: el circuito es de Pantalla');
 
-  const altos2 = new Set<number>();
-  for (const n of [1, 2]) for (const f of proy2('PANTALLA', { camara: n }).camaras.vista.fotogramas) altos2.add(f.length);
-  check(altos2.size === 1, `todos los fotogramas miden lo mismo (${[...altos2].join('/')} lineas)`);
-
-  // Lo que la camara enseña es el EFECTO. La CAUSA —que regla decidio— es
-  // de `probar`, y es la leccion de la fase: si la camara la cantara, la
-  // simulacion se quedaria sin trabajo.
   const imagen = dice(proy2('PANTALLA').camaras);
-  check(imagen.includes('t.medina') && imagen.includes('alto'),
-    'se ve a quien el portero no deja pasar, con su nombre');
-  check(!imagen.includes('regla 1') && !imagen.includes('decidido'),
-    'pero NO que regla lo decidio: eso sigue siendo de `probar`');
-  // Y nada del padron: si la camara cantara el turno, la regla se
-  // escribiria sin hablar con Datos y la fase se cae.
-  for (const dato of ['caducada', 'vigente', 'noche', 'almacen', 'direccion', 'mantenimiento']) {
-    check(!imagen.includes(dato), `la camara no filtra «${dato}»: eso es del padron`);
+  check(imagen.includes('corteza') && imagen.includes('pasa'), 'se ve que pasa, con su nombre');
+  check(proy2('PANTALLA').camaras.vista.rotulos.length === 0, 'y sin numeros: ni cuantos pasan ni cuantos caen');
+  check(imagen.includes('externo') && imagen.includes('viene de'), 'la camara SI dice de donde viene cada uno: es lo suyo');
+  for (const dato of ['caducada', 'ausente', 'binario', 'driver', 'espora', 'anticuerpo']) {
+    check(!imagen.includes(dato), `la camara no filtra «${dato}»: eso es del registro`);
   }
 
-  // La imagen sigue al reglamento: es lo que la hace util.
   const antes = proy2('PANTALLA').camaras.vista;
-  check(dice(antes.rotulos).includes('fuera de sitio'), 'de partida avisa de que algo no encaja');
-  const conRegla = sesion(acceso, ['insertar 1 si turno = noche entonces permitir']).estado;
-  const despues = proy2('PANTALLA', conRegla).camaras.vista;
-  check(dice(despues.rotulos).includes('todo en orden'), 'y con la regla buena puesta, la puerta lo dice');
-  check(antes.clave !== despues.clave, 'la firma de la imagen cambia con el reglamento');
-  const pasaMedina = despues.fotogramas.some(
-    (f: string[]) => f.join('\n').includes('t.medina') && f.join('\n').includes('PASA'),
-  );
-  check(pasaMedina, 'y se ve al infiltrado cruzando la barrera');
-  const rechazado = antes.fotogramas.some(
-    (f: string[]) => f.join('\n').includes('t.medina') && f.join('\n').includes('ALTO'),
-  );
-  check(rechazado, 'mientras que antes se le veia rebotar');
+  const despues = proy2('PANTALLA', sesion(acceso, CAPA1).estado).camaras.vista;
+  check(antes.clave !== despues.clave, 'la firma de la imagen cambia con el flujo');
+  check(despues.fotogramas.some((f: string[]) => f.join('\n').includes('corteza') && f.join('\n').includes('ALTO')),
+    'y se ve a corteza rebotar contra la membrana');
+  check(despues.dibujo.tipo === 'membrana' && despues.dibujo.cola.length === 12, 'el dibujo trae la fila entera');
 
   check(corre('camara 2').estado?.camara === 2, '`camara 2` cambia la camara');
-  check(corre('camara vestibulo').estado?.camara === 2, 'tambien vale por nombre');
+  check(corre('camara interior').estado?.camara === 2, 'tambien vale por nombre');
   check(corre('camara siguiente', { camara: 2 }).estado?.camara === 1, '`siguiente` da la vuelta');
-  check(corre('camara 7').estado === undefined && dice(corre('camara 7')).includes('no hay ninguna camara'),
-    'una camara que no existe se explica y no toca el estado');
-  check(corre('camara 1').fallo !== true, 'mirar no penaliza');
-  check(dice(corre('camaras')).includes('sector'), '`camaras` las lista con su sector');
-  check(proy2('PANTALLA', { camara: 2 }).camaras.vista.nombre.includes('VESTIBULO'),
-    'la segunda enseña el otro lado de la barrera');
-  // El reloj del reto es de la Fase 6. Aqui no hay ninguno, y el rotulo
-  // no puede enseñar un hueco de una mecanica que esta fase no tiene.
-  check(cam.ventana === undefined, 'y el monitor no enseña reloj de reto: aqui no hay');
+}
+
+console.log('\n1b) El Reflejo · una version por equipo');
+{
+  const A = instanciaDeAcceso('equipo-a'), B = instanciaDeAcceso('equipo-b'), C = instanciaDeAcceso();
+  const nombres = (i: any) => i.registro.map((p: any) => p.nombre).join();
+  check(nombres(A) !== nombres(B) && nombres(A) !== nombres(C), 'cada equipo ve otros nombres y otro orden');
+  check(instanciaDeAcceso('equipo-a') === A, 'y la misma semilla da siempre la misma version');
+  check(C.registro[0].nombre === 'riego' && C.registro[0].id === 'P1', 'sin semilla, la version canonica');
+
+  // La solucion canonica, traducida a la piel de cada mesa, tiene que
+  // seguir resolviendo: misma fase, otras palabras.
+  const traductor = (inst: any) => {
+    const voz: Record<string, Record<string, string>> = { origen: {}, tipo: {}, firma: {} };
+    const perm: Record<string, number> = {};
+    for (const p of inst.registro) {
+      const c = C.registro.find((q: any) => q.clave === p.clave)!;
+      for (const k of ['origen', 'tipo', 'firma']) voz[k][(c as any)[k]] = (p as any)[k];
+      perm[c.permisos] = p.permisos;
+    }
+    const invierte = perm[1] > perm[5];
+    const gira: Record<string, string> = { '>=': '<=', '<=': '>=', '>': '<', '<': '>', '=': '=', '!=': '!=' };
+    return (filtro: string) => filtro.replace(/(origen|tipo|firma|permisos) (!=|>=|<=|=|>|<) (\S+)/g, (_m, campo, op, valor) =>
+      campo === 'permisos'
+        ? `permisos ${invierte ? gira[op] : op} ${perm[Number(valor)] ?? (invierte ? 6 - Number(valor) + perm[5] - 1 : Number(valor) + perm[1] - 1)}`
+        : `${campo} ${op} ${voz[campo][valor]}`);
+  };
+  for (const semilla of ['equipo-a', 'equipo-b', 'cmv6cbe7800ablxsha71r29tu']) {
+    const t = traductor(instanciaDeAcceso(semilla));
+    const jugar = (cmds: string[]) => {
+      let estado: Record<string, unknown> = {};
+      let ultimo: any = null;
+      for (const c of cmds) {
+        ultimo = acceso.ejecutar(c, { estado, intentos: 0, ahora: AHORA, traficoActivo: false, semilla });
+        if (ultimo.estado) estado = ultimo.estado;
+      }
+      return ultimo;
+    };
+    const fin = jugar(['quitar 1', t('filtrar si permisos >= 3 y firma != valida'), t('filtrar si origen = externo y permisos >= 3'),
+      'desplegar', 'quitar 1', 'quitar 2',
+      t('filtrar si origen = externo y permisos >= 3 y tipo = binario'),
+      t('filtrar si tipo = driver y permisos < 3'),
+      t('filtrar si tipo = servicio y permisos >= 4'), 'desplegar']);
+    check(fin.resuelto === true, `la solucion traducida resuelve la version de «${semilla.slice(0, 10)}»`);
+    const sinTraducir = jugar(['quitar 1', 'filtrar si permisos >= 3 y firma != valida', 'filtrar si origen = externo y permisos >= 3', 'desplegar']);
+    check(sinTraducir.fallo === true || sinTraducir.estado?.capa !== 2, '  y la solucion de otra mesa, copiada tal cual, no sirve');
+  }
 }
 
 // ============================================================
@@ -690,7 +793,7 @@ console.log('\n7) Circuito cerrado de todas las fases');
 {
   const conCamaras: [string, ModuloFase, number, string[]][] = [
     // fase · modulo · cuantas camaras · lo que NO puede aparecer en la imagen
-    ['Fase 1 · Control de Acceso', acceso, 2, ['caducada', 'vigente', 'noche', 'almacen']],
+    ['Fase 1 · El Reflejo', acceso, 2, ['caducada', 'ausente', 'binario', 'anticuerpo']],
     ['Fase 2 · El Enemigo', enemigo, 2, ['svc.backup', 'k.moreno', 'a.duarte', 'j.ortega', 'm.rivas']],
     ['Fase 4 · Nucleo Modular', nucleo, 2, ['v * f', 'n * 2', 'n - 1', '12', '24']],
     ['Fase 5 · Boveda', boveda, 2, ['cr-1843', 'maestra', 'torre']],

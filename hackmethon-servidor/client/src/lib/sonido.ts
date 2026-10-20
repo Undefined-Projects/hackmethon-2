@@ -275,6 +275,36 @@ const VOCES = {
   },
   /** Una petición del ataque entrando por el monitor. */
   linea: () => tono({ f: 2100, dur: 0.012, onda: 'square', vol: 0.045 }),
+
+  // — La membrana de la Fase 1: el arco reflejo se oye en tres tiempos —
+  /** El zarcillo toca al cuidador: un roce, casi nada. */
+  palpa: () => {
+    ruido({ dur: 0.16, f: 3200, f2: 1800, vol: 0.05 });
+    tono({ f: 520, f2: 640, dur: 0.08, onda: 'sine', vol: 0.08 });
+  },
+  /** El impulso cruza el ganglio: sube y baja, como un nervio. */
+  impulso: () => {
+    tono({ f: 300, f2: 1200, dur: 0.12, onda: 'triangle', vol: 0.12 });
+    tono({ f: 1200, f2: 420, dur: 0.14, onda: 'triangle', vol: 0.1, retardo: 0.13 });
+  },
+  /** Las raíces se apartan. Orgánico y hacia arriba: algo que respira. */
+  abre: () => {
+    ruido({ dur: 0.5, f: 300, f2: 1600, vol: 0.09, paso: 'lowpass' });
+    tono({ f: 392, dur: 0.18, onda: 'triangle', vol: 0.13 });
+    tono({ f: 587, dur: 0.24, onda: 'triangle', vol: 0.12, retardo: 0.12 });
+  },
+  /** Las raíces se cierran con espinas: un chasquido seco hacia abajo. */
+  cierra: () => {
+    tono({ f: 240, f2: 90, dur: 0.16, onda: 'square', vol: 0.18 });
+    ruido({ dur: 0.1, f: 5200, f2: 2400, vol: 0.12 });
+    ruido({ dur: 0.08, f: 4200, f2: 1800, vol: 0.08, retardo: 0.09 });
+  },
+  /** La muda: hojarasca que cae y un fondo grave que se hunde. */
+  muda: () => {
+    ruido({ dur: 1.6, f: 2600, f2: 500, vol: 0.12 });
+    tono({ f: 110, f2: 55, dur: 1.8, onda: 'sawtooth', vol: 0.08 });
+    tono({ f: 165, f2: 330, dur: 1.2, onda: 'triangle', vol: 0.08, retardo: 2.6 });
+  },
 } as const;
 
 export type Voz = keyof typeof VOCES;
@@ -285,6 +315,7 @@ const MINIMO: Partial<Record<Voz, number>> = {
   // La estática va en pares —el salto y el desliz van seguidos—, así
   // que su tope tiene que dejar pasar los dos.
   tecla: 25, linea: 90, estatica: 45, golpe: 110, abrir: 60, boton: 40,
+  palpa: 300, impulso: 300, abre: 300, cierra: 300,
 };
 const ultima = new Map<Voz, number>();
 

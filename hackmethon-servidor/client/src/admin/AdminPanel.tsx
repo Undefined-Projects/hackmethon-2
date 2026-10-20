@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PanelIntros } from './PanelIntros';
 import type { AdminSnapshot } from '../shared/events';
 import type { AppSocket } from '../lib/socket';
 import { call } from '../lib/socket';
@@ -17,6 +18,7 @@ import { PanelLuces } from './PanelLuces';
 import { PanelMinijuegos } from './PanelMinijuegos';
 import { PanelRobot } from './PanelRobot';
 import { PanelAtaques } from './PanelAtaques';
+import { BolsaEquipo } from './BolsaEquipo';
 
 type Props = { snapshot: AdminSnapshot; socket: AppSocket; online: boolean };
 
@@ -99,9 +101,9 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
   // el TEXTO del boton: el admin tiene que saber que va a provocar antes
   // de pulsarlo, no despues.
   const AVERIA: Record<string, string> = {
-    TERMINAL: 'el teclado se vuelve loco 3 s',
-    PANTALLA: 'avisos de «Conexión perdida» 12 s',
-    DATOS: 'la base de datos tiembla 12 s',
+    TERMINAL: 'el robot se ríe y teclea por él 3 s',
+    PANTALLA: 'avisos con el robot riéndose 12 s',
+    DATOS: 'los brazos del robot sacuden la pantalla 12 s',
   };
 
   const { event, phases, teams } = snapshot;
@@ -361,6 +363,8 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
 
       <PanelRobot bloqueado={busy !== null} accion={accion} />
 
+      <PanelIntros phases={snapshot.phases} />
+
       {snapshot.final && (
         <PanelFinal
           final={snapshot.final}
@@ -431,6 +435,19 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
                   [OK]
                 </button>
               </header>
+
+              <BolsaEquipo equipo={t} bloqueado={busy !== null} accion={accion} />
+
+              {/* Señales para acercarse a esa mesa. No castigan nada: solo
+                  dicen dónde mirar. */}
+              {(t.alertas.pegados > 0 || t.alertas.rafagas > 0 || t.alertas.rapidas.length > 0) && (
+                <p className="equipo-alertas" title="Señales de que quizá no están tecleando lo que piensan">
+                  <span className="equipo-alertas__marca">[!] MIRAR ESTA MESA</span>
+                  {t.alertas.pegados > 0 && <span>{t.alertas.pegados} intento(s) de pegar</span>}
+                  {t.alertas.rafagas > 0 && <span>{t.alertas.rafagas} comando(s) demasiado rápidos</span>}
+                  {t.alertas.rapidas.length > 0 && <span>resolvió muy rápido: {t.alertas.rapidas.join(', ')}</span>}
+                </p>
+              )}
 
               <ul className="miembros">
                 {t.members.map((m) => (

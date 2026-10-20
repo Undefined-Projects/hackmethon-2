@@ -1,4 +1,5 @@
 @import './fonts.css';
+@import './fases.css';
 
 /* ============================================================
    HACK(ME)THON 2.0 · The Anatomy of a Machine · plataforma en vivo
@@ -1251,12 +1252,12 @@ span.pel-ficha-escudo{ border:1px dashed var(--rule-blue); }
 
 /* ── la ventana del mapa (admin/MapaSala.tsx) ──────────────────── */
 .admin-mapa{ max-width:none; padding:clamp(12px, 2.5vw, 34px); position:relative; display:block; }
-.mapa{
+.admin-mapa .mapa{
   display:flex; flex-direction:column; gap:clamp(6px, 1.2vw, 14px);
   height:calc(100vh - var(--marco) * 2 - var(--oia) - 10px - clamp(24px, 5vw, 68px));
   min-height:360px;
 }
-.mapa > :not(.jardin-carrera){ position:relative; z-index:1; }
+.admin-mapa .mapa > :not(.jardin-carrera){ position:relative; z-index:1; }
 .mapa-cab{ align-items:center; }
 .mapa-tope{ height:0; margin:0; }
 .mapa-leyenda{ display:flex; align-items:center; gap:6px; font-size:clamp(9px, 1vw, 12px); color:var(--phos-dim); letter-spacing:.08em; }
@@ -2111,53 +2112,8 @@ body.proyectando .salir, body.proyectando .salir-caja{ display:none; }
 .acc-veredicto.si,   .pte-respuesta.si  { color:var(--phos-hi); text-shadow:var(--bloom-2); }
 .acc-veredicto.no,   .pte-respuesta.no  { color:var(--blue-hi); }
 
-.fulano{ height:clamp(52px, 13vh, 132px); width:auto; fill:currentColor; }
-
-/* ── fase 1 · el portero ───────────────────────────────── */
-.esc-acceso .acc-pista{
-  position:relative; width:min(88%, 940px);
-  height:clamp(120px, 27vh, 270px);
-  border-bottom:1px solid var(--rule);
-}
-.acc-cola{ position:absolute; left:0; bottom:0; display:flex; gap:clamp(6px,1.4vw,22px); color:var(--phos-dim); }
-.acc-espera{ display:block; animation:acc-respira 2.8s ease-in-out infinite; animation-delay:calc(var(--i) * .52s); }
-@keyframes acc-respira{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-3%); } }
-
-.acc-turno{ position:absolute; bottom:0; left:34%; color:var(--phos-hi); animation:acc-llega 1.5s linear both; }
-@keyframes acc-llega{
-  0%  { transform:translateX(-280%); opacity:0; }
-  14% { opacity:1; }
-  100%{ transform:translateX(0); }
-}
-.acc-turno.pasa{ animation:acc-pasa 2s ease-in both; }
-@keyframes acc-pasa{ 0%{ transform:translateX(0); opacity:1; } 100%{ transform:translateX(320%); opacity:.12; } }
-.acc-turno.rebota{ animation:acc-rebota 2s ease-in both; }
-@keyframes acc-rebota{
-  0%  { transform:translateX(0); opacity:1; }
-  16% { transform:translateX(16%); }
-  100%{ transform:translateX(-280%); opacity:0; }
-}
-
-.acc-puerta{ position:absolute; left:58%; bottom:0; height:100%; }
-.acc-poste{
-  position:absolute; left:0; bottom:0;
-  width:clamp(5px, .9vmin, 11px); height:72%;
-  background:var(--phos); box-shadow:var(--bloom);
-}
-/* La barra sube con una transición, no con una animación en bucle:
-   su posición la decide el veredicto, y una animación tendría que
-   rebobinarse a mano en cada cambio. */
-.acc-barra{
-  position:absolute; left:0;
-  bottom:calc(72% - clamp(4px, .72vmin, 9px));
-  width:clamp(90px, 19vmin, 230px); height:clamp(4px, .72vmin, 9px);
-  background:var(--phos-hi); box-shadow:var(--bloom);
-  background-image:repeating-linear-gradient(90deg,
-    var(--blue-hi) 0 clamp(8px,1.6vmin,18px), transparent clamp(8px,1.6vmin,18px) clamp(16px,3.2vmin,36px));
-  transform-origin:left center; transform:rotate(0deg);
-  transition:transform .55s cubic-bezier(.25,.85,.3,1);
-}
-.acc-barra.abierta{ transform:rotate(-74deg); }
+/* ── fase 1 · la membrana (la escena vive en fases.css) ── */
+.esc-acceso .acc-membrana{ width:min(94%, 1180px); }
 
 /* ── fase 2 · el tráfico cayendo ───────────────────────── */
 .atq-caja{
@@ -2426,7 +2382,7 @@ body.proyectando .salir, body.proyectando .salir-caja{ display:none; }
    cruce entre fases se vuelve un corte limpio. */
 @media (prefers-reduced-motion: reduce){
   .capa.entra, .capa.sale, .proy-rotulo,
-  .acc-turno, .acc-espera, .atq-cinta, .atq-barrido,
+  .atq-cinta, .atq-barrido,
   .mur-escena, .mur-escena:not(.caido), .mur-ariete,
   .nuc-cable.vivo, .nuc-pieza.rota rect,
   .bov-celda.hallada, .bov-cifra.sola,
@@ -4247,3 +4203,325 @@ rect.an-conector.an-hilo--verde{ fill:var(--clorofila-dim); }
 .sala-aviso__titulo{ font-family:var(--f-pixel); font-size:clamp(12px, 1.8vw, 22px); letter-spacing:.14em; color:var(--phos); }
 .sala-aviso__nota{ font-size:12px; color:var(--phos-dim); letter-spacing:.06em; }
 @media (prefers-reduced-motion: reduce){ .sala-volver, .sala-aviso{ animation:none; } }
+
+/* ============================================================
+   TICKETS, ESCUDO Y SÚPER ATAQUE
+   El dinero va en clorofila —lo que entra es algo que salió bien—, el
+   escudo en el cañón azul y el súper ataque en la alarma: es lo único
+   del juego que te deja sin manos.
+   ============================================================ */
+
+/* El saldo y el escudo, en el botón y en la barra del mapa. */
+.ataque-boton .ataque-reloj--escudo{ color:var(--blue-hi); }
+.ataque-bolsa{ display:flex; align-items:center; gap:8px; }
+.ataque-tickets{
+  font-family:var(--f-pixel); font-size:13px; padding:2px 8px;
+  border:1px solid var(--clorofila-dim); color:var(--clorofila-hi);
+  font-variant-numeric:tabular-nums;
+}
+.ataque-escudo{
+  font-family:var(--f-pixel); font-size:11px; padding:3px 9px; border-width:1px; letter-spacing:.08em;
+  border-color:var(--rule-blue); color:var(--blue-hi);
+}
+.ataque-escudo.activo{ border:1px solid var(--blue-hi); background:rgba(79,134,238,.14); box-shadow:0 0 10px rgba(79,134,238,.4); }
+
+/* El objetivo elegido: cuánto pega el golpe. */
+.mapa-ataque-intensidad{ font-size:12px; }
+.intensidad--fuerte{ color:var(--sangre-hi); }
+.intensidad--normal{ color:var(--phos-soft); }
+.intensidad--débil{ color:var(--blue-hi); }
+.mapa-ataque-botones{ display:flex; gap:10px; flex-wrap:wrap; }
+.mapa-ataque-super{
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  font-family:var(--f-pixel); font-size:clamp(11px, 1.1vw, 14px); padding:7px 16px; letter-spacing:.1em;
+  border-color:var(--sangre); color:var(--screen); background:var(--sangre);
+}
+.mapa-ataque-super small{ font-family:var(--f-mono); font-size:9px; letter-spacing:.04em; opacity:.85; }
+.mapa-ataque-super:disabled{ background:rgba(255,51,85,.08); color:var(--sangre-hi); }
+.mapa-ataque-super:hover:not(:disabled){ box-shadow:0 0 22px rgba(255,51,85,.75); }
+.mapa-ataque-feed li em{ font-style:normal; font-size:.85em; letter-spacing:.06em; }
+.mapa-ataque-feed li.super em{ color:var(--sangre-hi); }
+.mapa-ataque-feed li.bloqueado{ opacity:.7; }
+.mapa-ataque-feed li.bloqueado em{ color:var(--blue-hi); }
+
+/* Las líneas: el súper ataque, gruesa y continua; la que rebotó en un
+   escudo, en azul y cortada antes de llegar. */
+.linea-ataque--super .linea-ataque__halo{ stroke-width:.42; opacity:.35; stroke:var(--sangre); }
+.linea-ataque--super .linea-ataque__trazo{ stroke-width:.16; stroke-dasharray:none; stroke:var(--sangre-hi); }
+.linea-ataque--bloqueado .linea-ataque__halo, .linea-ataque--bloqueado .linea-ataque__trazo{ stroke:var(--blue-hi); }
+.linea-ataque--bloqueado .linea-ataque__impacto{ stroke:var(--blue-hi); }
+
+/* Lo que entra y sale, y el ataque que rebotó. */
+.banda.aviso-juego{ top:0; animation:aviso-juego-entra .25s ease-out; }
+.banda.aviso-juego--tickets{ color:var(--screen); background:var(--clorofila); border-color:var(--clorofila); }
+.banda.aviso-juego--gasto{ color:var(--clorofila-hi); border-color:var(--clorofila-dim); }
+.banda.aviso-juego--escudo{ color:var(--screen); background:var(--blue-hi); border-color:var(--blue-hi); }
+@keyframes aviso-juego-entra{ from{ transform:translateY(-100%); opacity:0; } }
+
+.celebracion p.celebracion__tickets{
+  margin-top:14px; justify-self:center; padding:4px 12px;
+  color:var(--clorofila-hi); border:1px solid var(--clorofila-dim);
+  font-size:11px; letter-spacing:.2em; text-shadow:0 0 8px rgba(61,220,151,.5);
+}
+
+/* El súper ataque: la avería de Pantalla a pantalla completa, encima de
+   todo, sin botón de cerrar. Opaca por debajo para que no se pueda
+   seguir leyendo la fase entre aviso y aviso. */
+.super-ataque{
+  position:fixed; inset:0; z-index:9999; overflow:hidden; outline:none;
+  background:
+    radial-gradient(90% 70% at 50% 45%, rgba(255,51,85,.16), transparent 70%),
+    rgba(10,7,12,.94);
+  cursor:not-allowed; user-select:none;
+}
+.super-ataque .aviso-conexion{ z-index:1; }
+.super-ataque__rotulo{
+  position:absolute; z-index:2; left:50%; top:50%; transform:translate(-50%, -50%);
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  padding:18px 28px; max-width:calc(100vw - 32px); text-align:center;
+  background:var(--screen); border:2px solid var(--sangre);
+  box-shadow:0 0 0 4px var(--screen), 0 0 40px rgba(255,51,85,.55);
+}
+.super-ataque__cab{ font-family:var(--f-pixel); font-size:11px; letter-spacing:.3em; color:var(--sangre); }
+.super-ataque__rotulo strong{
+  font-family:var(--f-pixel); font-weight:normal; font-size:clamp(1.4rem, 6vw, 3.4rem); line-height:1;
+  color:var(--sangre-hi); letter-spacing:.06em; overflow-wrap:anywhere;
+}
+.super-ataque__pie{ font-size:12px; letter-spacing:.2em; color:var(--phos-soft); font-variant-numeric:tabular-nums; }
+
+/* Los tickets en la tarjeta del panel. */
+.bolsa-equipo{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:6px 0; font-size:11px; }
+.bolsa-equipo__saldo{
+  font-family:var(--f-pixel); padding:1px 7px; border:1px solid var(--clorofila-dim); color:var(--clorofila-hi);
+  font-variant-numeric:tabular-nums;
+}
+.bolsa-equipo__escudo{ color:var(--blue-hi); letter-spacing:.06em; }
+.bolsa-equipo__ajuste{ display:flex; gap:3px; margin-left:auto; }
+.bolsa-equipo__ajuste button{ font-size:10px; padding:1px 6px; min-width:28px; }
+.ataques-subtitulo{ margin:14px 0 6px; font-size:11px; letter-spacing:.16em; color:var(--clorofila-hi); font-weight:normal; }
+
+@media (prefers-reduced-motion: reduce){
+  .banda.aviso-juego{ animation:none; }
+}
+
+/* ============================================================
+   EL ROBOT DE LOS ATAQUES
+   El mismo robot de la lámina, ahora de agresor. Su cara se ríe en
+   los avisos de Pantalla, en la consola de Terminal, en la banda del
+   ataque y, en grande, en el súper ataque; sus brazos sacuden la base
+   de datos. Las pieles reutilizan las clases de la lámina (.an-*).
+   ============================================================ */
+.robot-cara{ display:block; overflow:visible; }
+.robot-ataque__borde{ stroke:var(--phos); stroke-width:2.5; filter:drop-shadow(0 0 4px rgba(250,57,186,.6)); }
+.robot-cara__cabeza{ transform-box:view-box; transform-origin:280px 190px; animation:robot-carcajada .42s ease-in-out infinite; }
+.robot-cara__ojo{ fill:none; stroke:var(--phos-soft); stroke-width:3.5; stroke-linecap:round; stroke-linejoin:round; }
+.robot-cara__ojo--led{ stroke:var(--phos); filter:drop-shadow(0 0 4px var(--phos)); }
+.robot-cara__lagrima{ fill:var(--blue-hi); opacity:.85; animation:robot-lagrima 1.3s ease-in infinite; }
+.robot-cara__lagrima--led{ fill:var(--phos-hi); animation-delay:.6s; }
+.robot-cara__dientes{ fill:var(--phos-hi); }
+.robot-cara__juntas{ stroke:var(--screen); stroke-width:1.4; }
+.robot-cara__garganta{ fill:var(--screen); stroke:var(--phos); stroke-width:2; }
+.robot-cara__lengua{ fill:var(--sangre); opacity:.85; }
+/* Los dientes se quedan; lo que se abre y se cierra es la mandíbula. */
+.robot-cara__garganta, .robot-cara__lengua{ transform-box:view-box; transform-origin:280px 124px; animation:robot-mandibula .21s ease-in-out infinite alternate; }
+.robot-cara__ja text{ font-family:var(--f-pixel); font-size:17px; fill:var(--phos-hi); }
+.robot-cara__ja text{ animation:robot-ja .84s ease-out infinite; }
+.robot-cara__ja .robot-cara__ja-2{ animation-delay:.28s; fill:var(--uv); }
+.robot-cara__ja .robot-cara__ja-3{ animation-delay:.56s; fill:var(--blue-hi); }
+
+@keyframes robot-carcajada{
+  0%, 100%{ transform:rotate(-3deg) translateY(0); }
+  50%     { transform:rotate(3deg) translateY(-4px); }
+}
+@keyframes robot-mandibula{ from{ transform:scaleY(.55); } to{ transform:scaleY(1.08); } }
+@keyframes robot-ja{
+  0%  { opacity:0; transform:translateY(6px); }
+  25% { opacity:1; }
+  100%{ opacity:0; transform:translateY(-14px); }
+}
+@keyframes robot-lagrima{
+  0%  { opacity:0; transform:translateY(0); }
+  30% { opacity:.9; }
+  100%{ opacity:0; transform:translateY(16px); }
+}
+
+/* · Pantalla: la cara dentro de cada aviso emergente. */
+.aviso-conexion .aviso-cara{ width:58px; height:auto; align-self:center; margin:2px 0 -2px; }
+
+/* · La banda de «ATAQUE DE …»: la cara pequeña, sin carcajada al lado. */
+.banda.ataque-recibido{ display:flex; align-items:center; justify-content:center; gap:8px; }
+.banda-cara{ width:22px; height:auto; margin:-6px 0; }
+
+/* · Terminal: el robot asomado a la consola, tecleando por ti. */
+.vista-terminal{ position:relative; }
+.robot-teclea{
+  position:absolute; z-index:6; right:clamp(10px, 2vw, 22px); bottom:64px;
+  display:grid; justify-items:center; gap:4px; width:clamp(108px, 16vw, 150px);
+  pointer-events:none; margin:0 !important; animation:robot-asoma .25s ease-out;
+}
+.robot-teclea__cara{ width:100%; }
+.robot-teclea__bocadillo{
+  max-width:100%; padding:3px 7px; overflow:hidden; white-space:nowrap;
+  font-size:11px; letter-spacing:.06em; color:var(--screen); background:var(--phos-hi);
+  border:1px solid var(--phos);
+}
+.robot-teclea__teclado{
+  display:grid; grid-template-columns:repeat(6, 1fr); gap:3px; width:100%;
+  padding:4px; border:1px solid var(--rule-blue); background:var(--screen);
+}
+.robot-teclea__teclado i{ display:block; height:7px; background:var(--blue-dim); animation:robot-tecla .3s steps(1) infinite; }
+@keyframes robot-tecla{ 0%{ background:var(--phos); box-shadow:0 0 6px var(--phos); } 40%, 100%{ background:var(--blue-dim); box-shadow:none; } }
+@keyframes robot-asoma{ from{ opacity:0; transform:translateY(20px); } }
+
+/* · Datos: los dos brazos suben desde abajo y agarran la pantalla por
+   los lados. Cada brazo gira alrededor de su MANO, que es la que está
+   clavada: el hombro cae fuera de la ventana, abajo, como si el robot
+   estuviera agachado detrás del monitor. */
+.robot-brazos{ position:fixed; inset:0; z-index:56; pointer-events:none; overflow:hidden; }
+.robot-brazo{
+  --brazo:clamp(84px, 10vw, 140px);
+  position:absolute; top:calc(46% - var(--brazo) * 3.2); width:var(--brazo); height:calc(var(--brazo) * 3.2);
+  transform-origin:50% 100%; overflow:visible;
+  filter:drop-shadow(0 0 14px rgba(0,0,0,.9));
+}
+.robot-brazo--izq{ left:calc(max(var(--gut, 16px), (100vw - 1100px) / 2) + 22px - var(--brazo) / 2); animation:robot-sacude-izq .23s ease-in-out infinite alternate; }
+.robot-brazo--der{ right:calc(max(var(--gut, 16px), (100vw - 1100px) / 2) + 22px - var(--brazo) / 2); animation:robot-sacude-der .23s ease-in-out infinite alternate; animation-delay:-.11s; }
+@keyframes robot-sacude-izq{ from{ transform:rotate(186deg) translate(5px, 6px); } to{ transform:rotate(198deg) translate(-5px, -10px); } }
+@keyframes robot-sacude-der{ from{ transform:rotate(174deg) translate(-5px, 6px); } to{ transform:rotate(162deg) translate(5px, -10px); } }
+
+/* · Súper ataque: la cara en grande, y la cuenta atrás debajo. */
+.super-ataque__rotulo{ gap:4px; }
+.super-ataque__cara{ width:clamp(140px, 26vmin, 240px); margin:4px 0 -6px; }
+.super-ataque__rotulo strong.super-ataque__cuenta{
+  font-size:clamp(3rem, 14vmin, 6.5rem); font-variant-numeric:tabular-nums; color:var(--sangre-hi);
+  text-shadow:0 0 18px rgba(255,51,85,.7);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .robot-cara__cabeza, .robot-cara__garganta, .robot-cara__lengua, .robot-cara__lagrima,
+  .robot-cara__ja text, .robot-teclea, .robot-teclea__teclado i{ animation:none; }
+  .robot-brazo--izq{ animation:none; transform:rotate(192deg); }
+  .robot-brazo--der{ animation:none; transform:rotate(168deg); }
+}
+
+/* ============================================================
+   EL ROBOT SE VA
+   Al acabar cada avería el robot no se esfuma: se REINICIA —risa
+   apagada, ojos en blanco, LED de arranque y barra de carga en la
+   frente— y luego se va por donde vino. Todo cabe en SALIDA_MS
+   (1,8 s, ver RobotAtaque.tsx): ~1 s de reinicio y el resto de huida.
+   ============================================================ */
+.robot-cara--reinicio .robot-cara__cabeza{ animation:robot-reinicia 1s steps(2) both; }
+.robot-cara__led-arranque{ fill:var(--phos); animation:robot-led-arranque .18s steps(1) infinite; }
+.robot-cara__barra{ fill:var(--screen); stroke:var(--clorofila); stroke-width:1.5; }
+.robot-cara__barra-carga{
+  fill:var(--clorofila); transform-box:view-box; transform-origin:252px 60px;
+  animation:robot-carga 1s steps(8) both;
+}
+.robot-cara__reinicio-txt{ font-family:var(--f-pixel); font-size:11px; fill:var(--clorofila-hi); letter-spacing:.06em; animation:robot-led-arranque .3s steps(1) infinite; }
+@keyframes robot-reinicia{
+  0%  { transform:translate(-3px, 1px) skewX(4deg); filter:brightness(1.8); }
+  20% { transform:translate(3px, -1px) skewX(-6deg); filter:none; }
+  40% { transform:translate(-2px, 0) skewX(3deg); }
+  60% { transform:translate(1px, 1px); filter:brightness(1.4); }
+  100%{ transform:none; filter:none; }
+}
+@keyframes robot-carga{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+@keyframes robot-led-arranque{ 0%{ opacity:1; } 50%{ opacity:.15; } }
+
+/* La huida «de tubo»: tras el reinicio se aplasta en una raya brillante,
+   la raya se encoge en un punto y el punto se apaga. Es lo que hacen los
+   avisos de Pantalla (cada uno a su ritmo) y el rótulo del súper ataque. */
+.robot-se-va.super-ataque__rotulo{ animation:robot-apaga 1.75s ease-in both; }
+@keyframes robot-apaga{
+  0%, 58%{ transform:translate(-50%, -50%); filter:none; opacity:1; }
+  72%    { transform:translate(-50%, -50%) scale(1, .03); filter:brightness(2.4); opacity:1; }
+  86%    { transform:translate(-50%, -50%) scale(.02, .03); filter:brightness(3); opacity:1; }
+  100%   { transform:translate(-50%, -50%) scale(0); opacity:0; }
+}
+.aviso-conexion.robot-se-va{ animation:aviso-se-va 1.5s ease-in calc(var(--i, 0) * 35ms) both; pointer-events:none; }
+@keyframes aviso-se-va{
+  0%, 62%{ transform:rotate(var(--giro, 0deg)); filter:none; opacity:1; }
+  76%    { transform:rotate(var(--giro, 0deg)) scale(1, .04); filter:brightness(2.4); opacity:1; }
+  90%    { transform:rotate(var(--giro, 0deg)) scale(.03, .04); opacity:1; }
+  100%   { transform:rotate(var(--giro, 0deg)) scale(0); opacity:0; }
+}
+
+/* Terminal: se reinicia sobre el teclado apagado y se mete por abajo. */
+.robot-teclea.robot-se-va{ animation:robot-baja 1.75s ease-in both; }
+.robot-teclea.robot-se-va .robot-teclea__teclado i{ animation:none; background:var(--screen-3); box-shadow:none; }
+.robot-teclea.robot-se-va .robot-teclea__bocadillo{ background:var(--clorofila-hi); border-color:var(--clorofila); }
+@keyframes robot-baja{
+  0%, 58%{ transform:none; opacity:1; }
+  100%   { transform:translateY(160%); opacity:0; }
+}
+
+/* Datos: la cabeza asomada por arriba de la pantalla que sacude. */
+.robot-asoma-arriba{
+  position:absolute; top:4px; left:50%; width:clamp(92px, 10vw, 128px);
+  transform:translateX(-50%); animation:robot-asoma-cae .3s ease-out;
+  filter:drop-shadow(0 6px 14px rgba(0,0,0,.9));
+}
+.robot-asoma-arriba .robot-cara{ width:100%; }
+@keyframes robot-asoma-cae{ from{ transform:translate(-50%, -110%); } }
+
+/* Datos al irse: suelta la pantalla, se reinicia y se esconde. Los brazos
+   bajan y la cabeza sube. Los brazos están girados unos 180°, así que su
+   «arriba» local es el abajo de la pantalla: por eso bajan con -Y. */
+.robot-se-va .robot-brazo--izq{ animation:robot-brazo-izq-se-va 1.75s ease-in both; }
+.robot-se-va .robot-brazo--der{ animation:robot-brazo-der-se-va 1.75s ease-in both; }
+.robot-se-va .robot-asoma-arriba{ animation:robot-sube 1.75s ease-in both; }
+@keyframes robot-brazo-izq-se-va{
+  0%   { transform:rotate(192deg); }
+  10%  { transform:rotate(189deg); }
+  20%, 56%{ transform:rotate(192deg); }
+  100% { transform:rotate(192deg) translateY(-180%); }
+}
+@keyframes robot-brazo-der-se-va{
+  0%   { transform:rotate(168deg); }
+  10%  { transform:rotate(171deg); }
+  20%, 56%{ transform:rotate(168deg); }
+  100% { transform:rotate(168deg) translateY(-180%); }
+}
+@keyframes robot-sube{
+  0%, 58%{ transform:translateX(-50%); }
+  70%    { transform:translate(-50%, 8%); }
+  100%   { transform:translate(-50%, -130%); }
+}
+
+/* Súper ataque al irse: el equipo ya está libre. La capa deja pasar los
+   clics y se aclara mientras el robot se apaga. */
+.super-ataque--saliendo{ pointer-events:none; cursor:auto; animation:super-aclara 1.8s ease-in both; }
+@keyframes super-aclara{ 0%, 55%{ opacity:1; } 100%{ opacity:0; } }
+
+@media (prefers-reduced-motion: reduce){
+  .robot-cara--reinicio .robot-cara__cabeza, .robot-cara__barra-carga, .robot-cara__led-arranque,
+  .robot-cara__reinicio-txt{ animation:none; }
+  .robot-se-va.super-ataque__rotulo, .aviso-conexion.robot-se-va, .robot-teclea.robot-se-va,
+  .robot-se-va .robot-asoma-arriba, .robot-se-va .robot-brazo--izq, .robot-se-va .robot-brazo--der{
+    animation:robot-desvanece 1.75s ease-in both;
+  }
+  .robot-asoma-arriba{ animation:none; }
+  @keyframes robot-desvanece{ 0%, 60%{ opacity:1; } 100%{ opacity:0; } }
+}
+
+/* ============================================================
+   LA MÁQUINA VIVA ALREDEDOR DE CADA PUESTO
+   Raíces de circuito colgando por los dos costados, enredaderas que
+   trepan por las esquinas, un bus con chips por lado y una fila de
+   hierba a lo largo del canto de abajo (JardinEscena en modo `marco`).
+
+   La capa desborda la vista: la franja de cada lado queda casi toda
+   FUERA, en el margen de la página, y se monta un poco sobre el borde.
+   El centro no lleva nada: ahí hay tablas y salidas que leer.
+
+   La vista aísla su apilamiento y la capa va a z-index:-1: queda
+   detrás de todo el contenido sin tener que tocar el `position` de
+   cada hijo (hay bandas sticky y capas absolutas que lo necesitan).
+   ============================================================ */
+.vista{ position:relative; isolation:isolate; }
+.vista > .jardin-escena--marco{
+  z-index:-1; margin:0 !important;
+  inset:0 calc(var(--marco) * -.92) -30px;
+}
+.vista > .jardin-escena--marco canvas:first-child{ opacity:.85; }

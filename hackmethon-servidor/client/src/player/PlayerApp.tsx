@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { usePlayer, useSession } from '../session/SessionContext';
 import { formatMs, roleLabel } from '../lib/format';
 import { Lobby } from './Lobby';
@@ -7,14 +8,30 @@ import { MenuAtaque } from './MenuAtaque';
 import { AnuncioPrimera } from './AnuncioPrimera';
 import { JUEGOS } from './minijuegos/juegos';
 import { SalaEspera } from './SalaEspera';
+import { SuperAtaque } from './SuperAtaque';
+import { CaraRobot } from './RobotAtaque';
+import { LaminaFase } from './LaminaFase';
+import { INTROS, IntroFase, introVista, marcarIntroVista } from './fases/IntroFase';
 
 export function PlayerApp() {
   const player = usePlayer();
-  const { conn, roleFlash, resuelta, averia, volverAlLobby, cerrarCelebracion, socket } = useSession();
+  const { conn, roleFlash, resuelta, averia, aviso, volverAlLobby, cerrarCelebracion, socket } = useSession();
   // El desplegable solo existe con la partida en marcha. En el lobby de
   // antes de empezar no hay a quién atacar, y con el evento terminado
   // tampoco: dejarlo puesto invitaría a seguir dando guerra.
   const enJuego = player.event.status === 'RUNNING' || player.event.status === 'PAUSED';
+
+  // La introducción de la fase: sola la primera vez que esta persona
+  // entra en ella, y cuando la pida con «cómo se juega».
+  const faseKey = player.workspace?.key ?? null;
+  const [intro, setIntro] = useState<string | null>(null);
+  useEffect(() => {
+    if (faseKey && INTROS[faseKey] && !introVista(player.me.id, faseKey)) setIntro(faseKey);
+  }, [faseKey, player.me.id]);
+  const cerrarIntro = () => {
+    if (intro) marcarIntroVista(player.me.id, intro);
+    setIntro(null);
+  };
 
   return (
     <div className="jugador">
@@ -28,8 +45,19 @@ export function PlayerApp() {
       {/* Quién te lo ha hecho. Sin remite es una avería del sistema; con
           él, un rival, y saberlo es media gracia —la otra media es
           devolvérselo—. */}
-      {averia?.de && (
-        <div className="banda ataque-recibido fija">&gt;&lt;! ATAQUE DE {averia.de}</div>
+      {averia?.de && averia.tipo !== 'SUPER' && (
+        <div className="banda ataque-recibido fija">
+          <CaraRobot className="banda-cara" risa={false} />
+          &gt;&lt;! ATAQUE DE {averia.de}
+        </div>
+      )}
+
+      {/* Tickets que entran o salen, y ataques que rebotan en el escudo.
+          Efímero y arriba, sin tapar nada: es una noticia, no una pared. */}
+      {aviso && (
+        <div key={aviso.id} className={`banda fija aviso-juego aviso-juego--${aviso.tipo}`} role="status">
+          {aviso.texto}
+        </div>
       )}
 
       {conn !== 'online' && (
@@ -67,6 +95,12 @@ export function PlayerApp() {
             TIEMPO OFICIAL · {resuelta.attempts} INTENTO(S) FALLIDO(S)
           </p>
 
+          {resuelta.tickets && (
+            <p className="celebracion__tickets">
+              +{resuelta.tickets.ganados} TICKETS · {resuelta.tickets.lugar}.º EN SUPERARLA
+            </p>
+          )}
+
           <button onClick={cerrarCelebracion}>
             {resuelta.ensayo ? 'Cerrar el ensayo' : 'Volver al lobby'}
           </button>
@@ -88,8 +122,14 @@ export function PlayerApp() {
           <header className="fase-cabecera">
             <button className="sutil" onClick={volverAlLobby}>&lt;&lt; LOBBY</button>
             <span className="titulo-fase">{player.workspace.title}</span>
+            {INTROS[player.workspace.key] && (
+              <button className="sutil como-se-juega" onClick={() => setIntro(player.workspace!.key)}>[?] CÓMO SE JUEGA</button>
+            )}
             <span className={`rol rol-${player.me.role}`}>{roleLabel[player.me.role]}</span>
           </header>
+
+          {/* Qué lámina es y por qué capa va: la ven los tres puestos. */}
+          <LaminaFase workspace={player.workspace} lobby={player.lobby} />
 
           {/* ÚNICO punto de la aplicación que decide qué ve cada rol. */}
           <RoleGate role={player.me.role} workspace={player.workspace} />
@@ -115,6 +155,11 @@ export function PlayerApp() {
 
       {/* El primer equipo en superar una fase: lo ve toda la sala. */}
       <AnuncioPrimera />
+
+      {intro && <IntroFase fase={intro} onCerrar={cerrarIntro} />}
+
+      {/* Encima de TODO, también del minijuego: inmoviliza al equipo. */}
+      <SuperAtaque />
     </div>
   );
 }

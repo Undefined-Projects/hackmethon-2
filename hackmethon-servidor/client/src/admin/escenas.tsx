@@ -4,6 +4,7 @@ import { useTicker } from '../lib/useTicker';
 import { azar as azarJardin, crece, preparar, type Semilla } from '../lib/jardin';
 import { Vegetacion, type Tono } from '../player/AnatomiaDeco';
 import { JardinEscena } from './JardinEscena';
+import { Membrana, type Cuidador } from '../player/fases/Membrana';
 
 // ============================================================
 //  Las escenas del proyector.
@@ -39,66 +40,26 @@ function azar(semilla: number): () => number {
 
 const vars = (o: Record<string, string | number>) => o as CSSProperties;
 
-/** Silueta plana, como el caballo de la carrera: a diez metros un
- *  dibujo con detalle es una mancha, y un recorte se lee. */
-function Fulano() {
-  return (
-    <svg className="fulano" viewBox="0 0 24 46" role="img" aria-label="persona">
-      <circle cx="12" cy="7" r="6.4" />
-      <path d="M12 15 C5.2 15 3 19.6 3 26.4 L3 34 L7.4 34 L8.4 46 L15.6 46 L16.6 34 L21 34 L21 26.4 C21 19.6 18.8 15 12 15 Z" />
-    </svg>
-  );
-}
-
 // ============================================================
-//  Fase 1 · Control de Acceso — CONDICIONALES
-//  Una condición decide, y se ve decidir. El ciclo entero dura lo que
-//  tarda alguien en levantar la vista, mirar y volver a lo suyo.
+//  Fase 1 · El Reflejo — CONDICIONALES
+//  La membrana de la rodilla, la misma que ve Pantalla, pero con una
+//  fila de programas inventada y sin nombres: en la pared se cuenta de qué va la
+//  fase, nunca por dónde va nadie. Uno de cada tres rebota: alternar
+//  sí/no se lee como un metrónomo y deja de mirarse.
 // ============================================================
 
-const CICLO_ACCESO = 3600;
+const COLA_SALA: Cuidador[] = [true, true, false, true, false, true, true, false].map((pasa, i) => ({
+  nombre: `programa-${i + 1}`, pasa,
+}));
 
 function EscenaAcceso() {
-  const t = useReloj(120);
-  const turno = Math.floor(t / CICLO_ACCESO);
-  const fase = t % CICLO_ACCESO;
-  // Uno de cada tres se queda fuera. Que no sea uno de cada dos importa:
-  // alternar sí/no se lee como un metrónomo y deja de mirarse.
-  const pasa = turno % 3 !== 2;
-  const decidido = fase > 1500;
-
   return (
     <div className="esc esc-acceso">
-      <div className="acc-pista">
-        <span className="acc-cola" aria-hidden="true">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="acc-espera" style={vars({ '--i': i })}>
-              <Fulano />
-            </span>
-          ))}
-        </span>
-
-        {/* `key` por turno: remonta la silueta y la caminata vuelve a
-            empezar. Sin eso habría que rebobinar la animación a mano. */}
-        <span
-          key={turno}
-          className={`acc-turno ${decidido ? (pasa ? 'pasa' : 'rebota') : ''}`}
-        >
-          <Fulano />
-        </span>
-
-        <span className="acc-puerta" aria-hidden="true">
-          <span className={`acc-barra ${decidido && pasa ? 'abierta' : ''}`} />
-          <span className="acc-poste" />
-        </span>
+      <div className="acc-membrana">
+        <Membrana cola={COLA_SALA} etiquetas={false} conSonido={false} sala />
       </div>
-
-      <p className={`acc-veredicto ${!decidido ? 'duda' : pasa ? 'si' : 'no'}`}>
-        {!decidido ? 'COMPROBANDO…' : pasa ? 'PASA' : 'NO PASA'}
-      </p>
-
       <pre className="esc-codigo">
-        {'si (credencial.valida y turno.activo)\n    abrir()\nsi no\n    registrar_intento()'}
+        {'para cada programa que llega:\n    si firma = ausente  → descartar\n    si origen = externo y permisos >= 4  → descartar\n    dejar pasar'}
       </pre>
     </div>
   );

@@ -315,55 +315,197 @@ que el servidor va a rechazar siempre gasta batería y hace parpadear el estado
 para siempre, y sobre todo hace creer que el problema es la red cuando es el
 código.
 
-## Fase 1 — Control de Acceso · condicionales
+## Fase 1 — El Reflejo · condicionales
 
-> El portero hace preguntas y decide. Hay que reescribir sus decisiones sin que
-> se dé cuenta.
+> Lámina I · la pierna izquierda. «La pierna decide qué la toca antes de pensarlo.»
 
-El portero lee sus reglas **en orden**, se queda con la primera que encaja y, si
-no encaja ninguna, deniega. Hay que colar a uno de los nuestros **sin que cambie
-el veredicto de nadie más** — eso es lo que significa «sin que se dé cuenta».
+La membrana de raíces de la rodilla es el **sistema inmune** de la pierna: un
+flujo de filtros en pseudocódigo que decide qué programas entran. El equipo trae
+sus **esporas** y tiene que reescribir ese flujo desde dentro para que pasen,
+arraiguen y la pierna se marchite hasta quedar fuera de juego.
 
-- **Pantalla** ve la puerta por cámara, el reglamento y a quién deja pasar, y qué
-  regla lo decidió. Nunca el nivel, el turno ni la acreditación de nadie.
-- **Datos** tiene el padrón y el encargo. No ve ni una regla ni un veredicto.
+```
+para cada programa que llega:
+    si origen = externo y permisos <= 2     → descartar   [defensa de la pierna]
+    si permisos >= 3 y firma != valida      → descartar   [vuestro]
+    dejar pasar
+```
 
-Comandos: `reglas`, `insertar <n> si ... entonces permitir|denegar`, `borrar <n>`,
-`probar`, `desplegar`, `camaras`, `camara <n|nombre>`.
+Es un **embudo**: cada filtro descarta lo que cumple su condición. El flujo
+**arranca con las defensas de la propia pierna** (en azul), que hoy frenan a las
+esporas y también se pueden quitar. Se gana cuando, a la vez, **pasan las
+esporas**, **caen los anticuerpos** de la pierna (si entran, encuentran a las
+esporas y las secan) y **la rutina sigue pasando**, para que la pierna no se dé
+cuenta. El orden no cambia lo que sale al final; lo difícil es escribir
+condiciones precisas y atreverse a quitar la defensa que estorba. Dura unos
+**25 minutos**, en dos capas.
 
-### La puerta, en circuito cerrado
+- **Datos** (la memoria) ve el **flujo dibujado** —un rombo por filtro, las
+  defensas en azul, los huecos libres punteados y la membrana al fondo— y el mismo
+  flujo en pseudocódigo. Debajo, el registro (`programas`: tipo y permisos), el
+  `encargo` —qué es espora, qué es anticuerpo y qué es rutina— y **las corridas**:
+  todo lo que da cada `probar`, en tablas para buscar. **No tiene ni el origen ni
+  la firma de nadie.**
+- **Pantalla** (el ojo) ve la membrana por cámara, **sin números**: cada programa
+  llega y pasa o rebota, con su nombre, y **mientras la membrana lo palpa la
+  cámara dice de dónde viene** («viene de: …»). Ese dato no está en ninguna tabla:
+  hay que mirar la fila pasar y apuntarlo. Las firmas que pida Terminal también le
+  llegan a Pantalla.
+- **Terminal** (el nervio) reescribe el flujo, y no ve nada.
+
+Comandos: `flujo`, `filtrar si <condición>`, `quitar <n>`, `probar`, `desplegar`,
+`estado`, `firmas tipo <tipo>`, `firmas <nombre|id>`, `camaras`, `camara <n|nombre>`.
+`firmas` a secas no suelta todas: hay que acotar por un tipo o por un programa, y
+ni los tipos ni los nombres los sabe Terminal —los sabe Datos—. Las condiciones son `campo operador
+valor`, unidas con `y` o con `o` (sin mezclar). Campos: `nombre`, `tipo`,
+`origen`, `permisos` y `firma`.
+
+Los nombres de todos los programas son de jardín (`riego`, `liquen`, `brote`…):
+esporas, anticuerpos y rutina por igual, y sin extensión. Si no, la cámara le
+cantaría a Pantalla qué es cada uno, y eso es de Datos.
+
+### Las dos capas
+
+| capa | nombre | qué pide | tope |
+|---|---|---|---|
+| 1 | **La rótula** | 12 programas: 3 esporas que tienen que pasar y 5 anticuerpos que tienen que caer. | 3 filtros, contando las defensas |
+| 2 | **La muda** | 16 programas: 5 esporas y 7 anticuerpos. | 5 filtros |
+
+En la capa 1 la defensa de la pierna —«origen = externo y permisos <= 2»— deja
+fuera justo a las tres esporas (`brote`, `raiz`, `polen`). Hay que quitarla y,
+con los dos huecos que quedan, describir a los cinco anticuerpos: nombrarlos uno a
+uno no cabe. Las trampas están puestas a propósito:
+
+- «firma = caducada» tira a `poda` (rutina) y a `polen` (espora).
+- «origen = externo» tira a las esporas.
+- «permisos >= 4» tira a `savia`, que es rutina.
+- `corteza` es anticuerpo con la firma válida: la firma sola no basta.
+
+Una solución: `quitar 1`, `permisos >= 3 y firma != valida` y
+`origen = externo y permisos >= 3`.
+
+Al desplegar bien la capa 1, la pierna **muda**:
+
+- **Levanta una defensa nueva** delante de todo —«origen = externo y firma =
+  caducada»— que vuelve a frenar a `polen` y a `nectar`.
+- **Se secan los filtros que nombraban a algo** y `nombre` deja de valer.
+- **Llegan cuatro programas** (`micelio` y `nectar` son esporas; `tallo` es
+  anticuerpo; `xilema`, rutina) y **`savia` se vuelve anticuerpo**.
+- `micelio` es espora, externa y de permisos 3: el filtro «origen = externo y
+  permisos >= 3» se la lleva y hay que afinarlo. «tipo = driver» a secas tira
+  también a `xilema`.
+
+Solo la capa 2 sella el tiempo oficial: la pierna se marchita, la cortinilla
+espera 4,2 s para que se vea rendirse a la membrana, y en el lobby cae la pierna.
+
+**Superar la capa 1 se celebra.** En la cámara de Pantalla la rótula se agrieta y
+tiembla, estalla una lluvia de chispas verdes y sale **«CAPA 1 SUPERADA · la
+rótula cede»**; luego viene la muda («CAPA 2 · LA MUDA»: las raíces se secan, caen
+y vuelven a crecer en azul). Las grietas se quedan en la rótula toda la capa 2. A la
+vez, en los tres puestos, la franja de la lámina se cubre con «[OK] CAPA 1 · LA
+RÓTULA SUPERADA >> CAPA 2 · LA MUDA». La cámara recuerda en la pestaña qué muda ya
+enseñó, así que se ve aunque Pantalla tuviera puesta la cámara del interior en el
+momento de desplegar.
+
+### La membrana, en circuito cerrado
 
 *(Sobre el circuito cerrado en general, ver [El circuito cerrado](#el-circuito-cerrado)
 más abajo.)*
 
-Pantalla ve el control por cámara, con el mismo monitor que la Fase 6: `PUERTA
-NORTE` —la cola, la garita del portero y la barrera— y `VESTIBULO`, el otro lado.
-La cola avanza sola en bucle: cada persona se planta delante de la barrera, el
-portero la mira (`comprobando…`) y el brazo sube (`>> PASA`) o no se mueve
-(`>> ALTO. No pasa.`). Cambiar una regla cambia la escena, y ahí está la gracia:
-se ve al infiltrado rebotar contra la barrera, y después cruzarla.
+Dos cámaras: `MEMBRANA` —la fila de programas, los dos pilares, la rótula con el
+ganglio y las raíces— e `INTERIOR`, lo que ya entró. La escena es un SVG animado
+en el cliente (`client/src/player/fases/Membrana.tsx`): cada programa —una
+cápsula de circuito con patillas que anda como un bicho y un brote en la antena—
+llega, un zarcillo lo **palpa**, el impulso sube al ganglio y baja a las raíces,
+que **se apartan** (`PASA`) o **se cierran con espinas** (`ALTO`). Con muchos en
+la fila, se aprietan para caber.
 
-**La cámara enseña el efecto, nunca la causa.** Quién pasa y quién no, sí; **qué
-regla lo decidió, no** — eso sigue saliendo solo en `probar`, que es la lección de
-la fase. Una cámara que cantara la regla dejaría la simulación sin trabajo.
-Tampoco filtra nada del padrón: ni turno, ni nivel, ni acreditación, ni
-departamento. Hay una prueba por cada uno de esos campos.
+El servidor manda en `vista.dibujo` **lo mismo que ya daban los fotogramas de
+texto** —nombre, si pasa y si llegó con la muda— y el cliente pone la animación.
+**La cámara enseña el efecto, sin números:** ni cuántos pasan ni en qué filtro
+cae cada uno —eso está en las corridas de Datos—, y la imagen no lleva ni tipo,
+ni origen, ni firma, ni qué es cada programa. Hay una prueba por cada uno.
 
-Los rótulos dan el resumen —`EN COLA 7`, `PASAN 3`, `RECHAZA 4`— y el que importa:
-`TODO EN ORDEN` cuando el reglamento encaja con el encargo, o `n FUERA DE SITIO`
-mientras no. Como en la Fase 6, **el selector se dibuja pero no se pulsa**: las
-cámaras las cambia la consola, que no las ve.
+### La simulación: corridas en la base de datos
 
-Las tres trampas son las tres formas de equivocarse con un `if`:
+`probar` no le enseña el resultado a nadie: lo **guarda** como una corrida
+numerada (`R1`, `R2`…) y a Pantalla solo le dice que se guardó. Cuántos pasan,
+quién cae y en qué filtro se **busca** en tres tablas de Datos, con la corrida más
+reciente arriba y marcada como nueva:
 
-- **Poner la regla al final no hace nada.** La que ya decidió decidió.
-- **Una condición demasiado ancha cuela a quien no querías** — `nivel = 1`
-  también describe a alguien que debía seguir fuera.
-- **Borrar la regla que estorba rompe dos veredictos** que dependían de ella.
+| tabla | columnas | para qué |
+|---|---|---|
+| `corridas` | `id`, `filtros`, `pasan`, `caen` | el recuento de cada `probar` |
+| `corrida_filtros` | `id`, `corrida_id`, `n`, `condicion`, `de` | el flujo que tenía cada corrida; `de` dice si el filtro era de la pierna o del equipo |
+| `resultados` | `id`, `corrida_id`, `programa_id`, `veredicto`, `cae_en_filtro` | qué le pasó a cada programa |
 
-`e.quiroz` es nivel 5 y no entra, porque la regla que mira la acreditación va
-antes que la que mira el nivel. Ese detalle es la fase entera. La solución no es
-única: se juzga el **comportamiento** del reglamento, no cómo se escribió.
+`resultados` apunta a `programas` y a `corridas`, así que se salta de un
+resultado a su programa con un clic, y el buscador de cada tabla filtra por
+corrida (`R3-`) o por programa. Comparar eso con el `encargo` es el trabajo de
+Datos; la cámara de Pantalla sirve para confirmarlo a simple vista. Se guardan
+las 10 últimas corridas. `probar` sigue siendo gratis.
+
+## Contra las soluciones copiadas
+
+No se puede impedir que alguien fotografíe una pantalla y se la pase a una IA o a
+otra mesa. Se puede hacer que cueste más que pensar en equipo. La Fase 1 lleva
+las cuatro medidas; el mecanismo vale para las demás.
+
+- **Una versión por equipo.** Cada mesa juega la misma fase —las mismas trampas,
+  la misma forma de resolverla— con otra piel: otros nombres y otros ids, otro
+  orden en la fila, otras palabras para el origen, el tipo y la firma (p. ej.
+  `local/remoto`, `sellada/vencida/sin-sello`) y otra escala de permisos,
+  desplazada y a veces al revés. Sale del id del equipo (`ctx.semilla`), así que
+  es estable aunque se reinicie el servidor. La solución de una mesa, copiada tal
+  cual, no sirve en otra; hay una prueba que lo comprueba. Sin semilla, la versión
+  canónica, que es la de las pruebas.
+- **Nadie lo tiene todo.** Datos no ve ni el origen ni la firma; el origen solo lo
+  enseña la cámara de Pantalla, un programa cada vez; la firma solo la consulta
+  Terminal, por tipo o por programa. Una captura de una sola pantalla no basta.
+- **La consola no admite pegar.** Ni pegar ni arrastrar: se escribe a mano. El
+  intento se avisa en la consola y se cuenta (`terminal:pegado`).
+- **Señales en el panel** (`server/src/realtime/vigilancia.ts`). Cada equipo
+  lleva tres cuentas: intentos de pegar, comandos de 24 caracteres o más que
+  llegan a más de 14 caracteres por segundo desde el anterior, y fases resueltas
+  en menos de 5 minutos de tiempo activo. Si alguna salta, su tarjeta en el panel
+  dice **[!] MIRAR ESTA MESA** con el detalle. No castiga nada: dice dónde mirar.
+  Vive en memoria y se borra al reiniciar el juego.
+
+**La solución de una mesa concreta**, para dar pistas justas: desde `server`,
+`npm run solucion:f1 -- <EQUIPO>` imprime su versión (programas, quién es espora y
+quién anticuerpo) y la solución traducida a sus palabras. La guía ilustrada está en
+`Guia-de-solucion-Fase-1-El-Reflejo.pdf`, solo para la organización; sus capturas
+las regenera `e2e/_guia-f1.mjs` contra el servidor de prueba, y `e2e/_pdf.mjs` pasa
+el HTML a PDF.
+
+## La animación de cada fase
+
+La primera vez que alguien entra en una fase, antes de jugar, ve una animación
+corta que cuenta qué hay que hacer (`client/src/player/fases/IntroFase.tsx`). Se
+salta, se pausa con la barra espaciadora, se recorre con las flechas y se vuelve a
+ver con **[?] CÓMO SE JUEGA**, en la cabecera de la fase. Lo ya visto se recuerda
+en el navegador, por persona y fase. No pide nada al servidor ni lleva datos de la
+partida: es la misma para todas las mesas.
+
+La de la Fase 1 (`IntroReflejo.tsx`) son seis escenas, poco más de un minuto, en
+español de México (ustedes, nunca vosotros): la
+pierna y su membrana; quién es quién (esporas, anticuerpos, rutina); el problema
+(la defensa de la pierna frena a las esporas); reescribir el flujo; nadie lo tiene
+todo; y probar, desplegar y las dos capas.
+
+En el panel, **ANIMACIONES DE LAS FASES** las lista con un botón **VER ANIMACIÓN**
+que la reproduce solo en esa pantalla, sin mandarla a nadie ni marcarla como vista.
+Añadir la de otra fase es registrar sus escenas en `INTROS`.
+
+## La lámina de cada fase
+
+Encima de los tres puestos, en todas las fases, va una franja
+(`client/src/player/LaminaFase.tsx`): el número de lámina, la parte del cuerpo
+que es esa fase, su nombre y su concepto, un robot pequeño con la parte encendida
+y las ya caídas en verde, y —si la fase va por capas— una ficha por capa. Cada
+capa que cae hace avanzar una enredadera por el borde de la franja. Las fases que
+mandan `lamina: { capa, capas, nombres, resuelta }` en su proyección enseñan las
+capas; las demás, solo la cabecera.
 
 ## Fase 2 — El Enemigo
 

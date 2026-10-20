@@ -32,8 +32,10 @@ export type PropsMapaAtaque = {
   /** El equipo de quien mira. */
   yo: string;
   ataques: AtaqueVivo[];
-  /** Los rivales, estén o no en el plano. */
-  objetivos: { id: string; name: string }[];
+  /** Los rivales, estén o no en el plano. `intensidad` es el
+   *  multiplicador del ataque normal contra cada uno (lo calcula el
+   *  servidor); sin él, no se enseña. */
+  objetivos: { id: string; name: string; intensidad?: number }[];
   ultimoObjetivoId: string | null;
   listo: boolean;
   /** El reloj del botón: «LISTO», «00:42»… */
@@ -43,7 +45,21 @@ export type PropsMapaAtaque = {
   alCerrar: () => void;
   /** Una franja arriba: el aviso de simulación, la nota del último ataque… */
   cabecera?: ReactNode;
+  /** Lo que va en la barra de arriba junto al reloj: tickets y escudo. */
+  barra?: ReactNode;
+  /** El súper ataque, si quien mira puede lanzarlo. Va junto al botón
+   *  de atacar porque se apunta igual: a la mesa elegida. */
+  superAtaque?: {
+    listo: boolean;
+    /** Por qué no se puede, si no se puede: «faltan tickets», «00:42»… */
+    motivo: string | null;
+    precio: number;
+    alLanzar: (id: string, nombre: string) => void;
+  };
 };
+
+/** El multiplicador, en palabras: es lo que se lee de un vistazo. */
+const fuerza = (x: number) => (x < 0.85 ? 'débil' : x > 1.15 ? 'fuerte' : 'normal');
 
 export function MapaAtaque(p: PropsMapaAtaque) {
   const { plano, equipos, yo, ataques, objetivos, ultimoObjetivoId, listo, reloj, enviando, alAtacar, alCerrar } = p;
@@ -92,6 +108,7 @@ export function MapaAtaque(p: PropsMapaAtaque) {
         <header className="mapa-ataque-cab">
           <h2>&gt;&lt;! ¿A QUIÉN ATACAS?</h2>
           <span className={`mapa-ataque-reloj ${listo ? 'listo' : ''}`}>{reloj}</span>
+          {p.barra}
           <span className="mapa-ataque-leyenda">
             <i className="lin lin--contra" /> a por ti
             <i className="lin lin--mia" /> tuyos
@@ -117,8 +134,10 @@ export function MapaAtaque(p: PropsMapaAtaque) {
               : (
                 <ol className="mapa-ataque-feed">
                   {[...ataques].reverse().slice(0, 8).map((a) => (
-                    <li key={a.id} className={a.a === yo ? 'contra' : a.de === yo ? 'mia' : ''}>
-                      <b>{nombre(a.de)}</b> &gt;&gt; <b>{nombre(a.a)}</b>
+                    <li key={a.id} className={[a.a === yo ? 'contra' : a.de === yo ? 'mia' : '', a.super ? 'super' : '', a.bloqueado ? 'bloqueado' : ''].join(' ')}>
+                      <b>{nombre(a.de)}</b> {a.super ? '>>>' : '>>'} <b>{nombre(a.a)}</b>
+                      {a.super && <em> SÚPER</em>}
+                      {a.bloqueado && <em> ESCUDO</em>}
                       <span>{Math.max(0, Math.round((ahora - a.local) / 1000))} s</span>
                     </li>
                   ))}
@@ -143,16 +162,34 @@ export function MapaAtaque(p: PropsMapaAtaque) {
             <>
               <span className="mapa-ataque-elegido">
                 Objetivo: <b>{objetivo.name}</b>
+                {objetivo.intensidad !== undefined && (
+                  <span className={`mapa-ataque-intensidad intensidad--${fuerza(objetivo.intensidad)}`}>
+                    {' '}· intensidad ×{objetivo.intensidad.toFixed(1)} ({fuerza(objetivo.intensidad)})
+                  </span>
+                )}
                 {vetado && <em> · le atacaste el último: toca otro</em>}
                 {!vetado && !listo && <em> · todavía enfriando</em>}
               </span>
-              <button
-                type="button" className="mapa-ataque-fuego"
-                disabled={!listo || vetado || enviando !== null}
-                onClick={() => alAtacar(objetivo.id, objetivo.name)}
-              >
-                {enviando ? 'LANZANDO…' : `ATACAR A ${objetivo.name}`}
-              </button>
+              <span className="mapa-ataque-botones">
+                <button
+                  type="button" className="mapa-ataque-fuego"
+                  disabled={!listo || vetado || enviando !== null}
+                  onClick={() => alAtacar(objetivo.id, objetivo.name)}
+                >
+                  {enviando ? 'LANZANDO…' : `ATACAR A ${objetivo.name}`}
+                </button>
+                {p.superAtaque && (
+                  <button
+                    type="button" className="mapa-ataque-super"
+                    disabled={!p.superAtaque.listo || enviando !== null}
+                    title={p.superAtaque.motivo ?? 'Inmoviliza a todo el equipo 15 s y atraviesa su escudo'}
+                    onClick={() => p.superAtaque!.alLanzar(objetivo.id, objetivo.name)}
+                  >
+                    SÚPER ATAQUE · {p.superAtaque.precio} T
+                    {p.superAtaque.motivo && <small>{p.superAtaque.motivo}</small>}
+                  </button>
+                )}
+              </span>
             </>
           ) : (
             <span className="mapa-ataque-elegido">Pulsa la mesa de un rival.</span>
@@ -201,7 +238,7 @@ export function LineasAtaque({ mesaDe, ataques, yo, ahora }: {
         const [x2, y2] = corta(m2.x, m2.y, Math.min(m2.w, m2.h) * 0.75);
         const edad = (ahora - a.local) / VIDA_LINEA_ATAQUE_MS;
         return (
-          <g key={a.id} className={`linea-ataque linea-ataque--${tipo}`} style={{ opacity: Math.max(0.15, 1 - edad * 0.85) }}>
+          <g key={a.id} className={`linea-ataque linea-ataque--${tipo}${a.super ? ' linea-ataque--super' : ''}${a.bloqueado ? ' linea-ataque--bloqueado' : ''}`} style={{ opacity: Math.max(0.15, 1 - edad * 0.85) }}>
             <path className="linea-ataque__halo" d={`M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`} />
             <path className="linea-ataque__trazo" d={`M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`} markerEnd={`url(#punta-${tipo})`} />
             {ahora - a.local < 1600 && <circle className="linea-ataque__impacto" cx={m2.x} cy={m2.y} r={0.4} />}

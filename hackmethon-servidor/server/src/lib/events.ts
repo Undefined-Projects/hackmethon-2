@@ -5,7 +5,7 @@
 //  silencioso a mitad del evento en vivo.
 // ============================================================
 
-import type { Role, EventStatus } from './constants.js';
+import type { Role, EventStatus, TipoAveria } from './constants.js';
 
 // ---------- Salida del sistema (lo que pinta el Operador de Pantalla) ----------
 
@@ -14,7 +14,14 @@ export type BloqueSalida =
   | { tipo: 'lista'; titulo?: string; items: { clave: string; valor: string }[] }
   | { tipo: 'tabla'; titulo?: string; columnas: string[]; filas: string[][] }
   | { tipo: 'error'; texto: string }
-  | { tipo: 'exito'; titulo: string; lineas: string[] };
+  | { tipo: 'exito'; titulo: string; lineas: string[] }
+  /**
+   * El flujo de filtros de la Fase 1, en pseudocódigo: `filtros` son las
+   * condiciones tal cual se escribieron, en orden. `marchitos` son los que
+   * la muda se llevó: se pintan secándose, una sola vez, en la salida que
+   * los tiró.
+   */
+  | { tipo: 'flujo'; titulo?: string; filtros: string[]; max: number; marchitos?: string[]; pierna?: boolean[] };
 
 export type SalidaComando = {
   id: string;
@@ -145,6 +152,22 @@ export type AtaqueReciente = {
   de: string; a: string;
   /** Cuándo (ms del servidor). */
   at: number;
+  /** Súper ataque: se pinta distinto, porque atraviesa escudos. */
+  super?: boolean;
+  /** Rebotó en un escudo. También es público: la sala ve el golpe y
+   *  ve que no entró. */
+  bloqueado?: boolean;
+};
+
+/** Un ingreso o gasto de tickets. Solo a la room del equipo: el saldo
+ *  es privado. */
+export type MovimientoTickets = {
+  /** Lo que queda después del movimiento. */
+  saldo: number;
+  /** Positivo si entra, negativo si sale. */
+  delta: number;
+  /** «Fase 2 · 1.er lugar», «Escudo», «Ajuste del panel»… */
+  motivo: string;
 };
 
 export type AtaqueView = {
@@ -152,8 +175,15 @@ export type AtaqueView = {
   esperaMs: number;
   /** A quién NO se puede atacar ahora: fue el último. */
   ultimoObjetivoId: string | null;
-  /** Los demás equipos, para el desplegable. */
-  objetivos: { id: string; name: string; logoAt: number | null }[];
+  /** Los demás equipos, para el desplegable. `intensidad` es el
+   *  multiplicador que tendría AHORA un ataque normal contra él, según
+   *  la distancia en fases: se calcula en el servidor para que el número
+   *  que se enseña sea el que se aplica. */
+  objetivos: { id: string; name: string; logoAt: number | null; intensidad: number }[];
+  /** ms de escudo que le quedan al equipo. 0 = sin escudo. */
+  escudoMs: number;
+  /** ms que faltan para poder lanzar otro súper ataque. 0 = ya. */
+  superEsperaMs: number;
   /** El plano del auditorio: el ataque se elige sobre el mapa. */
   plano: Plano;
   /** Los ataques del último minuto, de todos contra todos. */
@@ -166,6 +196,8 @@ export type PlayerSnapshot = {
   me: { id: string; displayName: string; role: Role; teamId: string };
   team: {
     id: string; name: string; score: number; members: MemberView[];
+    /** El saldo de tickets. Solo lo ven el equipo y el panel. */
+    tickets: number;
     /** Fecha del logo en ms, o `null` si no tiene. NO son los bytes: el
      *  logo se pide aparte por HTTP y esto es solo su versión, para que
      *  el navegador no se quede enseñando el anterior. */
@@ -181,7 +213,7 @@ export type PlayerSnapshot = {
   misMarcas: MarcaMinijuego[];
   /** La avería que sufre ahora, con lo que le queda: al recargar la
    *  página se retoma donde estaba, no desaparece. */
-  averia: { tipo: Role; restanteMs: number; de?: string } | null;
+  averia: { tipo: TipoAveria; restanteMs: number; de?: string } | null;
   /** El mejor de toda la sala en cada minijuego de la sala de espera. */
   recordsSala: RecordSala[];
 };
@@ -258,8 +290,17 @@ export type AdminSnapshot = {
   }[];
   teams: {
     id: string; name: string; score: number;
+    /** Saldo de tickets. Viaja en el snapshot del panel, pero la
+     *  proyección de sala NO lo pinta: es privado de cada equipo. */
+    tickets: number;
+    /** ms de escudo que le quedan, sellados al emitir. */
+    escudoMs: number;
     /** Versión del logo en ms (ver `PlayerSnapshot.team.logoAt`). */
     logoAt: number | null;
+    /** Señales para que la organización se acerque a la mesa: intentos
+     *  de pegar en la consola, comandos más rápidos de lo que se teclea y
+     *  fases resueltas en muy poco tiempo. Solo las ve el panel. */
+    alertas: { pegados: number; rafagas: number; rapidas: string[] };
     members: MemberView[];
     progress: {
       phaseId: string; status: string; timeToSolveMs: number | null; attempts: number;
@@ -468,7 +509,12 @@ export interface ServerToClientEvents {
   /** `de` lleva el nombre del equipo que lo mandó, si vino de un rival.
    *  Sin remite es del panel: no es lo mismo que te averíe el sistema
    *  que saber quién te lo ha hecho. */
-  'player:averia': (p: { tipo: Role; duracionMs: number; de?: string }) => void;
+  'player:averia': (p: { tipo: TipoAveria; duracionMs: number; de?: string }) => void;
+  /** El saldo del equipo cambió. Solo a la room del equipo. */
+  'tickets:movimiento': (m: MovimientoTickets) => void;
+  /** Un ataque rebotó en el escudo del equipo. Solo a la room del equipo
+   *  atacado: saber quién lo intentó es lo que hace que el escudo luzca. */
+  'ataque:bloqueado': (p: { de: string }) => void;
   /** Un ataque acaba de salir. A TODOS, jugadores y panel: es lo que
    *  pinta la línea en el mapa de cada uno en el momento. */
   'ataque:lanzado': (a: AtaqueReciente) => void;
@@ -508,6 +554,8 @@ export interface ServerToClientEvents {
     /** true → ensayo lanzado desde el panel. Nada se ha guardado, y al
      *  cerrarla el equipo NO sale de la fase en la que estuviera. */
     ensayo?: boolean;
+    /** Los tickets que les dio superarla, y en qué puesto llegaron. */
+    tickets?: { ganados: number; lugar: number };
   }) => void;
 }
 
@@ -585,7 +633,12 @@ export interface ClientToServerEvents {
     ack: Ack<{ equipos: number }>,
   ) => void;
   /** Lanza un minijuego a todos los jugadores, o lo termina con `null`. */
-  'admin:minijuego': (p: { clave: MinijuegoClave | null }, ack: Ack<{ ronda: string | null }>) => void;
+  /** Al cerrar una ronda (terminarla o lanzar otra), se reparten sus
+   *  tickets: `premiados` dice a cuántos equipos. */
+  'admin:minijuego': (p: { clave: MinijuegoClave | null }, ack: Ack<{ ronda: string | null; premiados: number }>) => void;
+  /** Suma o resta tickets a mano a un equipo (premios de la sala,
+   *  correcciones). Nunca deja el saldo por debajo de cero. */
+  'admin:equipo:tickets': (p: { teamId: string; delta: number }, ack: Ack<{ saldo: number }>) => void;
   /** Fin de un intento. Solo cuenta el mejor de cada persona por ronda. */
   'minijuego:puntaje': (p: { ronda: string; puntos: number }, ack: Ack<{ mejor: number }>) => void;
   /** Enciende o apaga el acceso libre a las fases abiertas. */
@@ -631,8 +684,13 @@ export interface ClientToServerEvents {
    *  puestos; el enfriamiento y el «no repetir objetivo» son del equipo. */
   'player:ataque': (
     p: { teamId: string },
-    ack: Ack<{ esperaMs: number; objetivo: string }>,
+    ack: Ack<{ esperaMs: number; objetivo: string; intensidad: number; bloqueado: boolean }>,
   ) => void;
+  /** Compra un escudo para el equipo. Cualquiera de los puestos. */
+  'player:escudo': (p: unknown, ack: Ack<{ escudoMs: number; saldo: number }>) => void;
+  /** Súper ataque: inmoviliza a todo el equipo rival y atraviesa su
+   *  escudo. Tiene su propia espera, aparte de la del ataque normal. */
+  'player:super': (p: { teamId: string }, ack: Ack<{ objetivo: string; saldo: number }>) => void;
 
   'session:resync': (p: unknown, ack: (s: Snapshot | null) => void) => void;
   'phase:enter': (p: { phaseId: string }, ack: (r: { ok: boolean; error?: string }) => void) => void;
@@ -640,6 +698,8 @@ export interface ClientToServerEvents {
   /** Comando del Operador de Terminal. El acuse NO lleva la respuesta:
    *  solo confirma la entrega. Lo que respondió el sistema va a Pantalla. */
   'terminal:command': (p: { texto: string }, ack: Ack<{ aceptado: boolean }>) => void;
+  /** La consola no admite pegar: el intento se cuenta para el panel. */
+  'terminal:pegado': () => void;
 }
 
 /** Datos que el middleware de autenticación cuelga del socket. */

@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { azar, clamp, crece, paleta, pintaPlanta, preparar, tramo, type Paleta, type Planta } from '../lib/jardin';
 
 /**
- * El jardín de fondo de las escenas de minijuego.
+ * El jardín de fondo de las escenas de minijuego, del mapa de ataque y,
+ * detrás de su vista, de cada puesto del jugador.
  *
  * La pared del recreo no es una tabla sobre negro: es la máquina viva
  * de la portada. Del borde de arriba cuelgan raíces de circuito, desde
@@ -19,7 +20,7 @@ import { azar, clamp, crece, paleta, pintaPlanta, preparar, tramo, type Paleta, 
  * y solo dibuja unos cuantos tramos cortos.
  */
 
-type Variante = 'enredadera' | 'plaga' | 'sinapsis' | 'latido' | 'ataque' | 'robot' | 'espera';
+type Variante = 'enredadera' | 'plaga' | 'sinapsis' | 'latido' | 'ataque' | 'robot' | 'espera' | 'terminal' | 'datos' | 'pantalla';
 
 /** Cada juego crece distinto: el snake más vivo y con flores; la plaga
  *  más circuito, más chips, menos hojas. */
@@ -37,13 +38,25 @@ const RECETA: Record<Variante, { semilla: number; hoja: number; flor: number; ch
   robot:      { semilla: 1919, hoja: 0.45, flor: 0.22, chip: 0.14, raices: 10 },
   // La espera de la proyección: la más frondosa, que se pasa horas en la pared.
   espera:     { semilla: 2020, hoja: 0.5, flor: 0.3, chip: 0.1, raices: 10 },
+  // Los tres puestos, de fondo detrás de su vista. La consola es la más
+  // máquina —pistas y chips, apenas una hoja—; la base de datos, raíces
+  // y vida que la alimentan; la pantalla, a medias entre las dos.
+  terminal:   { semilla: 3141, hoja: 0.18, flor: 0.05, chip: 0.22, raices: 6 },
+  datos:      { semilla: 2718, hoja: 0.45, flor: 0.24, chip: 0.08, raices: 8 },
+  pantalla:   { semilla: 1618, hoja: 0.32, flor: 0.15, chip: 0.14, raices: 7 },
 };
 
 const BROTE = 2600, PULSO = 1300, CADA = 2600;
 
 type Maceta = { p: Planta; paleta: Paleta; retraso: number; pulsa: boolean };
 
-export function JardinEscena({ variante, latido }: { variante: Variante; latido: number }) {
+/**
+ * `marco` cambia el reparto: en vez de llenar una pared, la máquina crece
+ * en una franja de ese ancho a cada lado —el borde de una vista del
+ * jugador, montándose sobre él— y como hierba a lo largo del canto de
+ * abajo. El centro se queda limpio: ahí hay tablas y salidas que leer.
+ */
+export function JardinEscena({ variante, latido, marco }: { variante: Variante; latido: number; marco?: number }) {
   const caja = useRef<HTMLDivElement>(null);
   const fondo = useRef<HTMLCanvasElement>(null);
   const luz = useRef<HTMLCanvasElement>(null);
@@ -76,6 +89,7 @@ export function JardinEscena({ variante, latido }: { variante: Variante; latido:
       const r = azar(R.semilla);
       const ancho = W > 900;
       macetas = [];
+      if (marco) return siembraMarco(r, Math.min(marco, W * 0.3));
 
       // 1. Raíces que cuelgan del borde de arriba, a los dos lados del
       //    título: la franja del centro se deja limpia para que el
@@ -125,6 +139,67 @@ export function JardinEscena({ variante, latido }: { variante: Variante; latido:
             hoja: 0, flor: 0, chip: R.chip + 0.18, max: 40,
           })),
           paleta: PAL_BUS, retraso: 800, pulsa: true,
+        });
+      }
+    }
+
+    // El marco de una vista: raíces colgando por las dos franjas,
+    // trepadoras desde las esquinas, un bus por costado y una fila de
+    // hierba a lo largo del canto de abajo.
+    function siembraMarco(r: () => number, B: number) {
+      const franja = (lado: number, y0: number, y1: number): [number, number, number, number] =>
+        lado ? [W - B, y0, W, y1] : [0, y0, B, y1];
+      for (let k = 0; k < R.raices; k++) {
+        const lado = k % 2;
+        const u = B * (0.15 + 0.7 * r());
+        macetas.push({
+          p: preparar(crece({
+            x: Math.round(lado ? W - u : u), y: 0, dir: 2, sesgo: 2, tiron: 0.45, rnd: r,
+            caja: franja(lado, 0, H * (0.3 + r() * 0.35)),
+            paso: [7, 14], largo: [4, 8], giro: 0.35, rama: 0.42, prof: 3,
+            hoja: R.hoja * 0.6, tamHoja: 7, flor: R.flor * 0.6, tamFlor: 2.8,
+            chip: R.chip, max: 34,
+          })),
+          paleta: PAL_RAIZ, retraso: k * 140, pulsa: true,
+        });
+      }
+      for (const lado of [0, 1]) {
+        for (let k = 0; k < 2; k++) {
+          const x = lado ? W - 6 - k * B * 0.4 : 6 + k * B * 0.4;
+          macetas.push({
+            p: preparar(crece({
+              x: Math.round(x), y: H, dir: 6, sesgo: 6, tiron: 0.4, rnd: r,
+              caja: franja(lado, H * 0.35, H),
+              paso: [8, 15], largo: [4, 8], giro: 0.3, rama: 0.4, prof: 3,
+              hoja: R.hoja + 0.15, tamHoja: 9, flor: R.flor, tamFlor: 3,
+              chip: R.chip * 0.5, max: 46,
+            })),
+            paleta: base, retraso: 400 + k * 260, pulsa: false,
+          });
+        }
+        macetas.push({
+          p: preparar(crece({
+            x: lado ? W - 2 : 2, y: Math.round(H * (0.3 + r() * 0.25)), dir: lado ? 4 : 0, sesgo: 2, tiron: 0.25, rnd: r,
+            caja: franja(lado, H * 0.2, H * 0.8),
+            paso: [10, 18], largo: [3, 7], giro: 0.25, rama: 0.35, prof: 2,
+            hoja: 0, flor: 0, chip: R.chip + 0.18, max: 26,
+          })),
+          paleta: PAL_BUS, retraso: 800, pulsa: true,
+        });
+      }
+      // La hierba: matas cortas y tupidas a lo ancho del canto de abajo.
+      const n = Math.max(4, Math.round(W / 64));
+      for (let i = 0; i < n; i++) {
+        const x = Math.round(((i + 0.5 + (r() - 0.5) * 0.7) * W) / n);
+        macetas.push({
+          p: preparar(crece({
+            x, y: H, dir: 6, sesgo: 6, tiron: 0.5, rnd: r,
+            caja: [x - 24, H - 44, x + 24, H],
+            paso: [4, 8], largo: [2, 4], giro: 0.45, rama: 0.55, prof: 2,
+            hoja: 0.85, tamHoja: 6, flor: R.flor * 0.8, tamFlor: 2.4,
+            chip: R.chip * 0.3, max: 9,
+          })),
+          paleta: base, retraso: 300 + (i % 7) * 110, pulsa: false,
         });
       }
     }
@@ -198,7 +273,7 @@ export function JardinEscena({ variante, latido }: { variante: Variante; latido:
     });
     ojo.observe(div);
     return () => { cancelAnimationFrame(raf); clearTimeout(espera); ojo.disconnect(); disparo.current = null; };
-  }, [variante]);
+  }, [variante, marco]);
 
   // Alguien mejoró: la pared late.
   const primero = useRef(true);
@@ -208,7 +283,10 @@ export function JardinEscena({ variante, latido }: { variante: Variante; latido:
   }, [latido]);
 
   return (
-    <div ref={caja} className="jardin-escena" aria-hidden="true">
+    <div
+      ref={caja} className={`jardin-escena${marco ? ' jardin-escena--marco' : ''}`} aria-hidden="true"
+      style={marco ? { ['--marco' as string]: `${marco}px` } : undefined}
+    >
       <canvas ref={fondo} />
       <canvas ref={luz} />
     </div>

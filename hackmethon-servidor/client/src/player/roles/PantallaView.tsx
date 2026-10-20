@@ -2,9 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { FiltroTrafico, LineaTrafico, PhaseWorkspace, SalidaComando } from '../../shared/events';
 import { useSession } from '../../session/SessionContext';
+import { CaraRobot, useSalida } from '../RobotAtaque';
+import { JardinEscena } from '../../admin/JardinEscena';
 import { sonar } from '../../lib/sonido';
 import { Salida } from '../Bloques';
 import { useMountId } from './mount';
+import { Interior, Membrana, type Cuidador } from '../fases/Membrana';
 
 type Payload = {
   salidas: SalidaComando[];
@@ -78,8 +81,15 @@ type VistaCamaras = {
     tension: number;
     /** 0-3. Cada adelanto del lanzamiento ensucia mas la señal. */
     ruido: number;
+    /** La escena en datos, para la fase que se dibuja aquí en vez de en
+     *  caracteres (la membrana de la Fase 1). Si viene, manda ella. */
+    dibujo?: DibujoCamara;
   };
 };
+
+type DibujoCamara =
+  | { tipo: 'membrana'; capa: number; resuelta: boolean; muda: number; cola: Cuidador[] }
+  | { tipo: 'interior'; capa: number; resuelta: boolean; dentro: string[] };
 
 /** Medio segundo por embestida y dos segundos por casilla: el ritmo lo
  *  marca la sala, no el reloj del servidor. */
@@ -292,11 +302,14 @@ const TOPE_AVISOS = 48;
  *  ancho todavia le queda casi todo el cuerpo encima del texto. */
 const REPARTO = { x0: -4, x1: 78, y0: -6, y1: 82 };
 
-function useAvisosDeConexion(activa: boolean, hasta: number) {
+export function useAvisosDeConexion(activa: boolean, hasta: number) {
   const [avisos, setAvisos] = useState<{ id: number; x: number; y: number; giro: number }[]>([]);
+  // Al acabar la avería los avisos no se borran de golpe: el robot de
+  // cada uno se reinicia y se va, y solo entonces desaparecen.
+  const fase = useSalida(activa);
 
   useEffect(() => {
-    if (!activa) { setAvisos([]); return; }
+    if (!activa) return;
     let n = 0;
     const brotar = () => {
       n++;
@@ -320,11 +333,14 @@ function useAvisosDeConexion(activa: boolean, hasta: number) {
     };
     for (let i = 0; i < PRIMERA_TANDA; i++) brotar();
     const id = setInterval(brotar, CADA_MS);
-    return () => { clearInterval(id); setAvisos([]); };
+    return () => clearInterval(id);
   }, [activa, hasta]);
 
+  // Ya se fueron todos los robots: ahora sí, fuera los avisos.
+  useEffect(() => { if (fase === null) setAvisos([]); }, [fase]);
+
   const cerrar = (id: number) => setAvisos((v) => v.filter((a) => a.id !== id));
-  return { avisos, cerrar };
+  return { avisos, cerrar, saliendo: fase === 'saliendo' };
 }
 
 /**
@@ -425,8 +441,15 @@ function MonitorCamaras({ camaras }: { camaras: VistaCamaras }) {
         <span className="cam-hora">{hora.toTimeString().slice(0, 8)}</span>
       </div>
 
-      <div className="cam-imagen">
-        <pre className="cam-plano">{imagen.join('\n')}</pre>
+      <div className={`cam-imagen${vista.dibujo ? ' con-dibujo' : ''}`}>
+        {vista.dibujo?.tipo === 'membrana' ? (
+          <Membrana cola={vista.dibujo.cola} capa={vista.dibujo.capa}
+                    resuelta={vista.dibujo.resuelta} muda={vista.dibujo.muda} />
+        ) : vista.dibujo?.tipo === 'interior' ? (
+          <Interior dentro={vista.dibujo.dentro} resuelta={vista.dibujo.resuelta} />
+        ) : (
+          <pre className="cam-plano">{imagen.join('\n')}</pre>
+        )}
         {vista.rotulos.length > 0 && (
           <ul className="cam-rotulos">
             {vista.rotulos.map((r) => (
@@ -548,22 +571,26 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
 
   return (
     <section className="vista vista-pantalla">
+      {/* La máquina viva de fondo: late con cada respuesta del sistema. */}
+      <JardinEscena variante="pantalla" marco={150} latido={salidas.length} />
       <header>
         <h2>Salida del sistema</h2>
+        <span className="organo">el ojo</span>
         <span className="rol rol-PANTALLA">Operador de Pantalla</span>
       </header>
 
       <p className="ayuda">{payload?.nota ?? 'Tú ves lo que responde el sistema.'}</p>
 
-      {avisos.avisos.map((a) => (
+      {avisos.avisos.map((a, i) => (
         <div
           key={a.id}
-          className="aviso-conexion"
-          style={{ left: `${a.x}%`, top: `${a.y}%`, ['--giro' as string]: `${a.giro}deg` }}
+          className={`aviso-conexion${avisos.saliendo ? ' robot-se-va' : ''}`}
+          style={{ left: `${a.x}%`, top: `${a.y}%`, ['--giro' as string]: `${a.giro}deg`, ['--i' as string]: i % 8 }}
         >
           <span className="aviso-cab">SISTEMA</span>
-          <strong>Conexión perdida</strong>
-          <span className="aviso-pie">reintentando…</span>
+          <CaraRobot className="aviso-cara" reiniciando={avisos.saliendo} />
+          <strong>{avisos.saliendo ? 'Reconectando' : 'Conexión perdida'}</strong>
+          <span className="aviso-pie">{avisos.saliendo ? 'el robot se reinicia…' : 'JA JA JA · reintentando…'}</span>
           <button type="button" onClick={() => avisos.cerrar(a.id)}>Cerrar</button>
         </div>
       ))}

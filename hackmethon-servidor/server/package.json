@@ -27,9 +27,11 @@
     "smoke:plano": "tsx scripts/smoke-plano.ts",
     "smoke:ataque-mapa": "tsx scripts/smoke-ataque-mapa.ts",
     "smoke:ataque-reglas": "tsx scripts/smoke-ataque-reglas.ts",
+    "smoke:tickets": "tsx scripts/smoke-tickets.ts",
     "smoke:roles": "tsx scripts/smoke-roles.ts",
     "luces": "python3 ../Luces/servidor/servidor.py",
-    "luces:sin-placa": "python3 ../Luces/servidor/servidor.py --sin-arduino"
+    "luces:sin-placa": "python3 ../Luces/servidor/servidor.py --sin-arduino",
+    "solucion:f1": "tsx scripts/solucion-f1.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

@@ -3,6 +3,11 @@ import type { FormEvent } from 'react';
 import type { AppSocket } from '../lib/socket';
 import { call } from '../lib/socket';
 import { sonar } from '../lib/sonido';
+import {
+  DURACION_ESCUDO_MS, DURACION_SUPER_MS, ENFRIAMIENTO_SUPER_MS, INTENSIDAD_BASE, INTENSIDAD_MAX,
+  INTENSIDAD_MIN, PRECIO_ESCUDO, PRECIO_SUPER, TICKETS_FASE, TICKETS_FASE_RESTO, TICKETS_MINIJUEGO,
+  TICKETS_MINIJUEGO_PARTICIPAR,
+} from '../shared/constants';
 
 /**
  * Los ataques entre equipos, vistos desde el panel: sus reglas y la
@@ -67,6 +72,32 @@ export function PanelAtaques({ enfriamientoMs, socket, bloqueado, onAviso, onPro
           <li>Se ataca a un <b>equipo</b>, nunca a una persona: a cada integrante le cae la avería de su puesto.</li>
           <li>Un equipo <b>no puede atacar dos veces seguidas al mismo</b>: tiene que atacar a otro antes de volver a por él.</li>
           <li>Después de atacar, el equipo <b>espera</b> lo que diga aquí abajo. La espera es del equipo, no de la persona.</li>
+          <li>
+            La <b>intensidad depende de la distancia en fases</b> superadas: ×{INTENSIDAD_BASE} por cada fase que el
+            atacado le lleve al atacante, y al revés divide (entre ×{INTENSIDAD_MIN} y ×{INTENSIDAD_MAX}). En la misma
+            fase, la avería de serie (Terminal 3 s, Pantalla y Datos 12 s).
+          </li>
+        </ul>
+
+        <h3 className="ataques-subtitulo">Tickets</h3>
+        <ul className="ataques-reglas">
+          <li>
+            Se ganan <b>superando fases</b>: {TICKETS_FASE.map((t, i) => `${i + 1}.º ${t}`).join(' · ')} · resto {TICKETS_FASE_RESTO}.
+          </li>
+          <li>
+            Y en las <b>rondas de minijuego</b> lanzadas desde aquí, por el mejor jugador de cada equipo
+            al cerrar la ronda: {TICKETS_MINIJUEGO.map((t, i) => `${i + 1}.º ${t}`).join(' · ')} · participar {TICKETS_MINIJUEGO_PARTICIPAR}.
+            La sala de espera no da tickets.
+          </li>
+          <li>
+            <b>Escudo</b> · {PRECIO_ESCUDO} T: los ataques normales rebotan durante {DURACION_ESCUDO_MS / 1000} s. El atacante gasta
+            igual su espera.
+          </li>
+          <li>
+            <b>Súper ataque</b> · {PRECIO_SUPER} T: inmoviliza a todo el equipo rival {DURACION_SUPER_MS / 1000} s y atraviesa el
+            escudo. Espera propia de {ENFRIAMIENTO_SUPER_MS / 60_000} min.
+          </li>
+          <li>Los tickets son <b>privados</b>: solo los ven el equipo y este panel. Se ajustan a mano en la tarjeta de cada equipo.</li>
         </ul>
         {/* Sin la validación del navegador: su globo dice «valor no válido»
             y el aviso del panel dice el rango, que es lo que hay que saber. */}

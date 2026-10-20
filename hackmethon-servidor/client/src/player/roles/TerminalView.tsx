@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PhaseWorkspace } from '../../shared/events';
 import { useSession } from '../../session/SessionContext';
+import { CaraRobot, useSalida } from '../RobotAtaque';
+import { JardinEscena } from '../../admin/JardinEscena';
 import { call } from '../../lib/socket';
 import { sonar } from '../../lib/sonido';
 import { useMountId } from './mount';
@@ -65,11 +67,13 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
   const mountId = useMountId();
   const { socket, averia } = useSession();
   const payload = workspace.payload as Payload | null;
+  const robot = useSalida(averia?.tipo === 'TERMINAL');
 
   const [ecos, setEcos] = useState<Eco[]>([]);
   const [texto, setTexto] = useState('');
   const [historial, setHistorial] = useState<string[]>([]);
   const [cursor, setCursor] = useState(-1);
+  const [sinPegar, setSinPegar] = useState(0);
   const finRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -118,6 +122,21 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
     );
   }
 
+  // La consola no admite pegar ni arrastrar texto: aquí se escribe a mano,
+  // lo que se ha hablado con el equipo. El intento se avisa en pantalla y
+  // se cuenta para el panel; no penaliza nada del juego.
+  function noPegar(e: React.ClipboardEvent | React.DragEvent) {
+    e.preventDefault();
+    sonar('error');
+    setSinPegar((n) => n + 1);
+    socket?.emit('terminal:pegado');
+  }
+  useEffect(() => {
+    if (!sinPegar) return;
+    const t = setTimeout(() => setSinPegar(0), 2600);
+    return () => clearTimeout(t);
+  }, [sinPegar]);
+
   // Flechas arriba/abajo por el historial: en una consola a ciegas,
   // reescribir un comando largo desde cero es una penalización tonta.
   function teclas(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -134,13 +153,44 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
 
   return (
     <section className="vista vista-terminal">
+      {/* La máquina viva de fondo: late con cada comando que sale. */}
+      <JardinEscena variante="terminal" marco={150} latido={ecos.length} />
       <header>
         <h2>Consola</h2>
+        <span className="organo">el nervio</span>
         <span className="rol rol-TERMINAL">Operador de Terminal</span>
       </header>
 
+      {/* El nervio: cada comando sale de aquí como un impulso y se va
+          hacia la pantalla de tu compañero. Lo que vuelve no pasa por
+          aquí, y el dibujo no finge lo contrario. */}
+      <svg className="nervio-consola" viewBox="0 0 600 22" preserveAspectRatio="none" aria-hidden="true">
+        <path className="nervio-fibra" d="M4 11 C60 3 110 19 170 11 S280 3 340 11 S450 19 510 11 S570 6 596 11" />
+        {ecos.length > 0 && (
+          <path key={ecos.length} className="nervio-impulso" pathLength={1}
+                d="M4 11 C60 3 110 19 170 11 S280 3 340 11 S450 19 510 11 S570 6 596 11" />
+        )}
+        <circle className="nervio-soma" cx="6" cy="11" r="4" />
+        <text className="nervio-destino" x="592" y="8" textAnchor="end">PANTALLA</text>
+      </svg>
+
       {averia?.tipo === 'TERMINAL' && (
-        <div className="banda err fija">TECLADO INESTABLE</div>
+        <div className="banda err fija">EL ROBOT TIENE TU TECLADO</div>
+      )}
+
+      {/* Quien escribe es el robot: su cara, muerta de risa, sobre un
+          teclado que se le ilumina bajo los dedos, y en el bocadillo lo
+          último que te ha metido en la línea de comandos. */}
+      {robot && (
+        <div className={`robot-teclea ${robot === 'saliendo' ? 'robot-se-va' : ''}`} aria-hidden="true">
+          <CaraRobot className="robot-teclea__cara" reiniciando={robot === 'saliendo'} />
+          <span className="robot-teclea__bocadillo">
+            {robot === 'saliendo' ? 'reiniciando…' : texto.slice(-14) || '…'}
+          </span>
+          <span className="robot-teclea__teclado">
+            {Array.from({ length: 12 }, (_, i) => <i key={i} style={{ animationDelay: `${(i * 37) % 300}ms` }} />)}
+          </span>
+        </div>
       )}
 
       <p className="ayuda">
@@ -220,6 +270,11 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
         <div ref={finRef} />
       </div>
 
+      {sinPegar > 0 && (
+        <p key={sinPegar} className="sin-pegar" role="status">
+          Aquí no se pega: escríbanlo a mano, como lo platicaron.
+        </p>
+      )}
       <form onSubmit={enviar} className="entrada-cmd">
         <span className="prompt">&gt;</span>
         <input
@@ -227,6 +282,8 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { sonar('tecla'); teclas(e); }}
+          onPaste={noPegar}
+          onDrop={noPegar}
           placeholder="escribe un comando…"
           autoComplete="off"
           spellCheck={false}

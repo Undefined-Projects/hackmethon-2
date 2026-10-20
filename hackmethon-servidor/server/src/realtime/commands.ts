@@ -26,11 +26,13 @@ import { dispararLuces } from './luces.js';
 import { projectPhaseForRole } from '../lib/snapshot.js';
 import { moduloDeFase } from '../phases/index.js';
 import type { SalidaComando } from '../lib/events.js';
-import { ROLES, type Role } from '../lib/constants.js';
+import { ROLES, TICKETS_FASE, TICKETS_FASE_RESTO, type Role } from '../lib/constants.js';
+import { sumarTickets } from './tickets.js';
 import { roleRoom, teamRoom } from './rooms.js';
 import { getIO, pushLobby } from './server.js';
 import { pushAdminState } from './admin.js';
 import { detenerFlujo, filtrarFlujo, flujoActivo, iniciarFlujo } from './trafico.js';
+import { registrarComando, registrarResuelta } from './vigilancia.js';
 
 const MAX_LONGITUD = 200;
 
@@ -62,12 +64,16 @@ export async function procesarComando(
 
   // --- 3. Ejecutar ---
   const ahora = Date.now();
+  // Un comando largo que llega más rápido de lo que se teclea: el panel
+  // se entera. No cambia nada del juego.
+  if (registrarComando(teamId, texto, ahora)) await pushAdminState();
   const estado = JSON.parse(progreso.stateJson || '{}') as Record<string, unknown>;
   const resultado = modulo.ejecutar(texto, {
     estado,
     intentos: progreso.attempts,
     ahora,
     traficoActivo: flujoActivo(teamId),
+    semilla: teamId,
   });
 
   const salida: SalidaComando = {
@@ -150,6 +156,8 @@ async function marcarResuelta(teamId: string, progresoId: string, esperaMs = 0) 
 
   const solvedAt = new Date();
   const metricas = computeSolveMetrics(progreso, solvedAt);
+  // Se señala, no se anula: el panel decide si se acerca a esa mesa.
+  registrarResuelta(teamId, progreso.phase.title, metricas.activeMs);
 
   await prisma.teamPhaseProgress.update({
     where: { id: progresoId },
@@ -164,6 +172,12 @@ async function marcarResuelta(teamId: string, progresoId: string, esperaMs = 0) 
     },
   });
 
+  // Los tickets, según el puesto de llegada. Se cobran ANTES de la
+  // cortinilla para que la celebración pueda decir cuántos fueron.
+  const lugar = await lugarDeLlegada(progreso.phaseId, progresoId);
+  const ganados = TICKETS_FASE[lugar - 1] ?? TICKETS_FASE_RESTO;
+  await sumarTickets(teamId, ganados, `Fase ${progreso.phase.order} · ${lugar}.º lugar`, false);
+
   const io = getIO();
   // Lo que se retrasa es la CORTINILLA, no el sello: la fase ya esta
   // marcada como resuelta arriba y el tiempo oficial ya esta calculado.
@@ -176,6 +190,7 @@ async function marcarResuelta(teamId: string, progresoId: string, esperaMs = 0) 
       timeToSolveMs: metricas.timeToSolveMs,
       activeMs: metricas.activeMs,
       attempts: progreso.attempts,
+      tickets: { ganados, lugar },
     });
   if (esperaMs > 0) setTimeout(levantarCortinilla, esperaMs);
   else levantarCortinilla();
@@ -197,6 +212,22 @@ async function marcarResuelta(teamId: string, progresoId: string, esperaMs = 0) 
     where: { teamId, status: { not: 'SOLVED' }, phase: { esBonus: false } },
   });
   if (pendientes === 0) dispararLuces('EQUIPO_META', { teamId });
+}
+
+/**
+ * En qué puesto llegó este sello a la fase: 1 = el primero. Por la hora
+ * del sello y con el id de desempate, igual que `anunciarSiEsPrimera`,
+ * así que dos sellos casi simultáneos nunca se reconocen los dos como
+ * primeros.
+ */
+async function lugarDeLlegada(phaseId: string, progresoId: string): Promise<number> {
+  const resueltas = await prisma.teamPhaseProgress.findMany({
+    where: { phaseId, status: 'SOLVED', solvedAt: { not: null } },
+    orderBy: [{ solvedAt: 'asc' }, { id: 'asc' }],
+    select: { id: true },
+  });
+  const i = resueltas.findIndex((r) => r.id === progresoId);
+  return i < 0 ? resueltas.length + 1 : i + 1;
 }
 
 /**

@@ -52,6 +52,11 @@ export type ContextoComando = {
    *  motor. Sin este dato, `trafico cuenta X` no puede distinguir entre
    *  «acota lo que ya cae» y «abre el monitor ya acotado». */
   traficoActivo: boolean;
+  /** De qué equipo es la partida. Las fases que generan una versión
+   *  distinta por equipo la usan de semilla: así una solución copiada de
+   *  otra mesa —o de una IA que ya resolvió la de otro— no sirve aquí.
+   *  Sin ella, la versión canónica (la que usan las pruebas). */
+  semilla?: string;
 };
 
 export type ResultadoComando = {
@@ -91,6 +96,8 @@ export interface ModuloFase {
       /** Y con qué filtro, o el panel recién recargado parecería averiado
        *  cuando en realidad está acotado. */
       filtroTrafico: FiltroTrafico | null;
+      /** Ver `ContextoComando.semilla`. */
+      semilla?: string;
     },
   ): unknown;
   /** Intérprete de comandos del Operador de Terminal. */

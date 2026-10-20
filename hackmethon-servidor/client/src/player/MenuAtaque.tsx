@@ -8,6 +8,7 @@ import { useTicker } from '../lib/useTicker';
 import { call } from '../lib/socket';
 import { urlLogo } from '../lib/logo';
 import { sonar } from '../lib/sonido';
+import { DURACION_ESCUDO_MS, PRECIO_ESCUDO, PRECIO_SUPER } from '../shared/constants';
 
 // ============================================================
 //  El botón de ataques, y el mapa del auditorio que abre (MapaAtaque):
@@ -18,6 +19,10 @@ import { sonar } from '../lib/sonido';
 //  resto del juego —nadie resuelve una fase solo— aplicada a lo único
 //  que aquí se le puede hacer a un rival: obliga a ponerse de acuerdo
 //  en a quién, en vez de que cada uno dispare por su cuenta.
+//
+//  Con tickets se compran el ESCUDO (los ataques normales rebotan un
+//  rato) y el SÚPER ATAQUE (inmoviliza a todo el rival y atraviesa su
+//  escudo). El saldo es del equipo y privado: solo se ve aquí.
 //
 //  Las reglas se comprueban en el SERVIDOR. Aquí se apagan los botones
 //  para que nadie pulse en balde, pero un jugador con la consola del
@@ -32,6 +37,9 @@ const MOTIVOS: Record<string, string> = {
   A_TI_NO: 'A tu propio equipo no',
   EQUIPO_DESCONOCIDO: 'Ese equipo ya no existe',
   NO_TEAM: 'No estás en un equipo',
+  SIN_TICKETS: 'No les alcanzan los tickets',
+  ESCUDO_ACTIVO: 'Ya tienen un escudo puesto',
+  SUPER_ENFRIANDO: 'El súper ataque todavía está enfriando',
   TIMEOUT: 'El servidor no respondió',
 };
 
@@ -42,7 +50,7 @@ const mmss = (ms: number): string => {
 
 export function MenuAtaque() {
   const player = usePlayer();
-  const { socket, stampedAt, clockOffset } = useSession();
+  const { socket, stampedAt, clockOffset, refrescar } = useSession();
   useTicker(250);
 
   const [abierto, setAbierto] = useState(false);
@@ -50,7 +58,8 @@ export function MenuAtaque() {
   const [nota, setNota] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
   const reloj = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { esperaMs, ultimoObjetivoId, objetivos, plano, recientes } = player.ataque;
+  const { esperaMs, ultimoObjetivoId, objetivos, plano, recientes, escudoMs, superEsperaMs } = player.ataque;
+  const tickets = player.team.tickets;
   const enPausa = player.event.paused;
   const ataques = useAtaques(socket, recientes, clockOffset);
 
@@ -74,8 +83,20 @@ export function MenuAtaque() {
 
   // Sellado al emitir y continuado aquí, igual que el lobby y la
   // carrera. En pausa se congela, porque el enfriamiento tampoco corre.
-  const restante = enPausa ? esperaMs : Math.max(0, esperaMs - (Date.now() - stampedAt));
-  const listo = restante <= 0 && player.event.status === 'RUNNING' && !enPausa;
+  const corre = (ms: number) => (enPausa ? ms : Math.max(0, ms - (Date.now() - stampedAt)));
+  const restante = corre(esperaMs);
+  const enMarcha = player.event.status === 'RUNNING' && !enPausa;
+  const listo = restante <= 0 && enMarcha;
+  const escudo = corre(escudoMs);
+  const superRestante = corre(superEsperaMs);
+  const superMotivo = !enMarcha ? 'evento detenido'
+    : superRestante > 0 ? `enfriando ${mmss(superRestante)}`
+    : tickets < PRECIO_SUPER ? `faltan ${PRECIO_SUPER - tickets} T`
+    : null;
+
+  // La intensidad depende de las fases de cada rival, y esas cambian sin
+  // que nadie nos avise: al abrir el mapa se pide el estado al día.
+  useEffect(() => { if (abierto) refrescar(); }, [abierto, refrescar]);
 
 
   useEffect(() => () => { if (reloj.current) clearTimeout(reloj.current); }, []);
@@ -89,18 +110,66 @@ export function MenuAtaque() {
   async function atacar(id: string, nombre: string) {
     if (!socket) return;
     setEnviando(id);
-    const r = await call<{ esperaMs: number }>(socket, 'player:ataque', { teamId: id });
+    const r = await call<{ esperaMs: number; intensidad: number; bloqueado: boolean }>(socket, 'player:ataque', { teamId: id });
     setEnviando(null);
     if (r.ok) {
       sonar('ataque');
       // Se deja ver salir la línea propia antes de cerrar el mapa.
       setTimeout(() => setAbierto(false), 1600);
-      avisar('ok', `Ataque lanzado a ${nombre}`);
+      avisar('ok', r.data?.bloqueado
+        ? `${nombre} tenía escudo: el ataque rebotó`
+        : `Ataque lanzado a ${nombre} · ×${(r.data?.intensidad ?? 1).toFixed(1)}`);
     } else {
       sonar('error');
       avisar('err', MOTIVOS[r.error ?? ''] ?? r.error ?? 'No se pudo atacar');
     }
   }
+
+  async function lanzarSuper(id: string, nombre: string) {
+    if (!socket) return;
+    if (!confirm(`¿Súper ataque a ${nombre} por ${PRECIO_SUPER} tickets?\n\nLos inmoviliza a todos 15 segundos y atraviesa su escudo.`)) return;
+    setEnviando(id);
+    const r = await call(socket, 'player:super', { teamId: id });
+    setEnviando(null);
+    if (r.ok) {
+      sonar('estallido');
+      setTimeout(() => setAbierto(false), 1600);
+      avisar('ok', `SÚPER ATAQUE a ${nombre}`);
+    } else {
+      sonar('error');
+      avisar('err', MOTIVOS[r.error ?? ''] ?? r.error ?? 'No se pudo lanzar');
+    }
+  }
+
+  async function comprarEscudo() {
+    if (!socket || enviando) return;
+    if (!confirm(`¿Activar el escudo por ${PRECIO_ESCUDO} tickets?\n\nDurante ${DURACION_ESCUDO_MS / 1000} s los ataques normales rebotan. El súper ataque lo atraviesa.`)) return;
+    setEnviando('escudo');
+    const r = await call(socket, 'player:escudo', {});
+    setEnviando(null);
+    if (r.ok) {
+      sonar('ok');
+      avisar('ok', 'Escudo activado');
+    } else {
+      sonar('error');
+      avisar('err', MOTIVOS[r.error ?? ''] ?? r.error ?? 'No se pudo activar');
+    }
+  }
+
+  const puedeEscudo = enMarcha && escudo <= 0 && tickets >= PRECIO_ESCUDO && enviando === null;
+  const barra = (
+    <span className="ataque-bolsa">
+      <span className="ataque-tickets" title="Tickets del equipo. Solo los ve tu equipo.">{tickets} T</span>
+      {escudo > 0 ? (
+        <span className="ataque-escudo activo">ESCUDO {mmss(escudo)}</span>
+      ) : (
+        <button type="button" className="ataque-escudo" disabled={!puedeEscudo} onClick={() => void comprarEscudo()}
+          title={tickets < PRECIO_ESCUDO ? `Faltan ${PRECIO_ESCUDO - tickets} tickets` : `Los ataques normales rebotan ${DURACION_ESCUDO_MS / 1000} s`}>
+          {enviando === 'escudo' ? 'ACTIVANDO…' : `ESCUDO · ${PRECIO_ESCUDO} T`}
+        </button>
+      )}
+    </span>
+  );
 
   return (
     <div className={`ataque ${abierto ? 'desplegado' : ''}`}>
@@ -113,6 +182,8 @@ export function MenuAtaque() {
           listo={listo} reloj={listo ? 'LISTO' : mmss(restante)} enviando={enviando}
           alAtacar={atacar} alCerrar={cerrar}
           cabecera={nota && <p className={`mapa-ataque-nota ${nota.tipo}`}>{nota.texto}</p>}
+          barra={barra}
+          superAtaque={{ listo: superMotivo === null, motivo: superMotivo, precio: PRECIO_SUPER, alLanzar: lanzarSuper }}
         />
       )}
 
@@ -130,6 +201,8 @@ export function MenuAtaque() {
         <span className="ataque-reloj">
           {listo ? 'LISTO' : enPausa ? `${mmss(restante)} ·` : mmss(restante)}
         </span>
+        <span className="ataque-reloj" title="Tickets del equipo">{tickets} T</span>
+        {escudo > 0 && <span className="ataque-reloj ataque-reloj--escudo">ESCUDO {mmss(escudo)}</span>}
       </button>
     </div>
   );

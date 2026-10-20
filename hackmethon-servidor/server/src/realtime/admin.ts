@@ -7,6 +7,7 @@
 //  después recibe un estado que contradice lo que acaba de ver.
 // ============================================================
 
+import { olvidarAlertas } from './vigilancia.js';
 import { prisma } from '../lib/prisma.js';
 import { registrarAveria } from '../lib/averias.js';
 import { shuffleTeamRoles } from '../lib/shuffle.js';
@@ -605,6 +606,7 @@ export async function reiniciarJuego(adminId: string) {
   const io = getIO();
   detenerTodos('Juego reiniciado.');
   olvidarMarcas();
+  olvidarAlertas();
 
   await prisma.$transaction(async (tx) => {
     await tx.teamPhaseProgress.updateMany({
@@ -621,7 +623,12 @@ export async function reiniciarJuego(adminId: string) {
     // vetado de la partida anterior— es justo el resto que nadie ve
     // hasta que alguien pulsa y le dicen que no.
     await tx.team.updateMany({
-      data: { ultimoAtaqueAt: null, ultimoObjetivoId: null, ultimoAtaquePausaMs: 0 },
+      data: {
+        ultimoAtaqueAt: null, ultimoObjetivoId: null, ultimoAtaquePausaMs: 0,
+        // Y los tickets, con sus escudos y súper ataques: el dinero de
+        // un ensayo no puede llegar al evento de verdad.
+        tickets: 0, escudoAt: null, escudoPausaMs: 0, ultimoSuperAt: null, ultimoSuperPausaMs: 0,
+      },
     });
     // Sin esto, al volver a jugar la misma fase el Operador de Pantalla
     // repintaría las salidas de la partida anterior: `salidasDe` las
@@ -795,7 +802,9 @@ export async function provocarAveria(userId: string, adminId: string) {
   if (persona.isAdmin) throw new Error('NO_AL_ADMIN');
 
   const tipo = persona.role as Role;
-  getIO().to(userRoom(userId)).emit('player:averia', registrarAveria(userId, tipo));
+  const averia = registrarAveria(userId, tipo);
+  if (!averia) throw new Error('INMOVILIZADO');
+  getIO().to(userRoom(userId)).emit('player:averia', averia);
 
   dispararLuces('AVERIA', { teamId: persona.teamId });
 

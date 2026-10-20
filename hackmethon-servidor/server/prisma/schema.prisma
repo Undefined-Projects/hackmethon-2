@@ -73,6 +73,20 @@ model Team {
   ultimoObjetivoId  String?
   ultimoAtaquePausaMs Int @default(0)
 
+  // --- Tickets: el dinero del equipo ---
+  // Se ganan superando fases (más cuanto antes) y en los minijuegos del
+  // panel; se gastan en escudos y súper ataques. PRIVADOS: solo los ven
+  // el propio equipo y el panel, nunca la proyección ni los rivales.
+  tickets Int @default(0)
+
+  // El escudo y el súper ataque se sellan igual que el ataque normal:
+  // cuándo, y cuánta pausa global llevaba el evento en ese instante, para
+  // que una pausa no se coma ni el escudo ni la espera.
+  escudoAt           DateTime?
+  escudoPausaMs      Int @default(0)
+  ultimoSuperAt      DateTime?
+  ultimoSuperPausaMs Int @default(0)
+
   // Logo del equipo. Los BYTES viven aquí y no en una carpeta del disco:
   // todo el evento cabe en un archivo .db que se copia a otro portátil
   // media hora antes de empezar, y una carpeta de imágenes sueltas es
