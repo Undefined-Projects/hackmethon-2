@@ -966,7 +966,7 @@ const Monitor = (function monitor(){
         const p = paquete();
         avisa(`REGISTRO ACEPTADO. TU FOLIO ES ${datos.folio}. TE ESCRIBIMOS A TU CORREO.` +
           (p.equipoModo === "crear" ? ` «${p.equipo.replace(/\s+/g, " ").toUpperCase()}» YA APARECE EN LA LISTA: PÁSALES LA CONTRASEÑA A TUS COMPAÑEROS.` : ""), false);
-        pintaCupo(datos.quedan);
+        try { pintaCupo(datos.quedan); } catch {}
         return;
       }
       // 400 y 409 traen un motivo concreto del servidor: se muestra tal cual.
@@ -989,18 +989,12 @@ const Monitor = (function monitor(){
     }
   });
 
-  /* Lugares restantes. Si no hay API se queda callado: la portada
-     funciona igual sin este dato. */
-  const spanQuedan = document.getElementById("quedan");
-  function pintaCupo(quedan){
-    // con el cupo por definir, "quedan N" contradiría al texto
-    if (!spanQuedan || quedan == null || /por definir/i.test(EVENTO.cupo)) return;
-    spanQuedan.textContent = quedan > 0 ? ` · quedan ${quedan}` : " · CUPO LLENO";
-  }
+  /* Con el cupo lleno, el formulario se bloquea desde que carga. Los
+     lugares restantes de la ficha los pinta la sección 7½, que también
+     corre en la portada, donde ya no hay formulario. */
   ESTADO
     .then(d => {
       if (!d || d.quedan == null) return;
-      pintaCupo(d.quedan);
       if (d.quedan === 0){
         bloquea();
         avisa(`CUPO LLENO: LOS ${d.cupo} LUGARES YA ESTÁN OCUPADOS.`, true);
@@ -1008,6 +1002,23 @@ const Monitor = (function monitor(){
     })
     .catch(() => {});
 })();
+
+/* — 7½. Lugares restantes, en la ficha del evento —
+       El tope lo manda el servidor (se pone en el panel): con tope, la
+       ficha dice "150 lugares · quedan 106"; sin tope (0), se queda el
+       texto de config.js ("Sin límite"). Si no hay API se queda callado:
+       la página funciona igual sin este dato. pintaCupo también la llama
+       el formulario al registrar a alguien, con lo que quedan ahora. */
+let cupoServidor = 0;
+function pintaCupo(quedan, cupo = cupoServidor){
+  cupoServidor = cupo;
+  const texto = document.querySelector('[data-cfg="cupo"]');
+  const span = document.getElementById("quedan");
+  if (!span || !(cupo > 0) || quedan == null) return;
+  if (texto) texto.textContent = `${cupo} lugares`;
+  span.textContent = quedan > 0 ? ` · quedan ${quedan}` : " · CUPO LLENO";
+}
+ESTADO.then(d => { if (d) pintaCupo(d.quedan, d.cupo); }).catch(() => {});
 
 /* — 8. El título ASCII, siempre de una pieza y dentro del marco —
    Son 69 columnas monoespaciadas repartidas en tres bloques. El CSS
@@ -1039,4 +1050,21 @@ const Monitor = (function monitor(){
   // Las webfonts llegan después del primer trazo y cambian el avance.
   if (document.fonts) document.fonts.ready.then(ajusta).catch(() => {});
   addEventListener("resize", ajusta);
+})();
+
+/* — 9. El registro, siempre a un toque en el teléfono —
+   La barra de abajo (.registro-fijo) lleva a registro.html y se
+   esconde mientras el botón grande de la portada está a la vista, para
+   no repetirlo. En escritorio el CSS la apaga, y en
+   modo "próximamente" la apaga .solo-abierto. Quien se desplaza es
+   .tubo, no la ventana: por eso es la raíz del observador. */
+(function registroFijo(){
+  const barra = document.getElementById("registro-fijo");
+  const hero  = document.getElementById("cta-hero");
+  if (!barra || !hero || !("IntersectionObserver" in window)) return;
+
+  const io = new IntersectionObserver(entradas => {
+    barra.hidden = entradas[entradas.length - 1].isIntersecting;
+  }, { root: document.querySelector(".tubo") });
+  io.observe(hero);
 })();
