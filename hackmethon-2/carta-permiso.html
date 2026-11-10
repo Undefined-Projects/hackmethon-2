@@ -1,0 +1,153 @@
+<!doctype html>
+<!-- Carta de permiso para menores de edad · HACK(ME)THON 2.0
+     Fuente de sitio/carta-permiso.pdf. Para regenerarla, desde hackmethon-2/:
+       chromium --headless=new --no-pdf-header-footer \
+         --print-to-pdf=sitio/carta-permiso.pdf carta-permiso.html
+     Hoja carta, en blanco y negro casi todo (se imprime en casa). -->
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<title>Carta de permiso · HACK(ME)THON 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  @page { size: letter; margin: 0; }
+  :root {
+    --tinta: #1d1420;
+    --morado: #45204f;
+    --magenta: #c0268f;
+    --gris: #6b6070;
+    --linea: #b9afbd;
+    --suave: #f6f1f7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fff; color: var(--tinta); }
+  body {
+    font-family: Montserrat, Arial, sans-serif; font-size: 10.4pt; line-height: 1.45;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .hoja {
+    width: 8.5in; height: 11in; padding: 0.55in 0.7in 0.5in;
+    position: relative; overflow: hidden;
+  }
+  /* franja lateral: circuito que crece, en tono muy claro */
+  .hoja::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 0.22in;
+    background: linear-gradient(var(--morado), var(--magenta));
+  }
+
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+           padding-bottom: 12px; border-bottom: 2px solid var(--morado); }
+  header img { height: 0.5in; display: block; }
+  .evento { text-align: right; font-family: "IBM Plex Mono", monospace; color: var(--morado);
+            font-size: 8.5pt; line-height: 1.35; letter-spacing: .04em; }
+  .evento b { font-size: 11pt; color: var(--magenta); letter-spacing: .06em; }
+
+  h1 { font-size: 17pt; margin: 20px 0 2px; color: var(--morado); letter-spacing: .01em; }
+  .sub { margin: 0 0 14px; color: var(--gris); font-size: 9.5pt; }
+
+  .datos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 0 0 16px;
+           border: 1px solid var(--linea); border-radius: 6px; overflow: hidden; background: var(--suave); }
+  .datos div { padding: 7px 10px; font-size: 8.8pt; border-right: 1px solid var(--linea); }
+  .datos div:last-child { border-right: 0; }
+  .datos span { display: block; font-family: "IBM Plex Mono", monospace; font-size: 7.4pt;
+                color: var(--magenta); letter-spacing: .08em; text-transform: uppercase; }
+
+  p { margin: 0 0 10px; }
+  .campo { display: inline-block; border-bottom: 1px solid var(--tinta); min-width: 1.2in;
+           height: 1.15em; vertical-align: bottom; }
+  .xl { min-width: 3.3in; } .l { min-width: 2.4in; } .s { min-width: 0.55in; } .m { min-width: 1.5in; }
+  .chica { font-size: 7.4pt; color: var(--gris); display: block; margin-top: -2px; }
+
+  h2 { font-family: "IBM Plex Mono", monospace; font-size: 8.6pt; letter-spacing: .1em;
+       text-transform: uppercase; color: var(--magenta); margin: 16px 0 8px; }
+  ol { margin: 0 0 6px; padding-left: 18px; }
+  ol li { margin-bottom: 5px; }
+
+  .renglones { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+  .renglon { border-bottom: 1px solid var(--tinta); height: 34px; position: relative; }
+  .renglon label { position: absolute; bottom: -15px; left: 0; font-size: 7.4pt; color: var(--gris); }
+  .ancho { grid-column: 1 / -1; }
+
+  .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 66px; }
+  .firma { border-top: 1px solid var(--tinta); padding-top: 4px; text-align: center; font-size: 8.6pt; }
+  .firma small { display: block; color: var(--gris); font-size: 7.4pt; }
+
+  .staff { margin-top: 22px; border: 1px dashed var(--morado); border-radius: 6px; padding: 8px 12px;
+           display: flex; gap: 22px; align-items: center; font-family: "IBM Plex Mono", monospace;
+           font-size: 8pt; color: var(--morado); }
+  .staff b { letter-spacing: .1em; }
+  .caja { display: inline-block; width: 11px; height: 11px; border: 1.2px solid var(--morado);
+          vertical-align: -1px; margin-right: 4px; }
+
+  footer { position: absolute; left: 0.7in; right: 0.7in; bottom: 0.35in; display: flex;
+           justify-content: space-between; font-size: 7.4pt; color: var(--gris); }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+  <header>
+    <img src="membrete-carta.png" alt="undefined_projects">
+    <div class="evento">
+      <b>HACK(ME)THON 2.0</b><br>
+      THE ANATOMY OF A MACHINE
+    </div>
+  </header>
+
+  <h1>Carta de permiso para menor de edad</h1>
+  <p class="sub">Llénala, fírmala y entrégala impresa en la entrada. Sin esta carta no podemos dejar pasar a menores de 18 años.</p>
+
+  <div class="datos">
+    <div><span>Fecha</span>Sábado 28 de noviembre de 2026</div>
+    <div><span>Horario</span>16:00 a 22:00 h</div>
+    <div><span>Sede</span>Auditorio MENLO · Tec de Monterrey, Campus Chihuahua</div>
+  </div>
+
+  <p>Chihuahua, Chih., a <span class="campo s"></span> de <span class="campo m"></span> de 2026.</p>
+
+  <p>
+    Yo, <span class="campo xl"></span>, en mi carácter de
+    &nbsp;<span class="caja"></span>madre &nbsp;<span class="caja"></span>padre &nbsp;<span class="caja"></span>tutor(a) legal
+    de <span class="campo xl"></span>, de <span class="campo s"></span> años de edad,
+    con folio de registro <b>HMT-</b><span class="campo s"></span>,
+    <b>autorizo</b> su participación en el <b>HACK(ME)THON 2.0 · The Anatomy of a Machine</b>, organizado por
+    Startup Chihuahua y Undefined, en la fecha, horario y sede indicados arriba.
+  </p>
+
+  <h2>Al firmar, declaro que</h2>
+  <ol>
+    <li>Conozco que es un evento gratuito de programación y retos tecnológicos, de 6 horas, en el que participará en equipo con otras personas.</li>
+    <li>Me hago responsable de su traslado de ida y de regreso. El evento termina a las 22:00 h y el comité organizador no se hace cargo del transporte.</li>
+    <li>El o la menor se compromete a seguir las indicaciones del comité organizador y del personal de la sede, y a cuidar el equipo y las instalaciones.</li>
+    <li>Los datos que escribo en esta carta son verdaderos y pueden usarse para localizarme durante el evento.</li>
+  </ol>
+
+  <h2>Contacto durante el evento</h2>
+  <div class="renglones">
+    <div class="renglon"><label>Teléfono del tutor (10 dígitos)</label></div>
+    <div class="renglon"><label>Teléfono alterno</label></div>
+    <div class="renglon ancho"><label>Persona que recoge al menor al terminar (si no es quien firma) · nombre y parentesco</label></div>
+    <div class="renglon ancho"><label>Alergias, condición médica o medicamento que debamos saber (opcional)</label></div>
+  </div>
+
+  <div class="firmas">
+    <div class="firma">Nombre completo y firma de la madre, padre o tutor<small>Igual que en su identificación oficial</small></div>
+    <div class="firma">Nombre completo y firma del menor<small>Participante</small></div>
+  </div>
+
+  <div class="staff">
+    <b>USO DEL STAFF</b>
+    <span><span class="caja"></span>Carta recibida</span>
+    <span><span class="caja"></span>Check-in hecho</span>
+    <span>Recibió: ______________________</span>
+  </div>
+
+  <footer>
+    <span>Dudas: contacto@undefinedclub.org</span>
+    <span>undefinedclub.org/hackmethon</span>
+  </footer>
+
+</div>
+</body>
+</html>

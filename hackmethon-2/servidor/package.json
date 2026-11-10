@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Landing y registro del HACK(ME)THON",
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0"
+    "@neondatabase/serverless": "^1.1.0",
+    "qrcode": "^1.5.4"
   }
 }

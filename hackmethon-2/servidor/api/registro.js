@@ -3,7 +3,8 @@
    Cada quien se registra por su cuenta y, sobre el equipo, una de tres:
    se une a uno ya creado (con su contraseña), crea uno (nombre, logo de
    16 × 16 y contraseña) o pide que lo acomoden en uno desde el panel. Guarda en Postgres y, si
-   hay llave de Resend, manda el aviso por correo.
+   hay llave de Resend, manda el aviso a la organización y la confirmación
+   a quien se registró (lib/confirmacion.js).
    La validación de aquí es un espejo de la del navegador: el cliente valida
    para dar buenos mensajes, el servidor valida porque el cliente es
    modificable por quien sea. */
@@ -12,6 +13,7 @@ import { prepara, sql, leeCupo, leeProximamente, quedan, folio, EQUIPO_MAX, logo
 import { cors } from "../lib/cors.js";
 import { cifraClave, claveCorrecta } from "../lib/clave.js";
 import { limpiaCurp, curpValida, nacimiento, edadDe, limpiaTelefono } from "../lib/curp.js";
+import { confirmacion, EVENTO } from "../lib/confirmacion.js";
 
 const TOPE = { nombre: 60, apellidos: 80, correo: 120, institucion: 80, carrera: 80, equipo: 32 };
 const EDAD = { min: 12, max: 99, mayor: 18 };
@@ -117,6 +119,7 @@ export default async function handler(req, res){
         return mal(res, `LA CONTRASEÑA DEL EQUIPO DEBE TENER AL MENOS ${CLAVE.min} CARACTERES.`);
     }
     if (p.equipoModo !== "crear") p.equipo = "";
+    if (p.equipoModo === "asignar") p.logo = "";
 
     if (c.privacidad !== true)
       return mal(res, "PARA REGISTRARTE HAY QUE ACEPTAR EL AVISO DE PRIVACIDAD.");
@@ -148,10 +151,10 @@ export default async function handler(req, res){
     // Unirse: el equipo tiene que existir, la contraseña ser la suya y
     // quedar lugar. Crear: el nombre no puede estar tomado (tampoco por
     // un equipo escrito a mano antes de que hubiera logos).
-    let equipoKey = null, creado = false;
+    let equipoKey = null, creado = false, integrantes = 0;   // con quien se registra
     if (p.equipoModo === "unirse"){
       const [eq] = await q`
-        select e.nombre, e.equipo_key, e.clave,
+        select e.nombre, e.equipo_key, e.clave, e.logo,
                (select count(*)::int from inscripciones i where i.equipo_key = e.equipo_key) as n
         from equipos e where e.id = ${p.equipoId}`;
       if (!eq) return res.status(409).json({ mensaje: "ESE EQUIPO YA NO EXISTE. ACTUALIZA LA LISTA." });
@@ -160,7 +163,9 @@ export default async function handler(req, res){
       if (eq.n >= EQUIPO_MAX)
         return res.status(409).json({ mensaje: `EL EQUIPO «${eq.nombre.toUpperCase()}» YA TIENE ${EQUIPO_MAX} INTEGRANTES.` });
       p.equipo = eq.nombre;
+      p.logo = eq.logo;   // para el correo de confirmación
       equipoKey = eq.equipo_key;
+      integrantes = eq.n + 1;
     } else if (p.equipoModo === "crear"){
       equipoKey = plano(p.equipo);
       const tomado = `YA HAY UN EQUIPO LLAMADO «${p.equipo.toUpperCase()}». SI ES EL TUYO, ELIGE «YA TENGO EQUIPO».`;
@@ -170,6 +175,7 @@ export default async function handler(req, res){
         await q`insert into equipos (nombre, equipo_key, logo, clave)
                 values (${p.equipo}, ${equipoKey}, ${p.logo}, ${cifraClave(p.equipoClave)})`;
         creado = true;
+        integrantes = 1;
       } catch (e) {
         if (/duplicate key|unique constraint/i.test(String(e?.message)))
           return res.status(409).json({ mensaje: tomado });
@@ -203,9 +209,16 @@ export default async function handler(req, res){
     }
 
     const clave = folio(fila.id);
-    // El correo no debe hacer fallar el registro: ya quedó guardado.
-    avisa({ folio: clave, edad, ...p }).catch(e =>
-      console.error("No se pudo mandar el aviso por correo:", e?.message));
+    // Los correos no deben hacer fallar el registro: ya quedó guardado.
+    // Se esperan (en paralelo) antes de responder porque en Vercel la
+    // función se congela al mandar la respuesta y una petición suelta
+    // puede no salir nunca.
+    const r = { folio: clave, edad, integrantes, equipoMax: EQUIPO_MAX, ...p };
+    const [aviso, confirma] = await Promise.allSettled([avisa(r), confirmaA(r)]);
+    if (aviso.status === "rejected")
+      console.error("No se pudo mandar el aviso por correo:", aviso.reason?.message);
+    if (confirma.status === "rejected")
+      console.error("No se pudo mandar la confirmación a", p.correo, ":", confirma.reason?.message);
 
     return res.status(201).json({ ok: true, folio: clave, quedan: quedan(cupo, total + 1) });
 
@@ -217,13 +230,37 @@ export default async function handler(req, res){
 
 const EQUIPO_TEXTO = { unirse: "Se unió a", crear: "Creó el equipo", asignar: "No tiene, que lo asignen" };
 
-/* Aviso por correo con la API REST de Resend. Sin SDK: es una sola petición
-   y así hay una dependencia menos que mantener al día. */
-async function avisa(r){
+/* Envío con la API REST de Resend. Sin SDK: es una sola petición
+   y así hay una dependencia menos que mantener al día.
+   Sin llave o sin remitente configurados, no se manda nada. */
+async function resend(correo){
   const llave     = process.env.RESEND_API_KEY;
-  const para      = process.env.CORREO_REGISTROS;
   const remitente = process.env.CORREO_REMITENTE;
-  if (!llave || !para || !remitente) return;   // sin configurar: se omite
+  if (!llave || !remitente) return;
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${llave}`, "content-type": "application/json" },
+    body: JSON.stringify({ from: remitente, ...correo }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!resp.ok) throw new Error(`Resend respondió ${resp.status}: ${await resp.text()}`);
+}
+
+/* Confirmación a quien se registra. Las respuestas van al buzón de
+   contacto, no al remitente (que solo envía). */
+function confirmaA(r){
+  const { asunto, html, texto } = confirmacion(r);
+  return resend({
+    to: [r.correo],
+    reply_to: process.env.CORREO_REGISTROS || EVENTO.contacto,
+    subject: asunto, html, text: texto,
+  });
+}
+
+/* Aviso a la organización. */
+function avisa(r){
+  const para = process.env.CORREO_REGISTROS;
+  if (!para) return;
 
   // La CURP, el código postal y la fecha de nacimiento no viajan por
   // correo: se consultan en el panel.
@@ -238,16 +275,10 @@ async function avisa(r){
     `EQUIPO ......... ${EQUIPO_TEXTO[r.equipoModo]}${r.equipo ? `: ${r.equipo}` : ""}`,
   ].join("\n");
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${llave}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: remitente,
-      to: [para],
-      reply_to: r.correo,
-      subject: `Registro HACK(ME)THON 2.0 · ${r.nombre} ${r.apellidos} (${r.folio})`,
-      text: texto,
-    }),
+  return resend({
+    to: [para],
+    reply_to: r.correo,
+    subject: `Registro HACK(ME)THON 2.0 · ${r.nombre} ${r.apellidos} (${r.folio})`,
+    text: texto,
   });
-  if (!resp.ok) throw new Error(`Resend respondió ${resp.status}: ${await resp.text()}`);
 }
