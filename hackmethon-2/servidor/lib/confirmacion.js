@@ -186,18 +186,28 @@ function caso(r){
     ? " Si en tu equipo hay más menores de edad, cada quien necesita su propia carta de permiso."
     : "";
 
-  if (r.equipoModo === "crear") return {
-    menor,
-    asunto: `Estás dentro: «${r.equipo}» ya existe · ${r.folio}`,
-    intro:  `Tu registro quedó listo y tu equipo «${r.equipo}» ya está dado de alta. Por ahora solo estás tú: faltan los demás.`,
-    previa: `Tu equipo «${r.equipo}» ya existe. Pásales la contraseña a los demás.`,
-    eq: {
-      titulo: `Creaste el equipo «${r.equipo}»`,
-      cuenta: `1 de ${max} integrantes · quedan ${lugares(max - 1)}`,
-      clave:  r.equipoClave,
-      texto:  `Pásale a tu equipo el nombre y esta contraseña: con eso se unen desde el registro, en «Ya tengo equipo». No la compartas fuera del equipo: quien la tenga puede entrar.${menores}`,
-    },
-  };
+  if (r.equipoModo === "crear"){
+    const solo = n <= 1;
+    const cuantos = Math.max(n, 1), quedanC = Math.max(max - cuantos, 0);
+    // La contraseña solo se tiene al registrarse: en la base va cifrada,
+    // así que en un reenvío se le recuerda que es la que eligió.
+    const cual = r.equipoClave ? "esta contraseña" : "la contraseña que elegiste al registrarte";
+    return {
+      menor,
+      asunto: `Estás dentro: «${r.equipo}» ya existe · ${r.folio}`,
+      intro:  `Tu registro quedó listo y tu equipo «${r.equipo}» ya está dado de alta.` +
+              (solo ? " Por ahora solo estás tú: faltan los demás." : ` Ya son ${cuantos}.`),
+      previa: `Tu equipo «${r.equipo}» ya existe. Pásales la contraseña a los demás.`,
+      eq: {
+        titulo: `Creaste el equipo «${r.equipo}»`,
+        cuenta: `${cuantos} de ${max} integrantes${quedanC ? ` · quedan ${lugares(quedanC)}` : " · equipo completo"}`,
+        clave:  r.equipoClave,
+        texto:  quedanC
+          ? `Pásale a tu equipo el nombre y ${cual}: con eso se unen desde el registro, en «Ya tengo equipo». No la compartas fuera del equipo: quien la tenga puede entrar.${menores}`
+          : `Tu equipo ya está completo: nadie más puede unirse.${menores}`,
+      },
+    };
+  }
 
   if (r.equipoModo === "unirse") return {
     menor,
@@ -387,4 +397,15 @@ export function confirmacion(r){
 </body></html>`;
 
   return { asunto, html, texto };
+}
+
+/* El correo listo para la API de Resend (sin el remitente, que pone
+   quien lo manda). Las respuestas van al buzón de contacto. */
+export function paraResend(r){
+  const { asunto, html, texto } = confirmacion(r);
+  return {
+    to: [r.correo],
+    reply_to: process.env.CORREO_REGISTROS || EVENTO.contacto,
+    subject: asunto, html, text: texto,
+  };
 }

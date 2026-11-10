@@ -13,7 +13,7 @@ import { prepara, sql, leeCupo, leeProximamente, quedan, folio, EQUIPO_MAX, logo
 import { cors } from "../lib/cors.js";
 import { cifraClave, claveCorrecta } from "../lib/clave.js";
 import { limpiaCurp, curpValida, nacimiento, edadDe, limpiaTelefono } from "../lib/curp.js";
-import { confirmacion, EVENTO } from "../lib/confirmacion.js";
+import { paraResend } from "../lib/confirmacion.js";
 
 const TOPE = { nombre: 60, apellidos: 80, correo: 120, institucion: 80, carrera: 80, equipo: 32 };
 const EDAD = { min: 12, max: 99, mayor: 18 };
@@ -219,6 +219,9 @@ export default async function handler(req, res){
       console.error("No se pudo mandar el aviso por correo:", aviso.reason?.message);
     if (confirma.status === "rejected")
       console.error("No se pudo mandar la confirmación a", p.correo, ":", confirma.reason?.message);
+    // Se anota para que el panel sepa a quién reenviársela.
+    if (confirma.status === "fulfilled" && confirma.value)
+      await q`update inscripciones set confirmacion = now() where id = ${fila.id}`.catch(() => {});
 
     return res.status(201).json({ ok: true, folio: clave, quedan: quedan(cupo, total + 1) });
 
@@ -236,7 +239,7 @@ const EQUIPO_TEXTO = { unirse: "Se unió a", crear: "Creó el equipo", asignar: 
 async function resend(correo){
   const llave     = process.env.RESEND_API_KEY;
   const remitente = process.env.CORREO_REMITENTE;
-  if (!llave || !remitente) return;
+  if (!llave || !remitente) return false;   // sin configurar: no sale nada
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { authorization: `Bearer ${llave}`, "content-type": "application/json" },
@@ -244,23 +247,16 @@ async function resend(correo){
     signal: AbortSignal.timeout(8000),
   });
   if (!resp.ok) throw new Error(`Resend respondió ${resp.status}: ${await resp.text()}`);
+  return true;
 }
 
-/* Confirmación a quien se registra. Las respuestas van al buzón de
-   contacto, no al remitente (que solo envía). */
-function confirmaA(r){
-  const { asunto, html, texto } = confirmacion(r);
-  return resend({
-    to: [r.correo],
-    reply_to: process.env.CORREO_REGISTROS || EVENTO.contacto,
-    subject: asunto, html, text: texto,
-  });
-}
+/* Confirmación a quien se registra. Devuelve true si salió. */
+const confirmaA = r => resend(paraResend(r));
 
 /* Aviso a la organización. */
 function avisa(r){
   const para = process.env.CORREO_REGISTROS;
-  if (!para) return;
+  if (!para) return false;
 
   // La CURP, el código postal y la fecha de nacimiento no viajan por
   // correo: se consultan en el panel.

@@ -136,6 +136,19 @@ export async function prepara(){
       on conflict (clave) do update set valor = excluded.valor, actualizado = now()`;
   }
 
+  /* Correo de confirmación (desde el 10-nov-2026): cuándo se le mandó a
+     cada quien. Null = nunca, y el panel puede reenviarlo. Una sola vez
+     (marca 'confirmacion'): quienes se registraron desde que salió el
+     correo (00:54 del 10-nov, hora de Chihuahua) ya lo recibieron. */
+  await q`alter table inscripciones add column if not exists confirmacion timestamptz`;
+  const [conf] = await q`select valor from ajustes where clave = 'confirmacion'`;
+  if (!conf){
+    await q`update inscripciones set confirmacion = creado
+            where confirmacion is null and creado >= '2026-11-10T00:54:39-06:00'`;
+    await q`insert into ajustes (clave, valor) values ('confirmacion', '1')
+            on conflict (clave) do nothing`;
+  }
+
   /* BYPASS, el minijuego. Una fila por partida registrada (el id de la
      partida es único: una semilla firmada solo se puede usar una vez) y
      una fila por correo con su mejor puntaje, que es lo que sale en la
