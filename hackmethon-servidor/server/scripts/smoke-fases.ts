@@ -335,127 +335,215 @@ console.log('\n3) Muro de Repeticion · CICLOS');
   check(!dice(corre('ayuda')).includes('chapa'), 'y la ayuda no lleva materiales dentro');
 }
 
-console.log('\n4) Nucleo Modular · FUNCIONES');
+console.log('\n4) Nucleo Modular · FUNCIONES, PILAS Y COLAS');
 {
   const corre = corredor(nucleo);
   const ctx = (estado: Record<string, unknown> = {}) =>
     ({ estado, salidas: [], traficoActivo: false, filtroTrafico: null }) as any;
 
-  // LA invariante de esta fase: Terminal ANDA por el codigo sin verlo.
-  // Si su proyeccion llevara una sola linea dentro, Pantalla sobraria.
-  const abierto = sesion(nucleo, ['abrir escalar', 'bajar']).estado;
-  const term = JSON.stringify(nucleo.proyectar('TERMINAL', ctx(abierto)));
-  check(!term.includes('v + f') && !term.includes('devuelve'),
-    'el navegador de Terminal no lleva ni una linea de codigo');
-  check(term.includes('escalar.fn') && term.includes('corregir'),
-    'pero si le dice donde esta y que puede hacer');
+  // 1. Asimetría de roles
+  const vacio = ctx();
+  const term = JSON.stringify(nucleo.proyectar('TERMINAL', vacio));
+  check(!term.includes('resultados') && !term.includes('carpetas'),
+    'Terminal no recibe tablas ni arbol de codigo');
+  check(!term.includes('sondear') && !term.includes('armar') && !term.includes('enganar'),
+    'ni la lista de comandos: los comandos se los tiene que cantar Pantalla tras `ayuda`');
 
-  const pant: any = nucleo.proyectar('PANTALLA', ctx(abierto));
-  check(pant.codigo.abierta.lineas.some((l: any) => l.texto.includes('v + f')),
-    'Pantalla si ve el codigo de la pieza abierta');
-  check(pant.codigo.abierta.lineas.filter((l: any) => l.cursor).length === 1,
-    'y ve exactamente donde tiene su companero el cursor');
-  check(pant.codigo.carpetas.length === 3, 'con el arbol entero de carpetas');
+  const pant: any = nucleo.proyectar('PANTALLA', vacio);
+  check(pant.codigo.carpetas.length === 3, 'Pantalla ve las 3 carpetas (nucleo, medio, base)');
+  check(pant.codigo.abierta === null, 'al inicio no hay ningun documento abierto');
+  const pantAbierta: any = nucleo.proyectar('PANTALLA', ctx(sesion(nucleo, ['abrir reactor']).estado));
+  check(pantAbierta.codigo.abierta.lineas.some((l: any) => l.texto.includes('[ ??? ]')),
+    'y al abrir una pieza sin armar muestra [ ??? ] (sin revelar codigo)');
 
-  const datos = JSON.stringify(nucleo.proyectar('DATOS', ctx(abierto)));
-  check(!datos.includes('v + f') && !datos.includes('v * f'),
-    'y Datos no ve codigo: solo el manual');
-  check(datos.includes('12') && datos.includes('NODO-A'), 'que es lo que DEBERIA dar cada caso');
+  const datosP1: any = nucleo.proyectar('DATOS', vacio);
+  check(datosP1.tablas.length === 3, 'en Parte 1 Datos recibe solo 3 tablas (funciones, resultados, tolerancias)');
+  check(!JSON.stringify(datosP1).includes('colas_filtro'),
+    'y la tabla colas_filtro NO aparece en Parte 1 (no spoilea la Parte 2)');
+  check(!JSON.stringify(datosP1).includes('nucleo/') && !JSON.stringify(datosP1).includes('medio/'),
+    'y Datos no sabe en que carpeta vive cada funcion');
 
-  // Andar. Los movimientos cambian con cada paso, y ese es el hilo.
-  const raiz: any = corre('abrir prioridad');
-  check(JSON.stringify(raiz).includes('linea 1 de 3'), 'abrir deja el cursor en la primera linea');
-  // Donde estas y que puedes hacer vive en la PROYECCION, no en la prosa
-  // de la salida: la salida es una linea para Pantalla, el navegador es
-  // el instrumento de Terminal.
-  const nav = (cmds: string[]): any =>
-    (nucleo.proyectar('TERMINAL', ctx(sesion(nucleo, cmds).estado)) as any).navegador;
+  const ayudaTxt = dice(corre('ayuda')).toLowerCase();
+  const nombresReales = ['carga', 'pulso', 'freno', 'presion', 'valvula', 'flujo', 'reactor', 'escudo', 'latido'];
+  check(nombresReales.every((n) => !ayudaTxt.includes(n)),
+    'la ayuda no filtra el nombre de ninguna de las funciones');
 
-  check(nav(['abrir prioridad', 'bajar', 'bajar']).movimientos.includes('entrar'),
-    'en una linea que llama a otra pieza aparece el movimiento `entrar`');
-  check(!nav(['abrir prioridad']).movimientos.includes('entrar'),
-    'y en una que no llama a nadie, no aparece');
-  const dentro = nav(['abrir prioridad', 'bajar', 'bajar', 'entrar']);
-  check(dentro.ruta.endsWith('escalar.fn'), '`entrar` te mete en la pieza que llama esa linea');
-  check(dentro.pila.join(' > ') === 'prioridad > escalar', 'y la pila enseña de donde vienes');
-  check(dentro.linea === 1, 'y te deja en su primera linea');
-  const fuera = nav(['abrir prioridad', 'bajar', 'bajar', 'entrar', 'volver']);
-  check(fuera.ruta.endsWith('prioridad.fn') && fuera.pila.length === 1,
-    '`volver` te saca por donde entraste');
-  check(fuera.linea === 3, 'y te devuelve a la linea desde la que llamaste, no al principio');
+  // 2. Parte 1: Sondeo, Ramas Par/Impar, Fusible superior y Hueco
+  const sCarga = dice(corre('sondear carga 5'));
+  check(sCarga.includes('10') && sCarga.includes('1 nivel'),
+    'sondear carga 5 devuelve 10 y profundidad 1 nivel (base)');
+  const sReactor = dice(corre('sondear reactor 5'));
+  check(sReactor.includes('30') && sReactor.includes('3 niveles'),
+    'sondear reactor 5 devuelve 30 y profundidad 3 niveles (nucleo -> medio -> base)');
 
-  // Lo que no se puede hacer desde donde estas, y no cuesta nada.
-  check(!corre('entrar').fallo && dice(corre('abrir prioridad')).includes('linea 1'),
-    'entrar sin archivo abierto no penaliza');
-  const sinLlamada = sesion(nucleo, ['abrir prioridad', 'entrar']);
-  check(!sinLlamada.ultimo.fallo && dice(sinLlamada.ultimo).includes('no llama a ninguna'),
-    'entrar en una linea sin llamada se explica, no penaliza');
-  const noCuerpo = sesion(nucleo, ['abrir prioridad', 'bajar', 'bajar', 'corregir v * f']);
-  check(!noCuerpo.ultimo.fallo && dice(noCuerpo.ultimo).includes('no hay ninguna cuenta'),
-    'corregir una linea que solo llama a otra pieza se explica');
-  check(dice(sesion(nucleo, ['abrir prioridad', 'subir']).ultimo).includes('principio'),
-    'subir desde la primera linea se explica');
-  check(dice(corre('abrir noexiste')).includes('pantalla'), 'una pieza inventada manda a preguntar a Pantalla');
+  // No se puede engañar a ciegas
+  check(dice(corre('enganar carga n * 3')).includes('primero descubre'),
+    'enganar carga n * 3 falla si carga aun no ha sido armada');
 
-  // Tres piezas rotas: al principio no sale NI UNO. No hay caso verde del
-  // que tirar, y por eso lo que resuelve es el contrato, no la intuicion.
-  const valores = (estado: Record<string, unknown> = {}) =>
-    Object.fromEntries(
-      (nucleo.ejecutar('probar', { estado, intentos: 0, ahora: AHORA, traficoActivo: false }) as any)
-        .bloques[0].filas.map((f: string[]) => [f[0], f[2]]));
+  // Armar requiere coincidencia matemática
+  check(dice(corre('armar carga n + 99')).includes('no coincide'),
+    'armar carga n + 99 falla sin penalizar si no coincide con el robot');
+  const armaCarga = sesion(nucleo, ['armar carga n * 2']);
+  check((armaCarga.estado.armadas as any)?.carga === true,
+    'armar carga n * 2 confirma y marca carga como armada');
 
-  const roto = valores();
-  check(Object.values(roto).every((v) => v !== '—'), 'los cinco casos calculan algo');
-  check(roto.C1 === '7' && roto.C2 === '9' && roto.C3 === '7', 'y los tres primeros dan lo que no deben');
-  // La fuga que importa no es la palabra «deberia» —mandar al manual esta
-  // bien— sino los VALORES del contrato. Con el nucleo roto no coincide
-  // ninguno, asi que si alguno asoma es que lo esta imprimiendo esta
-  // terminal en vez de tenerlo solo Datos.
-  const CONTRATO = ['12', '24', '23', '111', '18'];
-  const salidaProbar = dice(corre('probar'));
-  check(CONTRATO.every((v) => !salidaProbar.includes(`"${v}"`)),
-    'la terminal no imprime ni uno de los valores del contrato');
+  // Limite superior (fusible_corte): poner un número gigante quema el fusible y falla
+  const quemaFusible = sesion(nucleo, [
+    'armar carga n * 2', 'armar pulso n * 3', 'armar freno n - 2',
+    'enganar carga n * 20', 'enganar pulso n * 20', 'enganar freno n * 20',
+    'ejecutar',
+  ]);
+  check(quemaFusible.ultimo.fallo === true,
+    'poner numeros gigantes al azar quema el fusible_corte superior y penaliza');
 
-  // LA escalera. Cada peldano necesita el anterior, y los casos se ponen
-  // en verde de uno en uno: es lo que hace deducible la fase.
-  const arreglar = (piezas: [string, string][]) =>
-    piezas.flatMap(([p, cuenta]) => [`abrir ${p}`, 'bajar', `corregir ${cuenta}`]);
-  const unoA = valores(sesion(nucleo, arreglar([['escalar', 'v * f']])).estado);
-  check(unoA.C1 === '12' && unoA.C2 !== '24', 'arreglada escalar, C1 cuadra y C2 todavia no');
-  const dosA = valores(sesion(nucleo, arreglar([['escalar', 'v * f'], ['doblar', 'n * 2']])).estado);
-  check(dosA.C2 === '24' && dosA.C3 !== '23', 'arreglada doblar, cuadra C2 y sigue faltando C3');
-  const tresA = sesion(nucleo, arreglar([['escalar', 'v * f'], ['doblar', 'n * 2'], ['margen', 'n - 1']]));
-  const tres = valores(tresA.estado);
-  check(tres.C3 === '23' && tres.C4 === '111' && tres.C5 === '18', 'y con la tercera cuadran las cinco');
+  // Seguro de paridad (el hueco): caer entre 40 y 52 en M1 con un PAR (50) es bloqueado
+  // carga(5) con n * 4 = 20 (par) -> presion(20) = 25 (impar) -> reactor(25) = 50 (PAR, bloqueado)
+  const paridadBloqueada = sesion(nucleo, [
+    'armar carga n * 2', 'armar pulso n * 3', 'armar freno n - 2',
+    'enganar carga n * 4',   // reactor da 50 (entre 40 y 52, pero es PAR y el hueco exige IMPAR)
+    'enganar pulso n + 15',  // pulso(6)=21 (impar) -> valvula(21)=26 (par) -> escudo(26)=36 (PAR, ok)
+    'enganar freno n + 4',   // freno(5)=9 (impar) -> flujo(9)=27 (impar) -> latido(27)=23 (IMPAR, ok)
+    'ejecutar',
+  ]);
+  check(paridadBloqueada.ultimo.fallo === true,
+    'caer dentro del rango con la paridad equivocada (50 PAR en M1) es bloqueado por el seguro');
 
-  check(corre('desplegar').fallo === true, 'desplegar sin arreglar nada penaliza');
-  check(sesion(nucleo, [...arreglar([['escalar', 'v * f'], ['doblar', 'n * 2']]), 'desplegar']).ultimo.fallo === true,
-    'y con solo dos de las tres, tambien');
-  check(sesion(nucleo, [...arreglar([['escalar', 'v * f'], ['doblar', 'n * 2'], ['margen', 'n - 1']]), 'desplegar'])
-    .ultimo.resuelto === true, 'las tres corregidas resuelven la fase');
+  // Entrar exactamente por el hueco de las 3 características activa la Parte 2:
+  // M1: carga(5) con n * 3 = 15 (impar) -> presion(15)=20 (par) -> reactor(20)=45 (IMPAR, 40<45<52)
+  // M2: pulso(6) con n + 15 = 21 (impar) -> valvula(21)=26 (par) -> escudo(26)=36 (PAR, 30<36<44)
+  // M3: freno(5) con n + 4 = 9 (impar) -> flujo(9)=27 (impar) -> latido(27)=23 (IMPAR, 20<23<34)
+  const cmdsParte1 = [
+    'armar carga n * 2',
+    'armar pulso n * 3',
+    'armar freno n - 2',
+    'enganar carga n * 3',
+    'enganar pulso n + 15',
+    'enganar freno n + 4',
+    'ejecutar',
+  ];
+  const pasoParte2 = sesion(nucleo, cmdsParte1);
+  check(pasoParte2.estado.parte === 2,
+    'vulnerar el hueco de paridad y rango en las 3 caracteristicas activa la Parte 2');
+  check(pasoParte2.ultimo.resuelto !== true, 'y la fase aun no termina (pasa a Parte 2)');
 
-  // Se puede llegar a cada pieza andando por dentro de quien la llama.
-  const rodeando = sesion(nucleo, [
-    'abrir prioridad', 'bajar', 'bajar', 'entrar', 'bajar', 'corregir v * f',
-    'abrir orden', 'bajar', 'bajar', 'entrar', 'bajar', 'corregir n * 2',
-    'abrir riesgo', 'bajar', 'bajar', 'entrar', 'bajar', 'corregir n - 1',
-    'desplegar']);
-  check(rodeando.ultimo.resuelto === true, 'y se llega a las tres entrando desde quien las llama');
+  // Condiciones aleatorias por equipo y por ciclo (semilla):
+  const datosEquipoA = JSON.stringify(nucleo.proyectar('DATOS', ctx({ semilla: 1 })));
+  const datosEquipoB = JSON.stringify(nucleo.proyectar('DATOS', ctx({ semilla: 5 })));
+  check(datosEquipoA !== datosEquipoB,
+    'dos equipos con distinta semilla reciben ventanas distintas en la tabla tolerancias');
+  const pasoConSemilla = nucleo.ejecutar('ejecutar', {
+    estado: {
+      semilla: 1,
+      armadas: { carga: true, pulso: true, freno: true },
+      // Para semilla=1 (d1=1: 52..64, d2=0: 30..44, d3=0: 20..34)
+      enganos: { carga: 'n + 22', pulso: 'n + 15', freno: 'n + 4' },
+    },
+    intentos: 0, ahora: AHORA, traficoActivo: false,
+  }) as any;
+  check(pasoConSemilla.estado?.parte === 2 && pasoConSemilla.estado?.semilla !== 1,
+    'al pasar a la Parte 2 la semilla rota a un nuevo ciclo de condiciones');
 
-  // `lote` figura entre las piezas tocadas pero no hace ninguna cuenta.
-  const enLote = sesion(nucleo, ['abrir lote', 'bajar', 'bajar', 'bajar', 'corregir n * 2']);
-  check(!enLote.ultimo.fallo && dice(enLote.ultimo).includes('no hay ninguna cuenta'),
-    'lote esta tocada pero no tiene cuenta propia: se explica y no penaliza');
+  // 3. Parte 2: Aparición de la 4ª tabla y Colas de Inspección (FIFO -> 3 características)
+  const enParte2 = pasoParte2.estado;
+  const datosP2: any = nucleo.proyectar('DATOS', ctx(enParte2));
+  check(datosP2.tablas.length === 4 && JSON.stringify(datosP2).includes('colas_filtro'),
+    'al pasar a la Parte 2 aparece la 4a tabla (colas_filtro) en Datos');
 
-  // Reiniciar: deshace el problema, NO el castigo.
-  const trasReiniciar = sesion(nucleo, [...arreglar([['escalar', 'v * f']]), 'reiniciar']);
-  check(valores(trasReiniciar.estado).C1 === '7', 'reiniciar devuelve las piezas a como estaban');
-  check(trasReiniciar.estado.pila === undefined, 'y suelta el cursor');
-  const conCastigo = sesion(nucleo, ['desplegar', 'reiniciar']);
-  check(conCastigo.estado.fallos === 1, 'pero NO borra los despliegues fallidos');
-  check(typeof conCastigo.estado.cuarentenaHasta === 'number', 'ni levanta la cuarentena');
-  check(dice(sesion(nucleo, ['reiniciar']).ultimo).includes('no habiais tocado'),
-    'reiniciar sin nada tocado lo dice en vez de fingir');
+  const correP2 = (cmd: string, est = enParte2) =>
+    nucleo.ejecutar(cmd, { estado: est, intentos: 0, ahora: AHORA, traficoActivo: false }) as any;
+
+  // En Parte 2 enganar directo está bloqueado
+  check(dice(correP2('enganar carga n - 2')).includes('blindado'),
+    'en Parte 2 el sabotaje directo con enganar esta bloqueado por el blindaje');
+
+  // Filtro de COLA-C (SEN): exige múltiplo de 3, impar, firma = valor + 7
+  check(dice(correP2('encolar SEN 6 13')).includes('rechazo'), 'COLA-C rechaza pares (SEN 6 13)');
+  check(dice(correP2('encolar SEN 5 12')).includes('rechazo'), 'COLA-C rechaza no multiplos de 3 (SEN 5 12)');
+  check(dice(correP2('encolar SEN 15 99')).includes('rechazo'), 'COLA-C rechaza firma incorrecta (SEN 15 99)');
+  const cValida = correP2('encolar SEN 15 22');
+  check((cValida.estado.paquetes as any)?.length === 1, 'COLA-C admite SEN 15 22 (cumple las 4 reglas)');
+
+  // Filtro de COLA-B (CTL): exige múltiplo de 5 entre -50 y 50
+  check(dice(correP2('encolar CTL 12')).includes('rechazo'), 'COLA-B rechaza no multiplos de 5 (CTL 12)');
+  check(dice(correP2('encolar CTL 55')).includes('rechazo'), 'COLA-B rechaza fuera de rango (CTL 55)');
+  const bValida = correP2('encolar CTL 15');
+  check((bValida.estado.paquetes as any)?.length === 1, 'COLA-B admite CTL 15 (multiplo de 5 en rango)');
+
+  // Filtro de COLA-A (NUC): exige entero entre -100 y 100
+  const aValida = correP2('encolar NUC 15');
+  check((aValida.estado.paquetes as any)?.length === 1, 'COLA-A admite NUC 15 (baja exigencia)');
+
+  // Disparar con menos de 3 paquetes avisa sin penalizar
+  const menosDe3 = sesion(nucleo, [...cmdsParte1, 'encolar SEN 15 22', 'disparar']);
+  check(!menosDe3.ultimo.fallo && dice(menosDe3.ultimo).includes('llevas 1 de 3'),
+    'disparar con menos de 3 paquetes pide completar los 3 turnos FIFO');
+
+  // Disparar por COLA-A sin haber armado las piezas de medio y nucleo es interceptado
+  const sinArmarA = sesion(nucleo, [
+    ...cmdsParte1,
+    'encolar NUC 15', 'encolar NUC 15', 'encolar NUC 20', 'disparar',
+  ]);
+  check(dice(sinArmarA.ultimo).includes('intercepto'),
+    'disparar por COLA-A sin armar medio/ y nucleo/ es interceptado por la seguridad de la Pila');
+
+  // Victoria por Ruta C (los 3 paquetes por COLA-C, entrando por los 3 huecos de paridad):
+  // M1: SEN 15 22 -> carga=15 (impar) -> presion(15)=20 (par) -> reactor(20)=45 (IMPAR, 40<45<52)
+  // M2: SEN 21 28 -> pulso=21 (impar) -> valvula(21)=26 (par) -> escudo(26)=36 (PAR, 30<36<44)
+  // M3: SEN 9 16  -> freno=9 (impar)  -> flujo(9)=27 (impar)  -> latido(27)=23 (IMPAR, 20<23<34)
+  const winRutaC = sesion(nucleo, [
+    ...cmdsParte1,
+    'encolar SEN 15 22',
+    'encolar SEN 21 28',
+    'encolar SEN 9 16',
+    'disparar',
+  ]);
+  check(winRutaC.ultimo.resuelto === true,
+    'Ruta C: 3 paquetes SEN en orden FIFO entran por los 3 huecos y resuelven la fase');
+
+  // Victoria por Ruta B (armando medio/ y encolando 3 paquetes CTL múltiplos de 5):
+  // M1: CTL 5  -> presion=15+5=20 (par)   -> reactor(20)=45 (IMPAR, 40<45<52)
+  // M2: CTL 15 -> valvula=15+15=30 (par)  -> escudo(30)=40  (PAR, 30<40<44)
+  // M3: CTL 20 -> flujo=9+20=29 (impar)   -> latido(29)=25  (IMPAR, 20<25<34)
+  const winRutaB = sesion(nucleo, [
+    ...cmdsParte1,
+    'armar presion llama carga luego x + 5',
+    'armar valvula llama pulso luego x - 3',
+    'armar flujo llama freno luego x * 3',
+    'encolar CTL 5',
+    'encolar CTL 15',
+    'encolar CTL 20',
+    'disparar',
+  ]);
+  check(winRutaB.ultimo.resuelto === true,
+    'Ruta B: armando medio/ y encolando 3 paquetes CTL entra por los 3 huecos');
+
+  // Victoria por Ruta A (armando las 9 funciones y encolando 3 paquetes NUC):
+  // M1: NUC 15 -> reactor=30+15=45 (IMPAR, 40<45<52)
+  // M2: NUC 15 -> escudo=21+15=36  (PAR, 30<36<44)
+  // M3: NUC 20 -> latido=5+20=25   (IMPAR, 20<25<34)
+  const winRutaA = sesion(nucleo, [
+    ...cmdsParte1,
+    'armar presion llama carga luego x + 5',
+    'armar valvula llama pulso luego x - 3',
+    'armar flujo llama freno luego x * 3',
+    'armar reactor llama presion luego x * 2',
+    'armar escudo llama valvula luego x + 6',
+    'armar latido llama flujo luego x - 4',
+    'encolar NUC 15',
+    'encolar NUC 15',
+    'encolar NUC 20',
+    'disparar',
+  ]);
+  check(winRutaA.ultimo.resuelto === true,
+    'Ruta A: armando las 9 funciones y encolando 3 paquetes NUC resuelve la fase');
+
+  // Reiniciar
+  const rP1 = sesion(nucleo, ['armar carga n * 2', 'enganar carga n * 3', 'reiniciar']);
+  check(Object.keys(rP1.estado.enganos as any).length === 0, 'reiniciar en Parte 1 limpia los enganos');
+  check((rP1.estado.armadas as any)?.carga === true, 'pero conserva las piezas armadas');
+
+  const rP2 = sesion(nucleo, [...cmdsParte1, 'encolar SEN 15 22', 'reiniciar']);
+  check((rP2.estado.paquetes as any)?.length === 0, 'reiniciar en Parte 2 limpia las colas');
 }
 
 console.log('\n5) Boveda de Credenciales · BASES DE DATOS');

@@ -864,7 +864,7 @@ body.fallo .cortinilla > strong{ animation:falloCanales .22s steps(1) infinite; 
   font-family:var(--f-mono); font-size:11px; font-weight:400; letter-spacing:0;
   transition:background .12s linear, box-shadow .12s linear;
 }
-.nodo:hover{
+.nodo:hover:not(:disabled){
   background:rgba(79,134,238,.14); color:var(--phos-soft);
   box-shadow:0 0 18px rgba(79,134,238,.3);
 }
@@ -1251,12 +1251,12 @@ span.pel-ficha-escudo{ border:1px dashed var(--rule-blue); }
 
 /* ── la ventana del mapa (admin/MapaSala.tsx) ──────────────────── */
 .admin-mapa{ max-width:none; padding:clamp(12px, 2.5vw, 34px); position:relative; display:block; }
-.mapa{
+.admin-mapa .mapa{
   display:flex; flex-direction:column; gap:clamp(6px, 1.2vw, 14px);
   height:calc(100vh - var(--marco) * 2 - var(--oia) - 10px - clamp(24px, 5vw, 68px));
   min-height:360px;
 }
-.mapa > :not(.jardin-carrera){ position:relative; z-index:1; }
+.admin-mapa .mapa > :not(.jardin-carrera){ position:relative; z-index:1; }
 .mapa-cab{ align-items:center; }
 .mapa-tope{ height:0; margin:0; }
 .mapa-leyenda{ display:flex; align-items:center; gap:6px; font-size:clamp(9px, 1vw, 12px); color:var(--phos-dim); letter-spacing:.08em; }
