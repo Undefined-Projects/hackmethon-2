@@ -6,6 +6,7 @@ import { sonar } from '../../lib/sonido';
 import { RobotSacudiendo, useSalida } from '../RobotAtaque';
 import { JardinEscena } from '../../admin/JardinEscena';
 import { FlujoDiagrama, Pseudocodigo } from '../fases/Flujo';
+import { ProgramaDatos } from '../fases/ProgramaBrote';
 
 type Tabla = {
   id: string;
@@ -31,6 +32,8 @@ type Payload = {
   /** El flujo que va escribiendo Terminal (Fase 1). Datos ve su forma,
    *  nunca su resultado: quién pasa es de Pantalla. */
   flujo?: { filtros: string[]; max: number; marchitos: string[]; capa: number; pierna?: boolean[] };
+  /** El programa del brote (Fase 2): lo que escribe Terminal, vivo. */
+  programa?: Parameters<typeof ProgramaDatos>[0]['programa'];
 };
 
 type Arista = { clave: string; d: string; etiqueta: string; lx: number; ly: number };
@@ -105,6 +108,8 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
           </div>
         </div>
       )}
+
+      {datos.programa && <ProgramaDatos programa={datos.programa} />}
 
       {tabla ? (
         <DetalleTabla

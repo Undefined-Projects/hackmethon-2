@@ -25,16 +25,17 @@ export function PanelIntros({ phases }: { phases: { key: string; order: number; 
           cuenta como vista. Se maneja con las flechas, la barra espaciadora pausa y Escape la cierra.
         </p>
         <div className="intros-lista">
-          {conIntro.map((p) => (
-            <article key={p.key} className="intros-ficha">
-              <span className="intros-lamina">{INTROS[p.key].lamina}</span>
-              <strong>{p.title}</strong>
+          {/* La de la fase y, detrás, las de sus capas. */}
+          {conIntro.flatMap((p) => [p.key, ...Object.keys(INTROS).filter((k) => k.startsWith(`${p.key}:`))].map((k) => (
+            <article key={k} className="intros-ficha">
+              <span className="intros-lamina">{INTROS[k].lamina}</span>
+              <strong>{k === p.key ? p.title : `${p.title} · ${INTROS[k].nombre}`}</strong>
               <span className="intros-meta">
-                {INTROS[p.key].escenas.length} escenas · ~{Math.round(INTROS[p.key].escenas.reduce((t, e) => t + e.dur, 0) / 1000)} s
+                {INTROS[k].escenas.length} escenas · ~{Math.round(INTROS[k].escenas.reduce((t, e) => t + e.dur, 0) / 1000)} s
               </span>
-              <button type="button" onClick={() => setViendo(p.key)}>&gt; VER ANIMACIÓN</button>
+              <button type="button" onClick={() => setViendo(k)}>&gt; VER ANIMACIÓN</button>
             </article>
-          ))}
+          )))}
           {sinIntro > 0 && (
             <p className="intros-pendiente">{sinIntro} fase(s) todavía sin animación.</p>
           )}

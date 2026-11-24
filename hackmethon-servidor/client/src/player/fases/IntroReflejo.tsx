@@ -27,7 +27,7 @@ const v = (o: Record<string, string | number>) => o as CSSProperties;
 const MOTAS = Array.from({ length: 22 }, (_, i) => ({
   x: (i * 211) % 940 + 10, y: (i * 137) % 480 + 20, r: 1.2 + (i % 3) * 0.7, d: (i % 7) * 0.9, t: 7 + (i % 5) * 1.6,
 }));
-function Motas() {
+export function Motas() {
   return (
     <g className="ir-motas" aria-hidden="true">
       {MOTAS.map((m, i) => (
@@ -82,7 +82,7 @@ function MiniMembrana({ x, y, esc = 1, abierta = false, alarma = false, clase = 
 }
 
 /** El robot del lobby, entero, con una parte encendida. */
-function Robot({ x, y, alto, enciende, marchita = false }: { x: number; y: number; alto: number; enciende: ParteClave; marchita?: boolean }) {
+export function Robot({ x, y, alto, enciende, marchita = false }: { x: number; y: number; alto: number; enciende: ParteClave; marchita?: boolean }) {
   const k = alto / 760;
   return (
     <g className="ir-flota">
@@ -96,7 +96,7 @@ function Robot({ x, y, alto, enciende, marchita = false }: { x: number; y: numbe
 }
 
 /** El cursor que hace clic: llega, pulsa y deja un aro. */
-function Cursor({ x, y, d }: { x: number; y: number; d: string }) {
+export function Cursor({ x, y, d }: { x: number; y: number; d: string }) {
   return (
     <g className="ir-cursor" style={v({ '--x': `${x}px`, '--y': `${y}px`, '--d': d })}>
       <circle className="ir-clic" r="16" />
@@ -111,7 +111,7 @@ function E1() {
   return (
     <svg viewBox="0 0 960 520" className="ir-svg">
       <Motas />
-      <Robot x={170} y={40} alto={440} enciende="pierna-izq" />
+      <Robot x={170} y={40} alto={440} enciende="pierna-der" />
       {/* El escáner baja por el robot y se para en la rodilla. */}
       <rect className="ir-escaner" x="150" y="40" width="200" height="6" />
       {/* La lupa: de la rodilla a la membrana. */}
@@ -279,7 +279,7 @@ function E6() {
         <rect className="ir-boton fuerte ir-pulsa" x="360" y="60" width="200" height="54" rx="3" style={v({ '--d': '5.6s' })} />
         <text className="ir-boton-t" x="460" y="94" textAnchor="middle">&gt; desplegar</text>
         <text className="ir-nota" x="460" y="140" textAnchor="middle">en serio: si falla, cuarentena</text>
-        <Robot x={400} y={170} alto={300} enciende="pierna-izq" marchita />
+        <Robot x={400} y={170} alto={300} enciende="pierna-der" marchita />
         <g className="ir-hojas" transform="translate(452 400)">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <path key={i} d="M0 -5 L4 0 L0 5 L-4 0 Z" style={v({ '--i': i })} />)}
         </g>
@@ -299,13 +299,13 @@ function E6() {
   );
 }
 
-const Kbd = ({ children }: { children: ReactNode }) => <code className="ir-kbd">{children}</code>;
+export const Kbd = ({ children }: { children: ReactNode }) => <code className="ir-kbd">{children}</code>;
 
 export const INTRO_REFLEJO: EscenaIntro[] = [
   {
     clave: 'pierna', dur: 10000, Dibujo: E1,
-    titulo: 'La pierna izquierda',
-    texto: <>Están dentro de la pierna izquierda de la máquina. Su rodilla tiene un <b>sistema inmune</b>: una membrana de raíces que decide qué programas entran.</>,
+    titulo: 'La pierna derecha',
+    texto: <>Cruzaron la maraña: ya están dentro de la pierna derecha de la máquina. Su rodilla tiene un <b>sistema inmune</b>: una membrana de raíces que decide qué programas entran.</>,
   },
   {
     clave: 'quien', dur: 12500, Dibujo: E2,

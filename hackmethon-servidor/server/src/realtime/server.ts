@@ -22,8 +22,8 @@ import { addSocket, removeSocket, scheduleOffline } from './presence.js';
 import {
   activarFase, ajustarLimiteFinal, cambiarAccesoLibre, cambiarEstadoEvento, cerrarFase,
   destacarFase, ensayarCelebracion, ensayarFinal, guardarLogoEquipo, mezclarRoles,
-  provocarAveria, reiniciarJuego, renombrarEquipo, ensayarAnatomia,
-  guardarPlano, ajustarEnfriamientoAtaque, ensayarDestruccion, asignarRol, pushAdminState,
+  provocarAveria, mandarConsejo, verConsejo, reiniciarJuego, renombrarEquipo, ensayarAnatomia,
+  guardarPlano, ajustarEnfriamientoAtaque, ensayarDestruccion, asignarRol, moverDeEquipo, pushAdminState,
 } from './admin.js';
 import { ErrorComando, procesarComando } from './commands.js';
 import { activarEscudo, atacarEquipo, lanzarSuperAtaque } from './ataques.js';
@@ -226,6 +226,7 @@ async function onConnection(socket: AppSocket) {
   socket.on('admin:phase:focus', soloAdmin(({ phaseId }) => destacarFase(phaseId, userId)));
   socket.on('admin:event:status', soloAdmin(({ status }) => cambiarEstadoEvento(status, userId)));
   socket.on('admin:jugador:rol', soloAdmin(({ userId: u, rol }) => asignarRol(u, rol, userId)));
+  socket.on('admin:jugador:equipo', soloAdmin(({ userId: u, teamId: t }) => moverDeEquipo(u, t, userId)));
   socket.on('admin:roles:shuffle', soloAdmin(({ teamIds }) => mezclarRoles(userId, teamIds)));
   // --- Luces ---
   socket.on('admin:luces:panel', soloAdmin(() => panelDeLuces()));
@@ -256,6 +257,8 @@ async function onConnection(socket: AppSocket) {
   socket.on('admin:minijuego', soloAdmin(({ clave }) => lanzarMinijuego(clave, userId)));
   socket.on('admin:equipo:tickets', soloAdmin(({ teamId: t, delta }) => ajustarTickets(t, delta, userId)));
   socket.on('admin:jugador:averia', soloAdmin(({ userId: a }) => provocarAveria(a, userId)));
+  socket.on('admin:consejo', soloAdmin(({ teamIds }) => mandarConsejo(userId, teamIds)));
+  socket.on('admin:consejo:ver', soloAdmin(({ faseKey, capa, rol }) => verConsejo(faseKey, capa, rol)));
 
   // ---------- Desconexión ----------
   socket.on('disconnect', async (reason) => {

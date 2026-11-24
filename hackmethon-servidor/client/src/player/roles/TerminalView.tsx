@@ -14,7 +14,59 @@ type Payload = {
   casos?: number;
   total?: number;
   tablero?: Tablero | null;
+  brote?: Brote | null;
 };
+
+/** El brote de La Maraña (y del bonus), visto desde la consola: cuántas líneas lleva y
+ *  si ya puede salir otro. Ni una palabra del programa ni del laberinto:
+ *  el programa lo ve Datos y el laberinto, Pantalla. */
+type Brote = {
+  capa: number;
+  /** «el semillero», «el seto», «la espesura». */
+  nombreCapa: string;
+  /** En la espesura salen cuatro a la vez. */
+  varios: boolean;
+  lineas: number;
+  max: number;
+  abiertos: number;
+  viajes: number;
+  /** Cuándo germina el siguiente. `null` o pasado: ya puede salir. */
+  listoEn: number | null;
+};
+
+/** El panel del brote, con su cuenta atrás propia: el servidor manda el
+ *  instante y aquí se resta, sin un pulso de red por segundo. */
+function PanelBrote({ brote }: { brote: Brote }) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  const espera = brote.listoEn ? Math.max(0, Math.ceil((brote.listoEn - ahora) / 1000)) : 0;
+  useEffect(() => {
+    if (!brote.listoEn || brote.listoEn <= Date.now()) return;
+    const id = setInterval(() => setAhora(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [brote.listoEn]);
+  return (
+    <div className="navegador panel-brote">
+      <p className="nav-ruta">el brote · capa {brote.capa} · {brote.nombreCapa}</p>
+      <div className="pbr-cupo" aria-label={`${brote.lineas} de ${brote.max} líneas`}>
+        {Array.from({ length: brote.max }, (_, i) => <i key={i} className={i < brote.lineas ? 'llena' : ''} />)}
+      </div>
+      <p className="nav-linea">
+        líneas <strong>{brote.lineas}</strong> de {brote.max}
+        {brote.abiertos > 0 && (
+          <span className="nav-aviso">{brote.abiertos} bloque{brote.abiertos === 1 ? '' : 's'} sin cerrar · falta{brote.abiertos === 1 ? '' : 'n'} {brote.abiertos} `fin`</span>
+        )}
+      </p>
+      <p className={`nav-marcador${espera ? ' esperando' : ' listo'}`}>
+        {espera
+          ? (brote.varios
+              ? <>cuatro brotes en la espesura · los siguientes germinan en <strong>{espera} s</strong></>
+              : <>brote en el laberinto · el siguiente germina en <strong>{espera} s</strong></>)
+          : <>listo para <strong>lanzar</strong></>}
+        {' · '}{brote.varios ? 'lanzamientos' : 'brotes lanzados'}: <strong>{brote.viajes}</strong>
+      </p>
+    </div>
+  );
+}
 
 /** El tablero de la Fase 3: ante qué barrera estás y cómo fue el último
  *  intento. El material y el grosor van en la placa, y la placa la lee
@@ -227,6 +279,8 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
           </p>
         </div>
       )}
+
+      {payload?.brote && <PanelBrote brote={payload.brote} />}
 
       {/* El navegador. Dice DONDE estas, no QUE hay ahi: los movimientos
           cambian con cada paso y son el unico hilo que se sigue sin ver

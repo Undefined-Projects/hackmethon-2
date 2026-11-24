@@ -23,7 +23,7 @@ import { intensidadAtaque } from './constants.js';
 import {
   buildLobbyView, computeAvailability, esperaDeAtaqueMs, finalRestanteMs, liveElapsedMs,
 } from './timing.js';
-import { moduloDeFase } from '../phases/index.js';
+import { moduloDeFase, semillaDe } from '../phases/index.js';
 import { salidasDe } from '../realtime/commands.js';
 import { filtroDeFlujo, flujoActivo } from '../realtime/trafico.js';
 import { marcasDe, recordsSala, tableroMinijuego, vistaMinijuego } from '../realtime/minijuegos.js';
@@ -85,7 +85,7 @@ export async function projectPhaseForRole(
       salidas,
       traficoActivo: flujoActivo(teamId),
       filtroTrafico: filtroDeFlujo(teamId),
-      semilla: teamId,
+      semilla: semillaDe(teamId),
     }),
   };
 }

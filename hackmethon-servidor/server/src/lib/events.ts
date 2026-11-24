@@ -482,6 +482,10 @@ export interface ServerToClientEvents {
   'presence:update': (p: { teamId: string; members: MemberView[] }) => void;
   'lobby:update': (p: { lobby: LobbyPhaseView[]; serverTime: number }) => void;
   'role:changed': (p: { role: Role; previousRole: Role | null }) => void;
+  /** El panel cambió a esta persona de equipo. Sus manejadores llevan el
+   *  equipo de la conexión, así que el cliente se reconecta para entrar
+   *  limpio en el nuevo. */
+  'session:reconectar': (p: { motivo: string }) => void;
   'workspace:update': (w: PhaseWorkspace | null) => void;
   'event:update': (p: {
     status: EventStatus; focusPhaseId: string | null; paused: boolean;
@@ -510,6 +514,9 @@ export interface ServerToClientEvents {
    *  Sin remite es del panel: no es lo mismo que te averíe el sistema
    *  que saber quién te lo ha hecho. */
   'player:averia': (p: { tipo: TipoAveria; duracionMs: number; de?: string }) => void;
+  /** El letrero del robot: un consejo para el puesto de esa persona, en
+   *  la fase y capa en que está su equipo. Lo manda el admin. */
+  'player:consejo': (p: ConsejoRobot) => void;
   /** El saldo del equipo cambió. Solo a la room del equipo. */
   'tickets:movimiento': (m: MovimientoTickets) => void;
   /** Un ataque rebotó en el escudo del equipo. Solo a la room del equipo
@@ -558,6 +565,12 @@ export interface ServerToClientEvents {
     tickets?: { ganados: number; lugar: number };
   }) => void;
 }
+
+/** Lo que lleva el letrero del robot. Sin fase: el equipo está en el lobby. */
+export type ConsejoRobot = {
+  id: string; fase: string | null; capa: number | null; nombreCapa: string | null;
+  rol: Role; texto: string;
+};
 
 export type Ack<T = unknown> = (r: { ok: boolean; error?: string; data?: T }) => void;
 
@@ -643,6 +656,13 @@ export interface ClientToServerEvents {
   'minijuego:puntaje': (p: { ronda: string; puntos: number }, ack: Ack<{ mejor: number }>) => void;
   /** Enciende o apaga el acceso libre a las fases abiertas. */
   'admin:event:acceso': (p: { libre: boolean }, ack: Ack) => void;
+  /** El letrero del robot con un consejo. Sin equipos, va a todos. */
+  'admin:consejo': (p: { teamIds?: string[] }, ack: Ack<{ equipos: number }>) => void;
+  /** Vista previa del letrero en el panel: no se manda a nadie. */
+  'admin:consejo:ver': (
+    p: { faseKey: string | null; capa: number | null; rol: Role },
+    ack: Ack<ConsejoRobot & { capas: number }>,
+  ) => void;
   /** Ensayo de la pantalla de victoria. Sin equipos, va a todos. */
   'admin:phase:celebrar': (
     p: { teamIds?: string[] },
@@ -651,6 +671,13 @@ export interface ClientToServerEvents {
   /** Renombra un equipo. Los códigos de acceso NO cambian: se reparten
    *  impresos antes de empezar, y cambiarlos a media tarde dejaría fuera
    *  a quien ya tiene el suyo en la mano. */
+  /** Cambia a una persona de equipo. Si se lleva la TERMINAL, el equipo
+   *  que deja la recibe en otra persona; en el nuevo solo la toma si allí
+   *  no la tiene nadie. */
+  'admin:jugador:equipo': (
+    p: { userId: string; teamId: string },
+    ack: Ack<{ equipo: string; rol: Role }>,
+  ) => void;
   'admin:equipo:nombre': (
     p: { teamId: string; nombre: string },
     ack: Ack<{ nombre: string }>,

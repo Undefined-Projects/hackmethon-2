@@ -47,10 +47,15 @@ for (const p of suya.registro) {
 }
 console.log('  (+ = llega con la muda)\n');
 console.log(`Esporas capa 1: ${['brote', 'raiz', 'polen'].map((c) => quien(c).nombre).join(', ')}`);
-console.log(`Anticuerpos capa 1: ${['liquen', 'esqueje', 'resina', 'corteza', 'humus'].map((c) => quien(c).nombre).join(', ')}`);
-console.log(`En la muda: espora ${quien('micelio').nombre} y ${quien('nectar').nombre}; anticuerpo ${quien('tallo').nombre}; `
+console.log(`Anticuerpos capa 1: ${['liquen', 'esqueje', 'resina', 'corteza'].map((c) => quien(c).nombre).join(', ')}`);
+console.log(`En la muda: espora ${quien('micelio').nombre} y ${quien('nectar').nombre}; anticuerpos ${quien('tallo').nombre} y ${quien('humus').nombre}; `
   + `${quien('savia').nombre} se vuelve anticuerpo; ${quien('xilema').nombre} es rutina.\n`);
-console.log('CAPA 1');
+console.log('CAPA 1 · el camino amable (un rasgo por filtro, y nombrar a los que quedan)');
+for (const c of ['quitar 1', 'filtrar si firma = ausente', `filtrar si nombre = ${quien('esqueje').nombre}`,
+  `filtrar si nombre = ${quien('corteza').nombre}`, 'probar', 'desplegar']) {
+  console.log(`  > ${t(c)}`);
+}
+console.log('CAPA 1 · el camino con `y` (dos filtros, y sobreviven a la muda)');
 for (const c of ['quitar 1', 'filtrar si permisos >= 3 y firma != valida', 'filtrar si origen = externo y permisos >= 3', 'probar', 'desplegar']) {
   console.log(`  > ${t(c)}`);
 }

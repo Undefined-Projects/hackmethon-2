@@ -1,10 +1,12 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
 import { useTicker } from '../lib/useTicker';
 import { azar as azarJardin, crece, preparar, type Semilla } from '../lib/jardin';
 import { Vegetacion, type Tono } from '../player/AnatomiaDeco';
 import { JardinEscena } from './JardinEscena';
 import { Membrana, type Cuidador } from '../player/fases/Membrana';
+import { Marana, type Mundo, type ViajePantalla } from '../player/fases/Marana';
+import type { Accion, Ritmo } from '../player/fases/caminata';
 
 // ============================================================
 //  Las escenas del proyector.
@@ -66,64 +68,62 @@ function EscenaAcceso() {
 }
 
 // ============================================================
-//  Fase 2 · El Enemigo — el tráfico cayendo
+//  Fase 2 · La Maraña — CICLOS
+//  Un seto inventado, más pequeño que los del juego, y un brote que lo
+//  cruza en bucle con una escalera de ciclo. Al lado, el programa que lo
+//  mueve. Ni el seto ni el programa son los de ninguna mesa.
 // ============================================================
 
-const RUTAS = [
-  '/api/nomina', '/api/exportar', '/api/usuarios', '/api/backup',
-  '/api/claves', '/api/informes', '/api/exportar/nomina', '/api/sesion',
+const SETO_SALA = [
+  '#########',
+  '#.#...#S#',
+  '#.#.#.#.#',
+  '#...#...#',
+  '#.###.###',
+  '#.#.....#',
+  '###.#####',
+  '#.....###',
+  '#########',
 ];
-const CUENTAS = ['m.rivas', 'j.ortega', 'c.pineda', 'a.soto', 'r.mendez', 'l.tapia', 's.varela'];
-const METODOS = ['GET', 'GET', 'POST', 'DELETE', 'PUT'];
-const CODIGOS = [200, 200, 200, 401, 403, 404, 401, 500];
+const RUMBO_SALA = 0;
+/** La escalera: girar a la izquierda, dos pasos, girar a la derecha, dos
+ *  pasos, tres veces. Lo mismo que dice el programa de al lado. */
+const PROGRAMA_SALA: Accion[] = Array.from({ length: 3 }, () => ['gd', 'av', 'av', 'gi', 'av', 'av'] as Accion[]).flat();
+const RITMO_SALA: Ritmo = { inicio: 900, paso: 420, giro: 320, choque: 900, fin: 2600 };
+
+function viajeDeSala(n: number): ViajePantalla {
+  const entrada: [number, number] = [7, 1];
+  let f = entrada[0], c = entrada[1], d = RUMBO_SALA;
+  const pasos = PROGRAMA_SALA.map((a): [Accion, number, number, number] => {
+    if (a === 'gi') d = (d + 3) % 4;
+    else if (a === 'gd') d = (d + 1) % 4;
+    else { f += [-1, 0, 1, 0][d]; c += [0, 1, 0, -1][d]; }
+    return [a, f, c, d];
+  });
+  const mundo: Mundo = {
+    capa: 1, filas: 9, cols: 9, celdas: SETO_SALA,
+    salida: [1, 7], brotes: [{ entrada, rumbo: RUMBO_SALA }],
+  };
+  return { n, capa: 1, brotes: [{ entrada, rumbo: RUMBO_SALA, fin: 'salida', pasos }], ritmo: RITMO_SALA, mundo };
+}
 
 function EscenaEnemigo() {
-  // Se calcula una vez: una cinta que se rebaraja en cada repintado
-  // parpadea y marea. Lo que se mueve es la cinta, no su contenido.
-  const lineas = useMemo(() => {
-    const r = azar(7);
-    const BASE = 11 * 3600 + 42 * 60 + 8;
-    // Los huecos entre peticiones primero, y el reloj sale de sumarlos:
-    // un contador que se va reasignando dentro del `map` depende del
-    // orden en que React decida evaluarlo.
-    const huecos = Array.from({ length: 26 }, () => 1 + Math.floor(r() * 3));
-    return huecos.map((_, i) => {
-      const seg = BASE + huecos.slice(0, i + 1).reduce((a, b) => a + b, 0);
-      const hh = String(Math.floor(seg / 3600) % 24).padStart(2, '0');
-      const mm = String(Math.floor(seg / 60) % 60).padStart(2, '0');
-      const ss = String(seg % 60).padStart(2, '0');
-      return {
-        id: i,
-        hora: `${hh}:${mm}:${ss}`,
-        metodo: METODOS[Math.floor(r() * METODOS.length)],
-        ruta: RUTAS[Math.floor(r() * RUTAS.length)],
-        cuenta: CUENTAS[Math.floor(r() * CUENTAS.length)],
-        codigo: CODIGOS[Math.floor(r() * CODIGOS.length)],
-      };
-    });
+  const [n, setN] = useState(1);
+  useEffect(() => {
+    const total = RITMO_SALA.inicio + PROGRAMA_SALA.reduce((t, a) => t + (a === 'av' ? RITMO_SALA.paso : RITMO_SALA.giro), 0)
+      + RITMO_SALA.fin + 1400;
+    const id = setInterval(() => setN((k) => k + 1), total);
+    return () => clearInterval(id);
   }, []);
-
+  const viaje = useMemo(() => viajeDeSala(n), [n]);
   return (
-    <div className="esc esc-enemigo">
-      <div className="atq-caja">
-        {/* La lista va DUPLICADA y la cinta sube justo media altura: al
-            llegar al final el fotograma es idéntico al del principio, y
-            el bucle no tiene costura. */}
-        <div className="atq-cinta">
-          {[0, 1].map((vuelta) =>
-            lineas.map((l) => (
-              <div key={`${vuelta}-${l.id}`} className={`atq-linea c${Math.floor(l.codigo / 100)}xx`}>
-                <span className="atq-hora">{l.hora}</span>
-                <span className="atq-metodo">{l.metodo}</span>
-                <span className="atq-ruta">{l.ruta}</span>
-                <span className="atq-cuenta">{l.cuenta}</span>
-                <span className="atq-codigo">{l.codigo}</span>
-              </div>
-            )),
-          )}
-        </div>
-        <span className="atq-barrido" aria-hidden="true" />
+    <div className="esc esc-acceso esc-marana">
+      <div className="acc-membrana mar-sala">
+        <Marana mundo={viaje.mundo} viaje={viaje} capa={1} sala />
       </div>
+      <pre className="esc-codigo">
+        {'repetir 3 veces\n    girar derecha\n    avanzar\n    avanzar\n    girar izquierda\n    avanzar\n    avanzar\nfin'}
+      </pre>
     </div>
   );
 }
@@ -487,4 +487,6 @@ export const ESCENAS: Record<string, () => ReactElement> = {
   'fase-5-boveda': EscenaBoveda,
   'fase-6-puente': EscenaPuente,
   'fase-7-rastro': EscenaRastro,
+  // El bonus: la misma flecha que en La Maraña.
+  'fase-bonus-espesura': EscenaEnemigo,
 };

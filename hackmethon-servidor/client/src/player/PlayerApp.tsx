@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePlayer, useSession } from '../session/SessionContext';
 import { formatMs, roleLabel } from '../lib/format';
 import { Lobby } from './Lobby';
@@ -11,11 +11,12 @@ import { SalaEspera } from './SalaEspera';
 import { SuperAtaque } from './SuperAtaque';
 import { CaraRobot } from './RobotAtaque';
 import { LaminaFase } from './LaminaFase';
-import { INTROS, IntroFase, introVista, marcarIntroVista } from './fases/IntroFase';
+import { LetreroRobot } from './LetreroRobot';
+import { INTROS, IntroFase, introDeCapa, introVista, marcarIntroVista } from './fases/IntroFase';
 
 export function PlayerApp() {
   const player = usePlayer();
-  const { conn, roleFlash, resuelta, averia, aviso, volverAlLobby, cerrarCelebracion, socket } = useSession();
+  const { conn, roleFlash, resuelta, averia, aviso, consejo, volverAlLobby, cerrarCelebracion, cerrarConsejo, socket } = useSession();
   // El desplegable solo existe con la partida en marcha. En el lobby de
   // antes de empezar no hay a quién atacar, y con el evento terminado
   // tampoco: dejarlo puesto invitaría a seguir dando guerra.
@@ -28,9 +29,26 @@ export function PlayerApp() {
   useEffect(() => {
     if (faseKey && INTROS[faseKey] && !introVista(player.me.id, faseKey)) setIntro(faseKey);
   }, [faseKey, player.me.id]);
+
+  // La de una capa nueva: sale sola al llegar a ella. Espera lo que el
+  // servidor diga que le falta a Pantalla para enseñar cómo cedió la
+  // anterior (el brote que llega y la pierna que apaga la luz). Si otra
+  // está abierta, espera a que se cierre.
+  const lamina = (player.workspace?.payload as { lamina?: { capa?: number; cedeEnMs?: number } } | null)?.lamina;
+  const capa = lamina?.capa ?? null;
+  const deCapa = faseKey && capa ? introDeCapa(faseKey, capa) : null;
+  const pendienteCapa = !!deCapa && !!INTROS[deCapa] && !introVista(player.me.id, deCapa);
+  const esperaCapa = useRef(0);
+  esperaCapa.current = lamina?.cedeEnMs ?? 0;
+  useEffect(() => {
+    if (!pendienteCapa) return;
+    const t = setTimeout(() => setIntro((abierta) => abierta ?? deCapa), esperaCapa.current);
+    return () => clearTimeout(t);
+  }, [deCapa, pendienteCapa]);
+
   const cerrarIntro = () => {
     if (intro) marcarIntroVista(player.me.id, intro);
-    setIntro(null);
+    setIntro(pendienteCapa && intro !== deCapa ? deCapa : null);
   };
 
   return (
@@ -157,6 +175,9 @@ export function PlayerApp() {
       <AnuncioPrimera />
 
       {intro && <IntroFase fase={intro} onCerrar={cerrarIntro} />}
+
+      {/* El consejo que manda el admin: en una esquina, sin tapar el juego. */}
+      {consejo && <LetreroRobot consejo={consejo} onCerrar={cerrarConsejo} />}
 
       {/* Encima de TODO, también del minijuego: inmoviliza al equipo. */}
       <SuperAtaque />

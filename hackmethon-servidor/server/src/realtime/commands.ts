@@ -24,7 +24,7 @@ import { prisma } from '../lib/prisma.js';
 import { computeSolveMetrics } from '../lib/timing.js';
 import { dispararLuces } from './luces.js';
 import { projectPhaseForRole } from '../lib/snapshot.js';
-import { moduloDeFase } from '../phases/index.js';
+import { moduloDeFase, semillaDe } from '../phases/index.js';
 import type { SalidaComando } from '../lib/events.js';
 import { ROLES, TICKETS_FASE, TICKETS_FASE_RESTO, type Role } from '../lib/constants.js';
 import { sumarTickets } from './tickets.js';
@@ -73,7 +73,7 @@ export async function procesarComando(
     intentos: progreso.attempts,
     ahora,
     traficoActivo: flujoActivo(teamId),
-    semilla: teamId,
+    semilla: semillaDe(teamId),
   });
 
   const salida: SalidaComando = {
@@ -198,7 +198,15 @@ async function marcarResuelta(teamId: string, progresoId: string, esperaMs = 0) 
   await pushLobby(teamId);
   await pushAdminState(); // el panel ve el tiempo en cuanto se sella
 
-  await anunciarSiEsPrimera(teamId, progreso.id, progreso.phase);
+  // El anuncio a toda la sala espera lo mismo que la cortinilla: si no,
+  // al primer equipo le tapaba el desenlace de su propia cámara. Quién
+  // fue primero ya está decidido por el sello, no por cuándo se anuncia.
+  const anunciar = () => anunciarSiEsPrimera(teamId, progreso.id, progreso.phase);
+  if (esperaMs > 0) {
+    setTimeout(() => { anunciar().catch((e) => console.error('[fase:primera]', e)); }, esperaMs);
+  } else {
+    await anunciar();
+  }
 
   // Las luces de la sala. Tres cosas pueden haber pasado a la vez con
   // un solo sello: pasar una fase, pasar LA final, y con ella llegar a

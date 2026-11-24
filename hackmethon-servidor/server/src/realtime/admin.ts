@@ -20,6 +20,7 @@ import { detenerTodos, pausarFlujos, reanudarFlujos } from './trafico.js';
 import { dispararLuces, olvidarDerrota } from './luces.js';
 import { olvidarMarcas } from './minijuegos.js';
 import { escribirPlano } from '../lib/plano.js';
+import { capasConConsejo, consejoPara } from '../lib/consejos.js';
 import { ENFRIAMIENTO_MAX_S, ENFRIAMIENTO_MIN_S } from '../lib/timing.js';
 
 const EVENT_ID = 'singleton';
@@ -242,6 +243,90 @@ export async function asignarRol(userId: string, rol: Role, adminId: string) {
   });
   await pushAdminState(adminId);
   return { moves };
+}
+
+/**
+ * Cambiar a una persona de equipo desde el panel: alguien que se sentó en
+ * la mesa equivocada, un equipo que se quedó corto, dos que se fusionan.
+ *
+ * La regla de la TERMINAL se cuida en los DOS equipos:
+ * - en el que deja, si se llevaba la terminal, la hereda quien esté
+ *   conectado y menos veces la haya tenido;
+ * - en el que llega, solo la toma si allí no la tiene nadie; si no,
+ *   conserva su puesto, o va al que menos gente tenga si era la terminal.
+ *
+ * Sus manejadores de socket llevan el equipo con el que se conectó, así
+ * que no basta con cambiarle las rooms: se le pide al cliente que se
+ * reconecte, y entra limpio en el equipo nuevo.
+ */
+export async function moverDeEquipo(userId: string, teamId: string, adminId: string) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { team: true } });
+  if (user.isAdmin || !user.team) throw new Error('NO_TEAM');
+  const antes = user.role as Role;
+  if (user.teamId === teamId) return { equipo: user.team.name, rol: antes };
+
+  const destino = await prisma.team.findUnique({ where: { id: teamId }, include: { members: true } });
+  if (!destino) throw new Error('EQUIPO_DESCONOCIDO');
+  const origen = user.team;
+
+  const llegan = destino.members.filter((m) => !m.isAdmin);
+  let rol: Role;
+  if (!llegan.some((m) => m.role === 'TERMINAL')) rol = 'TERMINAL';
+  else if (antes !== 'TERMINAL') rol = antes;
+  else {
+    const cuenta = (r: Role) => llegan.filter((m) => m.role === r).length;
+    rol = cuenta('DATOS') <= cuenta('PANTALLA') ? 'DATOS' : 'PANTALLA';
+  }
+
+  const quedan = await prisma.user.findMany({ where: { teamId: origen.id, isAdmin: false, NOT: { id: userId } } });
+  const heredero = antes === 'TERMINAL' && !quedan.some((m) => m.role === 'TERMINAL')
+    ? [...quedan].sort((a, b) => Number(b.connected) - Number(a.connected) || a.vecesTerminal - b.vecesTerminal)[0] ?? null
+    : null;
+
+  // El nombre lleva delante el del equipo («ALFA · Jugador 2»): se cambia
+  // el prefijo para que el panel no lo enseñe con el equipo de antes.
+  const prefijo = `${origen.name} · `;
+  const displayName = user.displayName.startsWith(prefijo)
+    ? `${destino.name} · ${user.displayName.slice(prefijo.length)}`
+    : user.displayName;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        teamId: destino.id, role: rol, previousRole: antes, displayName,
+        ...(rol === 'TERMINAL' && antes !== 'TERMINAL' ? { vecesTerminal: { increment: 1 } } : {}),
+      },
+    });
+    if (heredero) {
+      await tx.user.update({
+        where: { id: heredero.id },
+        data: { role: 'TERMINAL', previousRole: heredero.role, vecesTerminal: { increment: 1 } },
+      });
+    }
+    await tx.eventLog.create({
+      data: {
+        type: 'TEAM_MOVE', userId: adminId, teamId: destino.id,
+        message: `${user.displayName} pasa de ${origen.name} a ${destino.name} como ${rol}`
+          + (heredero ? ` (${heredero.displayName} toma la terminal de ${origen.name})` : ''),
+        dataJson: JSON.stringify({ userId, de: origen.id, a: destino.id, rol, heredero: heredero?.id ?? null }),
+      },
+    });
+  });
+
+  // Fuera de las rooms del equipo viejo YA, para que no le llegue nada
+  // de él mientras su navegador se reconecta.
+  const io = getIO();
+  const room = userRoom(userId);
+  io.in(room).socketsLeave([teamRoom(origen.id), ...ROLES.map((r) => roleRoom(origen.id, r))]);
+  io.to(room).emit('session:reconectar', { motivo: `Ahora estás en ${destino.name}` });
+
+  if (heredero) await moverRoles(origen.id, [{ userId: heredero.id, from: heredero.role as Role, to: 'TERMINAL' }]);
+  else await broadcastPresence(origen.id);
+  await broadcastPresence(destino.id);
+  await pushLobby(origen.id);
+  await pushAdminState(adminId);
+  return { equipo: destino.name, rol };
 }
 
 export async function mezclarRoles(adminId: string, teamIds?: string[]) {
@@ -844,4 +929,74 @@ export async function ensayarAnatomia(parte: ParteRobot | 'todo', adminId: strin
     },
   });
   return { equipos: equipos.length };
+}
+
+// ============================================================
+//  El letrero del robot: un consejo para cada puesto
+//
+//  Va a la fase en la que está el equipo —la que tiene empezada y tocó
+//  por última vez; si no tiene ninguna, la primera abierta que le falta—
+//  y a su capa. Cada persona recibe el de SU puesto. Se recuerda el
+//  último de cada quien para no repetírselo si hay otro.
+// ============================================================
+const ultimoConsejo = new Map<string, string>();
+
+async function faseDelEquipo(teamId: string) {
+  const empezada = await prisma.teamPhaseProgress.findFirst({
+    where: { teamId, status: 'IN_PROGRESS', phase: { status: 'ACTIVE' } },
+    include: { phase: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  const fila = empezada ?? await prisma.teamPhaseProgress.findFirst({
+    where: { teamId, status: { in: ['PENDING', 'IN_PROGRESS'] }, phase: { status: 'ACTIVE' } },
+    include: { phase: true },
+    orderBy: { phase: { order: 'asc' } },
+  });
+  if (!fila) return null;
+  let estado: Record<string, unknown> = {};
+  try { estado = JSON.parse(fila.stateJson || '{}'); } catch { /* estado roto: capa 1 */ }
+  return { key: fila.phase.key, title: fila.phase.title, capa: typeof estado.capa === 'number' ? estado.capa : 1 };
+}
+
+export async function mandarConsejo(adminId: string, teamIds?: string[]) {
+  const equipos = await prisma.team.findMany({
+    where: teamIds?.length ? { id: { in: teamIds } } : undefined,
+    select: { id: true, name: true, members: { where: { isAdmin: false }, select: { id: true, role: true } } },
+  });
+  if (equipos.length === 0) throw new Error('SIN_EQUIPOS');
+
+  const io = getIO();
+  const id = `${Date.now()}`;
+  for (const t of equipos) {
+    const fase = await faseDelEquipo(t.id);
+    for (const m of t.members) {
+      const rol = m.role as Role;
+      const c = consejoPara(fase?.key ?? null, fase?.capa ?? null, rol, ultimoConsejo.get(m.id));
+      ultimoConsejo.set(m.id, c.texto);
+      io.to(userRoom(m.id)).emit('player:consejo', { id, fase: fase?.title ?? null, ...c, rol });
+    }
+  }
+
+  await prisma.eventLog.create({
+    data: {
+      type: 'CONSEJO',
+      message: `Letrero del robot con consejo · ${equipos.map((t) => t.name).join(', ')}`,
+      userId: adminId,
+      dataJson: JSON.stringify({ teamIds: equipos.map((t) => t.id) }),
+    },
+  });
+  return { equipos: equipos.length };
+}
+
+/** La vista previa del panel: el consejo, sin mandarlo a nadie. */
+export async function verConsejo(faseKey: string | null, capa: number | null, rol: Role) {
+  if (!ROLES.includes(rol)) throw new Error('ROL_DESCONOCIDO');
+  const fase = faseKey ? await prisma.phase.findFirst({ where: { key: faseKey } }) : null;
+  return {
+    id: `${Date.now()}`,
+    fase: fase?.title ?? null,
+    ...consejoPara(fase?.key ?? null, capa, rol),
+    rol,
+    capas: fase ? capasConConsejo(fase.key) : 0,
+  };
 }

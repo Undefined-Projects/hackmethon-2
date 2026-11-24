@@ -1,6 +1,6 @@
 // ============================================================
 //  FASE 1 — El Reflejo   ·   CONDICIONALES
-//  Lámina I · la pierna izquierda
+//  Lámina II · la pierna derecha  (la segunda del recorrido, tras La Maraña)
 //
 //  «La pierna decide qué la toca antes de pensarlo.»
 //
@@ -27,8 +27,10 @@
 //
 //  DOS CAPAS (unos 25 minutos entre las dos)
 //    1 · LA RÓTULA  Quitar la defensa que frena a las esporas y dejar fuera
-//                   a los cinco anticuerpos. Como mucho 3 filtros: nombrarlos
-//                   uno a uno no cabe, hay que describirlos.
+//                   a los cuatro anticuerpos. Diez programas y como mucho 3
+//                   filtros. Es la capa amable: se vale nombrar, y hay
+//                   caminos de un solo rasgo por filtro; quien sepa juntar
+//                   con `y` lo hace en dos. Describir es cosa de la muda.
 //    2 · LA MUDA    La pierna reacciona: levanta una defensa nueva, se secan
 //                   los filtros que nombraban a alguien (`nombre` deja de
 //                   valer), `savia` se vuelve anticuerpo y llega otra oleada
@@ -64,8 +66,9 @@ type Capa = 1 | 2;
 const CAPAS = 2;
 const NOMBRES_CAPA = ['LA RÓTULA', 'LA MUDA'];
 /** Cuántos filtros admite el flujo. En la capa 1 no da para nombrar a
- *  los cinco anticuerpos uno a uno; en la 2 hace falta uno por familia. */
-const MAX_FILTROS: Record<Capa, number> = { 1: 3, 2: 5 };
+ *  los cinco anticuerpos uno a uno; la muda solo concede uno más, así que
+ *  hay que quitar la defensa nueva y juntar familias en vez de añadir. */
+const MAX_FILTROS: Record<Capa, number> = { 1: 3, 2: 4 };
 
 // ---------- El registro ----------
 //
@@ -77,10 +80,14 @@ const MAX_FILTROS: Record<Capa, number> = { 1: 3, 2: 5 };
 // Cómo está montado el reparto:
 //   · `brote`, `raiz` y `polen` son las ESPORAS: externas y de permisos
 //     bajos, justo lo que la defensa de la pierna deja fuera.
-//   · `poda` y `polen` tienen la firma caducada: «firma = caducada» se los
-//     lleva, y uno de los dos es espora.
+//   · En la capa 1 los anticuerpos son cuatro: `liquen`, `esqueje`,
+//     `resina` y `corteza`. «firma = ausente» se lleva a dos de golpe.
+//   · `polen` tiene la firma caducada: «firma != valida» la tira, y es espora.
 //   · `savia` es rutina con permisos 4: «permisos >= 4» la tira.
 //   · `corteza` es anticuerpo con la firma válida: la firma sola no basta.
+//   · `poda` (rutina) y `humus` (anticuerpo) no están en la capa 1: llegan
+//     con la muda. Así la rótula se juega con diez programas y la muda
+//     sigue siendo la misma, con dieciséis.
 //   · En la muda, `micelio` es espora, externa y de permisos 3: el filtro
 //     «origen = externo y permisos >= 3» se la lleva, y hay que afinarlo.
 //     `savia` se vuelve anticuerpo y `tallo` es un driver anticuerpo, como
@@ -103,14 +110,14 @@ const BASE: Omit<Programa, 'clave'>[] = [
   { id: 'P1', nombre: 'riego', tipo: 'servicio', origen: 'interno', permisos: 2, firma: 'valida', capa: 1 },
   { id: 'P2', nombre: 'liquen', tipo: 'binario', origen: 'externo', permisos: 5, firma: 'ausente', capa: 1 },
   { id: 'P3', nombre: 'savia', tipo: 'servicio', origen: 'interno', permisos: 4, firma: 'valida', capa: 1 },
-  { id: 'P4', nombre: 'poda', tipo: 'script', origen: 'interno', permisos: 1, firma: 'caducada', capa: 1 },
+  { id: 'P4', nombre: 'poda', tipo: 'script', origen: 'interno', permisos: 1, firma: 'caducada', capa: 2 },
   { id: 'P5', nombre: 'esqueje', tipo: 'script', origen: 'externo', permisos: 4, firma: 'caducada', capa: 1 },
   { id: 'P6', nombre: 'clorofila', tipo: 'binario', origen: 'interno', permisos: 3, firma: 'valida', capa: 1 },
   { id: 'P7', nombre: 'resina', tipo: 'servicio', origen: 'interno', permisos: 5, firma: 'ausente', capa: 1 },
   { id: 'P8', nombre: 'brote', tipo: 'script', origen: 'externo', permisos: 1, firma: 'valida', capa: 1 },
   { id: 'P9', nombre: 'corteza', tipo: 'binario', origen: 'externo', permisos: 3, firma: 'valida', capa: 1 },
   { id: 'P10', nombre: 'raiz', tipo: 'servicio', origen: 'externo', permisos: 2, firma: 'valida', capa: 1 },
-  { id: 'P11', nombre: 'humus', tipo: 'script', origen: 'interno', permisos: 4, firma: 'caducada', capa: 1 },
+  { id: 'P11', nombre: 'humus', tipo: 'script', origen: 'interno', permisos: 4, firma: 'caducada', capa: 2 },
   { id: 'P12', nombre: 'polen', tipo: 'binario', origen: 'externo', permisos: 2, firma: 'caducada', capa: 1 },
   { id: 'P13', nombre: 'micelio', tipo: 'servicio', origen: 'externo', permisos: 3, firma: 'valida', capa: 2 },
   { id: 'P14', nombre: 'tallo', tipo: 'driver', origen: 'interno', permisos: 2, firma: 'valida', capa: 2 },
@@ -200,10 +207,11 @@ function instancia(semilla?: string): Instancia {
     permisos: escala(p.permisos),
   }));
   // El orden de la fila también cambia, pero cada oleada sigue llegando
-  // detrás de la anterior.
+  // detrás de la anterior (también en la canónica).
+  const oleada = (c: Capa) => programas.filter((p) => p.capa === c);
   const registro = r
-    ? [...barajar(programas.filter((p) => p.capa === 1), r), ...barajar(programas.filter((p) => p.capa === 2), r)]
-    : programas;
+    ? [...barajar(oleada(1), r), ...barajar(oleada(2), r)]
+    : [...oleada(1), ...oleada(2)];
 
   const hecha2: Instancia = {
     registro,
@@ -222,7 +230,7 @@ const registroDe = (inst: Instancia, capa: Capa) => inst.registro.filter((p) => 
 /** Los anticuerpos: lo que tiene que caer en cada capa. Solo consta en la
  *  tabla `encargo`, por id: el registro no dice qué es cada programa. */
 const ANTICUERPOS: Record<Capa, string[]> = {
-  1: ['liquen', 'esqueje', 'resina', 'corteza', 'humus'],
+  1: ['liquen', 'esqueje', 'resina', 'corteza'],
   2: ['liquen', 'esqueje', 'resina', 'corteza', 'humus', 'tallo', 'savia'],
 };
 
@@ -315,6 +323,11 @@ const capaDe = (estado: Record<string, unknown>): Capa => (estado.capa === 2 ? 2
 
 const filtrosDe = (inst: Instancia, estado: Record<string, unknown>): Filtro[] =>
   Array.isArray(estado.filtros) ? (estado.filtros as Filtro[]) : inst.defensaInicial.map((f) => ({ ...f }));
+/** El flujo que corre en la cámara: el del último `probar`, no el que se
+ *  está escribiendo. Lo que Terminal teclea no se ve hasta que lo prueba.
+ *  Antes de la primera corrida, el de la propia pierna. */
+const enCamaraDe = (inst: Instancia, estado: Record<string, unknown>): Filtro[] =>
+  Array.isArray(estado.enCamara) ? (estado.enCamara as Filtro[]) : inst.defensaInicial;
 const dePierna = (filtros: Filtro[]) => filtros.map((f) => f.pierna === true);
 
 type Muda = { n: number; marchitos: string[] };
@@ -430,6 +443,7 @@ function esquemaDe(inst: Instancia, capa: Capa, corridas: Corrida[]) {
         ...anticuerpos1, ...esporas1,
         ['E9', idDe('savia'), 'Se ha vuelto ANTICUERPO con la muda. Ahora tiene que caer.'],
         ['E10', idDe('tallo'), 'ANTICUERPO. Llego con la muda. Tiene que caer.'],
+        ['E10b', idDe('humus'), 'ANTICUERPO. Llego con la muda. Tiene que caer.'],
         ['E11', idDe('micelio'), 'ESPORA nuestra. Llego con la muda. Tiene que pasar.'],
         ['E12', idDe('nectar'), 'ESPORA nuestra. Llego con la muda. Tiene que pasar.'],
         ['E13', '', `El resto es rutina: tiene que seguir pasando. Ya no se puede filtrar por nombre. Como mucho ${MAX_FILTROS[2]} filtros, contando sus defensas.`],
@@ -560,7 +574,10 @@ function escenaInterior(dentro: number, f: number): string[] {
 
 function vistaDeCamaras(inst: Instancia, estado: Record<string, unknown>) {
   const capa = capaDe(estado);
-  const filtros = filtrosDe(inst, estado);
+  const filtros = enCamaraDe(inst, estado);
+  // Cada `probar` vuelve a soltar la fila desde el primero, aunque los
+  // filtros no hayan cambiado: la cámara enseña la corrida, no el flujo.
+  const corrida = numero(estado, 'corridaN');
   const resuelta = estado.resuelta === true;
   const muda = mudaDe(estado);
   const veredictos = registroDe(inst, capa).map((p) => ({
@@ -582,12 +599,12 @@ function vistaDeCamaras(inst: Instancia, estado: Record<string, unknown>) {
       ? escenaMembrana(veredictos)
       : { fotogramas: [0, 1].map((f) => escenaInterior(dentro, f)), ritmo: 900 },
     rotulos: [],
-    // Mientras el flujo no cambie, la imagen es la misma y el bucle no se
+    // Mientras no haya otra corrida, la imagen es la misma y el bucle no se
     // reinicia: reproyectar no puede devolver la fila al primero.
-    clave: `${capa}:${resuelta ? 'r' : ''}:${firma}`,
+    clave: `${capa}:${resuelta ? 'r' : ''}:${corrida}:${firma}`,
     extra: {
       dibujo: cam.id === 'membrana'
-        ? { tipo: 'membrana', capa, resuelta, muda: muda.n, cola: veredictos }
+        ? { tipo: 'membrana', capa, resuelta, muda: muda.n, corrida, cola: veredictos }
         : { tipo: 'interior', capa, resuelta, dentro: veredictos.filter((v) => v.pasa).map((v) => v.nombre) },
     },
   }));
@@ -651,9 +668,10 @@ function ayuda(capa: Capa): ResultadoComando {
       ),
       texto(
         [
-          'Pantalla esta viendo la membrana por circuito cerrado. Tu la cambias a ciegas.',
-          'La camara enseña QUIEN pasa y quien no, sin numeros. Cuantos pasan y en que',
-          'filtro cae cada uno se guarda con `probar` en la base de datos de Datos.',
+          'Pantalla esta viendo la membrana por circuito cerrado. Tu la cambias a ciegas,',
+          'y la camara no se entera hasta que pruebas: con cada `probar` la fila vuelve a',
+          'cruzar con tus filtros. Enseña QUIEN pasa y quien no, sin numeros. Cuantos',
+          'pasan y en que filtro cae cada uno se guarda en la base de datos de Datos.',
           '',
           `La pierna tiene ${CAPAS} capas. Ahora están en la ${capa}: ${NOMBRES_CAPA[capa - 1]}.`,
         ],
@@ -703,10 +721,11 @@ export const acceso: ModuloFase = {
       case 'PANTALLA':
         return {
           salidas: ctx.salidas,
-          nota: 'Ves la membrana por cámara: cada programa llega, la membrana lo palpa —y mientras lo '
-              + 'palpa, la cámara dice DE DÓNDE VIENE: eso no está en ninguna tabla, apúntalo— y lo '
-              + 'deja pasar o lo rebota. Las firmas que pida Terminal también te llegan a ti. Cuántos '
-              + 'pasan se guarda con `probar` en la base de datos de Datos.',
+          nota: 'Ves la membrana desde dentro de la rodilla. Cada programa sale por una de las dos '
+              + 'puertas del fondo —EXTERIOR o CUERPO—: por cuál sale es DE DÓNDE VIENE, y eso no está '
+              + 'en ninguna tabla, apúntalo. Luego la membrana lo palpa y lo deja pasar o lo rebota. La fila corre con los filtros del último `probar` de '
+              + 'Terminal: cada vez que prueba, vuelve a empezar. Las firmas que pida Terminal '
+              + 'también te llegan a ti. Cuántos pasan se guarda en la base de datos de Datos.',
           camaras: vistaDeCamaras(inst, ctx.estado),
           lamina,
         };
@@ -756,24 +775,39 @@ export const acceso: ModuloFase = {
       case 'probar':
       case 'simular': {
         // Gratis, como siempre: no penaliza. Pero ya no canta nada aquí;
-        // guarda la corrida y el resultado se busca en la base de datos.
+        // guarda la corrida y el resultado se busca en la base de datos. La
+        // cámara de Pantalla la reproduce: la fila vuelve a cruzar la
+        // membrana con estos filtros.
         const n = numero(ctx.estado, 'corridaN') + 1;
         const corrida = correr(inst, filtros, capa, n);
+        // En la rótula, mientras siga puesta la defensa de la pierna, se
+        // recuerda que es suya y que se puede quitar. Sin números: a quién
+        // frena lo dicen las corridas.
+        const defensas = filtros.map((f, i) => (f.pierna ? i + 1 : 0)).filter(Boolean);
+        const aviso = capa === 1 && defensas.length
+          ? [texto([
+              `Ojo: el filtro ${defensas.join(' y ')} no es de ustedes, es una defensa de la pierna.`,
+              'Tambien se puede quitar (`quitar <n>`). ¿Estorba a sus esporas? Las corridas lo dicen.',
+            ], 'La defensa de la pierna')]
+          : [];
         return {
           estado: {
             ...ctx.estado,
             corridaN: n,
             corridas: [...corridasDe(ctx.estado), corrida].slice(-MAX_CORRIDAS),
+            enCamara: filtros,
           },
           bloques: [
             texto(
               [
                 `Corrida R${n} guardada: ${filtros.length} filtro(s) contra ${corrida.caen.length} programas.`,
-                'El resultado esta en la base de datos —corridas, corrida_filtros y',
-                'resultados—. Pideselo a Datos. La camara sigue enseñando la membrana.',
+                'Pantalla la esta viendo correr en la camara de la membrana. Los numeros',
+                'estan en la base de datos —corridas, corrida_filtros y resultados—.',
+                'Pideselos a Datos.',
               ],
               'Simulacion guardada',
             ),
+            ...aviso,
           ],
         };
       }
@@ -892,12 +926,15 @@ export const acceso: ModuloFase = {
               ...ctx.estado,
               capa: 2,
               filtros: vivos,
+              // La pierna mudada, con su defensa nueva, es lo que se ve
+              // hasta la primera corrida de la capa 2.
+              enCamara: vivos,
               camara: 1,
               muda: { n: muda.n + 1, marchitos: marchitos.map(pintarCond) },
             },
             bloques: [
               exito('Capa 1 superada · la rótula cede', [
-                'Las tres esporas han arraigado en la rodilla, los cinco anticuerpos se',
+                'Las tres esporas han arraigado en la rodilla, los cuatro anticuerpos se',
                 'han quedado fuera y la rutina sigue pasando como si nada.',
               ]),
               texto(
@@ -917,13 +954,13 @@ export const acceso: ModuloFase = {
 
         return {
           resuelto: true,
-          estado: { ...ctx.estado, filtros, resuelta: true, camara: 1 },
+          estado: { ...ctx.estado, filtros, enCamara: filtros, resuelta: true, camara: 1 },
           // La membrana se rinde en cámara: que la cortinilla no la tape.
           esperaVictoriaMs: 4200,
           bloques: [
             exito('Flujo desplegado · la pierna se rinde', [
               'Las cinco esporas han arraigado y ningun anticuerpo ha llegado a verlas.',
-              'La pierna izquierda se marchita: ya no responde.',
+              'La pierna derecha se marchita: ya no responde.',
               '',
               'Lo que acaban de escribir tiene nombre: condiciones. Cada filtro es',
               'una pregunta de si o no, y el flujo entero es un embudo de preguntas.',

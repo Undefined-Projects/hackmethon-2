@@ -168,7 +168,7 @@ dominio de Vercel ya está permitido sin tocar nada.
 ```bash
 cd server
 npm run db:push    # aplica schema.prisma a SQLite
-npm run db:seed    # 10 equipos x 3 jugadores + 7 fases
+npm run db:seed    # 10 equipos x 3 jugadores + 4 fases y el bonus
 npm run db:reset   # borra y recrea todo
 npm run db:studio  # inspector visual
 npm run db:equipos # la plantilla del evento: 30 equipos con nombre y logo inventados
@@ -214,9 +214,10 @@ cd server
 npm run dev            # en una terminal
 npm run smoke          # en otra: 19 comprobaciones de WebSocket (~10s)
 npm run smoke:admin    # 118 comprobaciones del panel de admin (~45s)
-npm run smoke:enemigo  # 122 comprobaciones del motor y del ataque (~35s)
-npm run smoke:fases    # 129 comprobaciones de las fases 2 a 6 (~2s, sin servidor)
-npm run smoke:rastro   # 49 comprobaciones de la fase de reserva (~5s)
+npm run smoke:fase2:servidor  # el motor jugando La Maraña contra el servidor (~10s)
+npm run smoke:fases    # las fases 1 y 3 a 6 (~2s, sin servidor)
+npm run smoke:fase2    # La Maraña (semillero y seto) y el bonus La Espesura (~3s, sin servidor)
+npm run smoke:rastro   # El Rastro, fuera del recorrido: solo pasa si se siembra a mano
 npm run sync:shared    # copia constants.ts + events.ts al cliente
 npm run db:limpiar     # devuelve el juego a su estado inicial (sin borrar equipos):
                        # progreso, tiempos, roles y el estado INTERNO de cada fase
@@ -368,29 +369,42 @@ cantaría a Pantalla qué es cada uno, y eso es de Datos.
 
 | capa | nombre | qué pide | tope |
 |---|---|---|---|
-| 1 | **La rótula** | 12 programas: 3 esporas que tienen que pasar y 5 anticuerpos que tienen que caer. | 3 filtros, contando las defensas |
+| 1 | **La rótula** | 10 programas: 3 esporas que tienen que pasar y 4 anticuerpos que tienen que caer. Se vale nombrar. | 3 filtros, contando las defensas |
 | 2 | **La muda** | 16 programas: 5 esporas y 7 anticuerpos. | 5 filtros |
 
 En la capa 1 la defensa de la pierna —«origen = externo y permisos <= 2»— deja
-fuera justo a las tres esporas (`brote`, `raiz`, `polen`). Hay que quitarla y,
-con los dos huecos que quedan, describir a los cinco anticuerpos: nombrarlos uno a
-uno no cabe. Las trampas están puestas a propósito:
+fuera justo a las tres esporas (`brote`, `raiz`, `polen`). Hay que quitarla —al
+`probar` con ella puesta, la consola recuerda que es de la pierna y que se puede
+quitar— y dejar fuera a los cuatro anticuerpos (`liquen`, `esqueje`, `resina`,
+`corteza`). Es la capa **amable**, pensada para quien acaba de empezar: diez
+programas, y se vale nombrar, así que hay un camino de **un solo rasgo por filtro**:
 
-- «firma = caducada» tira a `poda` (rutina) y a `polen` (espora).
+```
+quitar 1
+filtrar si firma = ausente       ← liquen y resina de golpe
+filtrar si nombre = esqueje
+filtrar si nombre = corteza
+```
+
+Quien sepa juntar con `y` lo hace en dos filtros que además sobreviven a la muda:
+`permisos >= 3 y firma != valida` y `origen = externo y permisos >= 3`. Nombrar a
+los cuatro uno a uno no cabe. Las trampas siguen ahí para enseñar precisión:
+
+- «firma != valida» tira a `polen`, que es espora.
 - «origen = externo» tira a las esporas.
 - «permisos >= 4» tira a `savia`, que es rutina.
 - `corteza` es anticuerpo con la firma válida: la firma sola no basta.
 
-Una solución: `quitar 1`, `permisos >= 3 y firma != valida` y
-`origen = externo y permisos >= 3`.
+`poda` (rutina) y `humus` (anticuerpo) no juegan la capa 1: llegan con la muda, que
+así sigue siendo la misma de siempre, con dieciséis programas.
 
 Al desplegar bien la capa 1, la pierna **muda**:
 
 - **Levanta una defensa nueva** delante de todo —«origen = externo y firma =
   caducada»— que vuelve a frenar a `polen` y a `nectar`.
 - **Se secan los filtros que nombraban a algo** y `nombre` deja de valer.
-- **Llegan cuatro programas** (`micelio` y `nectar` son esporas; `tallo` es
-  anticuerpo; `xilema`, rutina) y **`savia` se vuelve anticuerpo**.
+- **Llegan seis programas** (`micelio` y `nectar` son esporas; `tallo` y `humus`
+  son anticuerpos; `xilema` y `poda`, rutina) y **`savia` se vuelve anticuerpo**.
 - `micelio` es espora, externa y de permisos 3: el filtro «origen = externo y
   permisos >= 3» se la lleva y hay que afinarlo. «tipo = driver» a secas tira
   también a `xilema`.
@@ -406,6 +420,27 @@ vez, en los tres puestos, la franja de la lámina se cubre con «[OK] CAPA 1 · 
 RÓTULA SUPERADA >> CAPA 2 · LA MUDA». La cámara recuerda en la pestaña qué muda ya
 enseñó, así que se ve aunque Pantalla tuviera puesta la cámara del interior en el
 momento de desplegar.
+
+### La membrana en primera persona
+
+Pantalla ve la cámara `MEMBRANA` desde dentro de la rodilla
+(`client/src/player/fases/Reflejo3D.tsx`): **Pantalla es el reflejo**, plantado
+frente a su membrana, y ve llegar a los programas por el pasillo. Al fondo hay dos
+puertas, **EXTERIOR** (izquierda, luz rosa) y **CUERPO** (derecha, luz verde): por
+cuál sale cada programa *es* su origen, así que el dato que antes era un texto («viene
+de…») ahora se ve, y hay que apuntarlo. Al llegar, el zarcillo lo palpa, el impulso
+sube por el pilar, el ojo del ganglio decide y las raíces se abren (PASA) o se cierran
+con espinas (ALTO). Debajo va **la fila en 2D**, en orden, con el de turno resaltado.
+La muda y la rendición se ven en la misma sala. No enseña nada más que la escena 2D:
+ni tipo, ni permisos, ni firma, ni en qué filtro cae nadie.
+
+Es **ligera a propósito**: la cámara no se mueve, así que el pasillo se dibuja una
+sola vez (con el motor compartido `motor3d.ts`) y cada cuadro solo pega encima el
+programa y la membrana; anima a unos 10 cuadros por segundo y solo mientras algo se
+mueve, y si un equipo tarda en dibujar baja sola a 4. El reloj es el mismo que el de
+la escena 2D (`useReflejo` en `Membrana.tsx`), que sigue en la proyección de sala.
+`node e2e/_rendimiento.mjs` mide las dos vistas 3D en Chromium (normal y con la CPU 6×
+más lenta) y en Firefox.
 
 ### La membrana, en circuito cerrado
 
@@ -449,7 +484,8 @@ las 10 últimas corridas. `probar` sigue siendo gratis.
 
 No se puede impedir que alguien fotografíe una pantalla y se la pase a una IA o a
 otra mesa. Se puede hacer que cueste más que pensar en equipo. La Fase 1 lleva
-las cuatro medidas; el mecanismo vale para las demás.
+las cuatro medidas y la Fase 2 también (nombres e IPs por mesa); el mecanismo vale
+para las demás.
 
 - **Una versión por equipo.** Cada mesa juega la misma fase —las mismas trampas,
   la misma forma de resolverla— con otra piel: otros nombres y otros ids, otro
@@ -507,180 +543,140 @@ capa que cae hace avanzar una enredadera por el borde de la franja. Las fases qu
 mandan `lamina: { capa, capas, nombres, resuelta }` en su proyección enseñan las
 capas; las demás, solo la cabecera.
 
-## Fase 2 — El Enemigo
+## Fase 1 — La Maraña · secuencias y ciclos
 
-Se ha detectado tráfico de red sospechoso contra el servidor y el equipo entra
-a revisarlo. Hay que aislar **todas** las cuentas que están haciendo peticiones
-que no les corresponden.
+Lámina I, la pierna izquierda. Unos 25 minutos. Es la **primera** fase y la juega
+gente que quizá nunca ha programado: para entrar en la máquina hay que cruzar su
+pierna izquierda, que con los años se volvió una maraña
+(`server/src/phases/marana.ts`, clave `fase-2-enemigo`, que se conserva para no
+migrar bases).
 
-- **Datos** tiene el padrón en cuatro tablas (`empleados`, `equipos`,
-  `sesiones`, `operaciones`): quién existe, **de qué departamento es** y desde
-  qué máquina entra cada uno. No ve ni una petición del ataque.
-- **Pantalla** ve el monitor de tráfico en vivo y lo que responde el sistema.
-  Su política se escribe **por departamento** y no nombra a una sola persona en
-  ninguna línea.
-- **Terminal** es el único que escribe, y no ve absolutamente nada.
+**Un homenaje a Karel.** El equipo manda un **brote** —su programa— a cruzarla, y
+el brote se dibuja como una **flecha**, como Karel the Robot (Richard E. Pattis,
+1981), el robot con el que generaciones aprendieron a programar. Solo importa dónde
+está y hacia dónde apunta, porque **izquierda y derecha son las suyas**: es la
+primera lección. Terminal le escribe el camino una instrucción por línea y lo lanza:
 
-Comandos: `ayuda`, `trafico`, `trafico <clave> <valor>`, `trafico todo`,
-`trafico detener`, `permisos`, `politica`, `perfil <departamento>`,
-`whois <ip>`, `bloquear <usuario> <motivo>`, `estado`.
+| comando | qué hace |
+|---|---|
+| `avanzar` · `girar izquierda` · `girar derecha` | agregan esa línea al final (también `agregar <instrucción>`) |
+| `repetir N veces` … `fin` | el ciclo contado (desde el seto) |
+| `insertar n …` · `cambiar n …` · `borrar n` · `borrar todo` | editar el programa |
+| `estado` · `lanzar` | ver el estado, mandar el brote |
 
-### Cómo se juzga una petición
+No hay encabezado ni identificadores: el programa sale tal cual con `lanzar`. (Hubo
+un `conectar <id>` con identificadores que cambiaban en cada lanzamiento; se quitó
+porque en una primera fase era fricción sin nada que aprender.)
 
-Toda petición se mide con las mismas tres preguntas. **Que falle una sola basta
-para aislar**, y el código de respuesta no cuenta: un 401 sigue siendo una
-petición que esa cuenta no debía hacer.
+**Lo que se ve y lo que queda escrito.** Si un brote no llega, Pantalla solo ve que
+**se desconectó**: ni contra qué chocó, ni si pisó una espina o una mina, ni si se
+le acabó el programa (al servidor ni siquiera le manda el `contra` ni el tipo de
+final). Eso queda en su **bitácora**, una tabla por brote en Datos (`brote` en el
+seto; `brote_1` … `brote_4` en la espesura): un renglón por paso del último
+lanzamiento con la línea del programa, la instrucción, la vuelta de cada ciclo
+(`L3:15`) y lo que le pasó; el último dice por qué se desconectó. Las caminatas van
+despacio para que Datos siga la línea: 0.52 s por paso en el seto, 0.2 s por golpe
+en la espesura (un lanzamiento llega a ~72 s).
 
-| | pregunta | motivo | dónde se responde | quién |
-|---|---|---|---|---|
-| 1 | ¿la cuenta está registrada? | `no-registrada` | tabla `empleados` | Datos |
-| 2 | ¿entra desde SU máquina? | `maquina` | tabla `equipos` | Datos |
-| 3 | ¿puede tocar ese endpoint? | `permiso` | `empleados` **+** `permisos` | los dos |
+El brote nace siempre en su semillero. Si choca contra una pared o pisa una espina
+(o una mina), **se marchita** y el siguiente vuelve a empezar desde ahí. Cada brote que no
+llega cuenta como intento (desempate) y el siguiente tarda en germinar lo que tarda
+el anterior en andar, más un respiro igual para todos: así la consola no se entera
+de cómo acabó por el tiempo de espera.
 
-Las dos primeras solo se responden en la base de datos. La tercera no se
-responde entera en ningún sitio: `permisos` dice qué **departamento** manda en
-cada ruta, y de qué departamento es una **cuenta** consta únicamente en
-`empleados`. Ese es el corazón de la fase: **ningún puesto puede juzgar una
-petición completa por su cuenta**, ni siquiera la tercera pregunta.
+**Dos capas.**
 
-Por eso esta terminal no tiene ningún comando que liste cuentas. `usuarios`
-existe solo para redirigir a la base de datos, y `perfil` toma departamentos:
-preguntarle por una cuenta —exista o no— devuelve siempre la misma respuesta,
-para que no confirme por la puerta de atrás quién figura en el padrón.
+- **Capa 1 · El semillero** — el calentamiento. Un laberinto de 7 × 7, nueve acciones
+  y dos giros (uno a cada lado), sin espinas y con 12 líneas de cupo: no hace falta
+  ningún ciclo. Sirve para que los tres puestos aprendan a hablarse y para descubrir,
+  chocando, que izquierda y derecha son las del brote. Al cruzarlo, el programa se
+  vacía.
+- **Capa 2 · El seto** — un laberinto fijo que Pantalla ve entero. El brote carga
+  como mucho **10 líneas** y el camino bueno son 24 acciones: no cabe sin un
+  `repetir`. Hay tres caminos con forma de ciclo —la L obvia y dos escaleras— y
+  **tres espinas** que el plano pinta como camino: una en la L y dos en una de las
+  escaleras. Solo la tabla `espinas` de Datos dice dónde están.
 
-### El ataque
+**El bonus · La Espesura** (`fase-bonus-espesura`, el corazón) es la segunda mitad de
+la Maraña de antes, convertida en fase aparte porque pide un algoritmo de dificultad
+media: un laberinto de **23 × 31**, a oscuras, **fijo** para cada mesa. Salen **cuatro
+brotes a la vez**, uno en cada esquina, con **el mismo programa**, y todos buscan el
+**claro del centro**. El brote entiende sensores (`frente libre`, `izquierda
+bloqueada`…), `repetir mientras` y `si … sino`, y carga 14 líneas. El **camino más
+corto de cada brote pasa por una mina** que solo la tabla `minas` de Datos conoce;
+quien no suelta nunca la pared de un lado acaba en el claro, y por una de las dos
+paredes los cuatro llegan sin pisar mina. Se cruza cuando **los cuatro llegan en el
+mismo lanzamiento**. Comparte el motor con La Maraña: `crearModulo` recibe qué capas
+tiene cada fase.
 
-`trafico` abre un grifo: a partir de ahí caen peticiones solas en la Pantalla,
-una cada 900 ms y en bucle, hasta que alguien lo cierra o la fase se resuelve.
-Cada línea trae hora, método, ruta, cuenta, origen y código — los hechos y nada
-más. **Ninguna viaja marcada como sospechosa**: eso convertiría el reto en
-buscar el subrayado.
+**La vista en primera persona.** Pantalla ve La Maraña (y el bonus) desde los ojos
+del brote (`client/src/player/fases/Marana3D.tsx`): el mismo lanzamiento, con el mismo
+reloj que Datos, dibujado por un raycaster de pasillos a 320 × 200 escalado sin
+suavizar. Avanza **a saltos, un cuadro por casilla** —cada `avanzar` y cada giro cambian
+la imagen de golpe, al ritmo del servidor—, con un contador «paso N de M». Tiene muros de seto y circuito, piso de casillas que se pueden contar, la
+salida como columna de luz y el letrero de la instrucción que está cumpliendo
+(«AVANZAR», «GIRAR IZQUIERDA»). En la esquina va el **plano 2D** con las coordenadas
+—columna en letra, fila en número, las mismas de la tabla de espinas— y la flecha: es
+lo que Pantalla usa para dictar. En primera persona «girar izquierda» siempre es la
+izquierda de quien mira, que es la lección del semillero. No sabe nada que el 2D no
+sepa: las espinas y las minas se ven como camino, en la espesura solo se dibuja lo
+alumbrado (y se elige a cuál de los cuatro brotes seguir), y un brote que se
+desconecta se queda en estática. La proyección de sala sigue con el plano 2D entero.
 
-Todo lo que cae pertenece a alguien de este reparto, y cada cuenta es limpia o
-es culpable; no hay relleno decorativo. El volumen sale de la repetición y de
-la variedad de máquinas y endpoints, no de inventar nombres: con cuarenta
-cuentas distintas, «banearlas todas» sería teclear en vez de razonar.
+**El reparto.** Pantalla ve el laberinto y el brote andando (con coordenadas:
+columna en letra, fila en número). Datos ve el **programa vivo** —la línea que
+mueve al brote se enciende y cada ciclo cuenta sus vueltas, al mismo paso que
+Pantalla; en la espesura cada brote marca su línea con su número y Datos elige a
+cuál seguirle las vueltas—, el manual, las espinas (o las minas y `crecimiento`) y
+la bitácora `viajes`, con una fila por brote (`V3-2`: lanzamiento 3, brote 2). Terminal escribe a ciegas:
+solo ve cuántas líneas lleva, cuántos bloques tiene abiertos y cuándo germina el
+siguiente brote.
 
-| cuenta | qué hace | veredicto |
-|---|---|---|
-| `m.rivas`, `s.cabral` | lo suyo, desde su puesto | limpia |
-| `c.pineda` | lee clientes desde la VPN | limpia — la IP **parece** de fuera, pero está registrada a su nombre |
-| `svc.backup`, `k.moreno` | de todo, desde media Europa | **`no-registrada`** — no figuran en `empleados` |
-| `a.duarte` | tickets desde su puesto… y desde `188.42.19.6` | **`maquina`** — esa máquina no tiene dueño en `equipos` |
-| `j.ortega` | lee su nómina… y la exporta | **`permiso`** — exportar es de Cumplimiento, y él es de Finanzas |
+**Una versión por mesa.** El seto de cada equipo es el mismo girado o reflejado
+(las ocho simetrías del cuadrado) y la escalera con espinas cambia de sitio: al
+reflejar, izquierda y derecha se cambian y el programa de otra mesa no sirve. La
+espesura se genera con la semilla del equipo (reproducible): otro laberinto, otras
+minas y otra pared buena. `npm run solucion:f2 -- EQUIPO` imprime el seto de esa
+mesa, la escalera buena, la espesura con sus brotes y minas, y el seguidor de pared
+que la cruza, para dar pistas justas.
 
-`a.duarte` y `j.ortega` también hacen su trabajo normal durante todo el ataque.
-Es deliberado: la cuenta no delata a nadie, delata **la petición**.
+Cliente: `client/src/player/fases/Marana.tsx` (la escena de Pantalla),
+`ProgramaBrote.tsx` (el programa de Datos y el bloque `programa`), `caminata.ts` (el
+reloj que comparten) e `IntroMarana.tsx` (la intro de entrada, la del seto y la del bonus).
 
-Cada culpable incumple **un solo** eje, y eso es una invariante del guion, no
-una casualidad: desde la máquina ajena `a.duarte` solo toca `/api/tickets`, que
-es lo suyo, y `j.ortega` no se mueve nunca de su puesto. Si una de esas líneas
-incumpliera dos ejes a la vez, el motivo dejaría de distinguir y el comando
-dejaría de enseñar nada. El smoke lo vigila.
+**Pruebas.** `npm run smoke:fase2` (el módulo: el seto en las 48 versiones, la
+espesura en 41 mesas —tamaño, cuatro brotes, la mina en cada camino más corto, la
+pared buena y la mala—, el reparto) y `smoke:fase2:servidor` contra un servidor con base
+sembrada:
 
-### Acotar el monitor
-
-Sesenta y dos líneas en bucle a 900 ms son una manguera, y transcribirlas no es
-razonar. `trafico` acepta filtros por lo que **viaja en la petición**:
-
-```
-trafico ip 188.42.19.6                  una máquina
-trafico ruta /api/exportar              quién exporta, sea quien sea (por prefijo)
-trafico cuenta <nombre>                 una cuenta
-trafico metodo POST                     un método
-trafico codigo 403                      un código de respuesta
-trafico cuenta <a> cuenta <b>           repetir una clave SUMA
-trafico cuenta <a> ruta /api/nomina     mezclar claves ACOTA
-trafico todo                            quitar el filtro sin cerrar la captura
-```
-
-Tres decisiones que no son accidentales:
-
-- **Filtrar no reinicia el guion.** Acotar es cambiar de lente, no empezar otra
-  captura: si al filtrar volviera a caer el ataque desde el principio, el equipo
-  perdería el hilo de lo que estaba siguiendo.
-- **El motor salta hasta la siguiente línea que encaja**, en vez de emitir solo
-  cuando le toca en el orden natural. La IP sin dueño aparece 3 veces en 62
-  líneas: al ritmo natural caería una cada 19 s y el monitor parecería averiado.
-  El grifo sigue corriendo igual por debajo; lo único que cambia es qué se pinta.
-- **Un filtro que no casa con nada calla, pero no cierra.** Acotar por algo que
-  no está también es información.
-
-**No se puede acotar por departamento, y la ausencia es el diseño.** El servidor
-sí sabe de qué departamento es cada cuenta, así que `trafico departamento
-finanzas` le enseñaría a Pantalla que `j.ortega` es de Finanzas sin habérselo
-preguntado a Datos: la misma fuga que se cerró en `perfil` y `usuarios`, por otra
-puerta, y el eje 3 volvería a resolverse desde un solo puesto. Esa vista se
-compone a mano —`trafico cuenta <a> cuenta <b>`— con los nombres que Datos lee
-en voz alta. El filtro es entonces un motivo para hablar en vez de un atajo para
-no hacerlo. Quien lo teclee recibe esa explicación, no un «no reconozco eso».
-
-Por la misma razón, **ningún ejemplo de la ayuda nombra una cuenta real**: esa
-salida la lee Pantalla, y un `trafico cuenta j.ortega` de muestra le confirmaría
-gratis que esa cuenta existe. El smoke vigila que ningún comando de esta terminal
-suelte un nombre del padrón.
-
-La barra del monitor muestra el encuadre vigente en el cañón azul —el mismo de la
-base de datos, porque un filtro se compone con nombres que vienen de allí— y
-sobrevive a una recarga: quien reconecta con el monitor acotado lo ve acotado.
-
-### Se gana aislando las cuatro, **con su motivo**
-
-```
-bloquear svc.backup no-registrada
-bloquear a.duarte maquina
-bloquear j.ortega permiso
+```bash
+cd server
+DATABASE_URL="file:./test.db" npx prisma db push && DATABASE_URL="file:./test.db" npm run db:seed
+DATABASE_URL="file:./test.db" PORT=4200 npx tsx src/index.ts &
+DATABASE_URL="file:./test.db" SMOKE_URL=http://localhost:4200 npm run smoke:fase2:servidor
 ```
 
-Solo había siete cuentas en el tráfico, así que teclear los siete nombres salía
-más barato que razonar. Pidiendo el motivo, el barrido pasa de 7 intentos a 21
-y deja de competir con pensar — y de paso el motivo **es** el razonamiento: ya
-no se puede ganar por corazonada.
-
-- Los sinónimos valen (`maquina`, `máquina`, `equipo`, `ip`, `origen`…):
-  castigar el vocabulario no es castigar el razonamiento.
-- **Olvidar el motivo no penaliza**: el sistema pregunta por cuál de las tres.
-  Bajo presión la gente teclea corto, y cobrar por eso sería cobrar por la prisa.
-- **Una cuenta culpable señalada por el eje equivocado devuelve exactamente lo
-  mismo que una cuenta limpia.** Si se distinguieran, fallar el motivo
-  confirmaría gratis que la cuenta era la buena y el barrido volvería a
-  funcionar en dos pasadas.
-- `svc.backup` y `k.moreno` aceptan también `permiso` —tocan rutas que no son
-  de ningún departamento, así que es cierto—, pero la salida señala cuál era la
-  pregunta anterior: si esa cuenta ni siquiera existe, lo demás sobra.
-- La cuarentena por acusar en falso **crece**: 20 s, 45 s y 90 s en adelante.
-  El primer error sigue siendo barato; equivocarse una vez mientras se razona
-  es parte del juego.
-- Teclear un nombre que no aparece en el tráfico solo devuelve un aviso, porque
-  suele ser un typo de algo oído en la sala.
-
-Cada acierto anuncia en Pantalla el motivo y el marcador («3 de 4»), repetir un
-acierto no cuenta, y `estado` recuerda lo que ya lleva el equipo.
-
-El monitor es un monitor, no una bitácora: sus líneas no se persisten. Quien
-recarga a mitad de ataque recupera todas las salidas de comandos y ve que la
-captura sigue viva, pero el panel arranca vacío y sigue desde el momento
-presente. La pausa del evento lo congela; cerrar la fase, salir al lobby,
-reiniciar el juego o resolver lo apagan.
 
 ## El recorrido
 
-Siete fases sembradas, seis en el recorrido. De la Fase 2 en adelante cada una
-enseña una idea de programación, y la ficción es el envoltorio, no el relleno:
-lo que se aprende resolviendo es lo que dice la columna de la derecha.
+Cuatro fases en unas cuatro horas útiles, y un bonus. Cada una enseña una idea de
+programación, y la ficción es el envoltorio, no el relleno: lo que se aprende
+resolviendo es lo que dice la columna de la derecha.
 
 | # | fase | enseña |
 |---|---|---|
-| 1 | Control de Acceso | **condicionales** |
-| 2 | El Enemigo | leer evidencia y cruzarla entre puestos |
-| 3 | Muro de Repetición | **ciclos** |
-| 4 | Núcleo Modular | **funciones** |
-| 5 | Bóveda de Credenciales | **bases de datos** |
-| 6 | Puente de Lanzamiento | **APIs** — y es la FINAL: cierra el evento |
-| 7 | El Rastro | *bonus, fuera del recorrido* |
+| 1 | La Maraña | **secuencias** y **ciclos** contados |
+| 2 | El Reflejo | **condicionales** |
+| 3 | Núcleo Modular | **funciones** |
+| 4 | Puente de Lanzamiento | **APIs** — y es la FINAL: cierra el evento |
+| bonus | La Espesura | *ciclos que deciden (seguidor de pared); fuera del recorrido* |
 
-Las dos últimas filas no son adorno, y el servidor las conoce: la Fase 6 lleva
-`esFinal` y la 7 `esBonus` en el seed. De ahí salen tres cosas: el cohete y la
+La Maraña abre porque es la más amable para quien nunca ha programado. Muro de
+Repetición, Bóveda de Credenciales y El Rastro siguen en el código (y sus secciones,
+abajo), pero el seed ya no las siembra: las borra de la base.
+
+Las dos últimas filas no son adorno, y el servidor las conoce: la Fase 4 lleva
+`esFinal` y el bonus `esBonus` en el seed. De ahí salen tres cosas: el cohete y la
 cuenta atrás de la proyección, que la meta de la carrera esté en la sexta y no
 en la séptima, y que el bonus no estire la escala de averías del proyector.
 

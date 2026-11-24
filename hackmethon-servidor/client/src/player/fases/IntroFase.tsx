@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { sonar } from '../../lib/sonido';
 import { INTRO_REFLEJO } from './IntroReflejo';
+import { INTRO_ESPESURA, INTRO_MARANA, INTRO_SETO } from './IntroMarana';
 
 // ============================================================
 //  LA INTRODUCCIÓN DE UNA FASE
@@ -28,15 +29,37 @@ export type EscenaIntro = {
 export type Intro = { lamina: string; nombre: string; cierre: string; escenas: EscenaIntro[] };
 
 /** Las introducciones, por `key` de fase. Las fases sin entrada aquí no
- *  enseñan nada al entrar. */
+ *  enseñan nada al entrar. Una capa puede tener la suya, `<key>:capa-<n>`:
+ *  sale sola cuando el equipo llega a esa capa. */
 export const INTROS: Record<string, Intro> = {
-  'fase-1-acceso': {
+  'fase-2-enemigo': {
     lamina: 'LÁMINA I · PIERNA IZQUIERDA',
+    nombre: 'La Maraña',
+    cierre: 'ENTENDIDO · AL SEMILLERO',
+    escenas: INTRO_MARANA,
+  },
+  'fase-2-enemigo:capa-2': {
+    lamina: 'LÁMINA I · PIERNA IZQUIERDA · CAPA 2',
+    nombre: 'El Seto',
+    cierre: 'ENTENDIDO · AL SETO',
+    escenas: INTRO_SETO,
+  },
+  'fase-1-acceso': {
+    lamina: 'LÁMINA II · PIERNA DERECHA',
     nombre: 'El Reflejo',
     cierre: 'ENTENDIDO · A LA MEMBRANA',
     escenas: INTRO_REFLEJO,
   },
+  'fase-bonus-espesura': {
+    lamina: 'BONUS · EL CORAZÓN',
+    nombre: 'La Espesura',
+    cierre: 'ENTENDIDO · A LA ESPESURA',
+    escenas: INTRO_ESPESURA,
+  },
 };
+
+/** La introducción de una capa, si la tiene. */
+export const introDeCapa = (fase: string, capa: number) => `${fase}:capa-${capa}`;
 
 const reducido = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;

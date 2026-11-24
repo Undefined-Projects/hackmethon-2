@@ -1,0 +1,6 @@
+# `railway up` sube la carpeta tal cual: nada de bases locales ni secretos.
+node_modules
+dist
+prisma/*.db
+prisma/*.db-journal
+.env

@@ -7,7 +7,9 @@ import { JardinEscena } from '../../admin/JardinEscena';
 import { sonar } from '../../lib/sonido';
 import { Salida } from '../Bloques';
 import { useMountId } from './mount';
-import { Interior, Membrana, type Cuidador } from '../fases/Membrana';
+import { Interior, type Cuidador } from '../fases/Membrana';
+import { Reflejo3D } from '../fases/Reflejo3D';
+import { Marana, type Mundo, type ViajePantalla } from '../fases/Marana';
 
 type Payload = {
   salidas: SalidaComando[];
@@ -17,6 +19,8 @@ type Payload = {
   codigo?: VistaCodigo | null;
   laberinto?: VistaLaberinto | null;
   camaras?: VistaCamaras | null;
+  /** La maraña de la Fase 2: el laberinto y el último brote. */
+  marana?: { capa: number; resuelta: boolean; titulo?: string; final?: { t: string; sub: string }; mundo: Mundo; viaje: ViajePantalla | null } | null;
 };
 
 /**
@@ -88,7 +92,7 @@ type VistaCamaras = {
 };
 
 type DibujoCamara =
-  | { tipo: 'membrana'; capa: number; resuelta: boolean; muda: number; cola: Cuidador[] }
+  | { tipo: 'membrana'; capa: number; resuelta: boolean; muda: number; corrida?: number; cola: Cuidador[] }
   | { tipo: 'interior'; capa: number; resuelta: boolean; dentro: string[] };
 
 /** Medio segundo por embestida y dos segundos por casilla: el ritmo lo
@@ -443,8 +447,8 @@ function MonitorCamaras({ camaras }: { camaras: VistaCamaras }) {
 
       <div className={`cam-imagen${vista.dibujo ? ' con-dibujo' : ''}`}>
         {vista.dibujo?.tipo === 'membrana' ? (
-          <Membrana cola={vista.dibujo.cola} capa={vista.dibujo.capa}
-                    resuelta={vista.dibujo.resuelta} muda={vista.dibujo.muda} />
+          <Reflejo3D cola={vista.dibujo.cola} capa={vista.dibujo.capa}
+                     resuelta={vista.dibujo.resuelta} muda={vista.dibujo.muda} corrida={vista.dibujo.corrida} />
         ) : vista.dibujo?.tipo === 'interior' ? (
           <Interior dentro={vista.dibujo.dentro} resuelta={vista.dibujo.resuelta} />
         ) : (
@@ -598,6 +602,21 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
       {/* El circuito cerrado del recinto. Va arriba del todo: es lo que
           hay que mirar mientras la consola prueba peticiones a ciegas. */}
       {payload?.camaras && <MonitorCamaras camaras={payload.camaras} />}
+
+      {/* La maraña: el laberinto que la pierna hace crecer y el brote que
+          lo cruza. Va arriba del todo: es lo que hay que mirar. */}
+      {payload?.marana && (
+        <div className="camaras marana-monitor">
+          <Marana mundo={payload.marana.mundo} viaje={payload.marana.viaje}
+                  capa={payload.marana.capa} resuelta={payload.marana.resuelta}
+                  titulo={payload.marana.titulo} final={payload.marana.final} />
+          <p className="cam-pie">
+            {payload.marana.mundo.brotes.length > 1
+              ? 'Los cuatro llevan el programa de la consola. Cuéntenle al equipo por dónde fue cada uno y dónde acabó.'
+              : 'El brote lo escribe y lo lanza la consola. Díctenle el camino: la flecha apunta hacia donde mira.'}
+          </p>
+        </div>
+      )}
 
       {/* El pasillo. Esta pantalla no lo recorre —no tiene con qué— y eso
           es deliberado: quien anda es el de la consola, a ciegas, y aquí

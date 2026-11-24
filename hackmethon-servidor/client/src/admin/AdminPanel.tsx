@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PanelIntros } from './PanelIntros';
+import { PruebaAnimaciones } from './PruebaAnimaciones';
+import { PruebaConsejo } from './PruebaConsejo';
 import type { AdminSnapshot } from '../shared/events';
 import type { AppSocket } from '../lib/socket';
 import { call } from '../lib/socket';
@@ -19,6 +21,7 @@ import { PanelMinijuegos } from './PanelMinijuegos';
 import { PanelRobot } from './PanelRobot';
 import { PanelAtaques } from './PanelAtaques';
 import { BolsaEquipo } from './BolsaEquipo';
+import { ListaEquipos, MoverEquipo } from './ListaEquipos';
 
 type Props = { snapshot: AdminSnapshot; socket: AppSocket; online: boolean };
 
@@ -36,6 +39,36 @@ type Props = { snapshot: AdminSnapshot; socket: AppSocket; online: boolean };
 type Vista = 'panel' | 'carrera' | 'prueba-carrera' | 'prueba-ataque' | 'mapa' | 'mapa-editor' | 'proyeccion' | 'luces';
 const VISTAS: Vista[] = ['carrera', 'prueba-carrera', 'prueba-ataque', 'mapa', 'mapa-editor', 'proyeccion', 'luces'];
 
+// ============================================================
+//  Las pestañas del panel. Lo que se usa durante el evento va primero;
+//  lo que solo se ensaya, al final y aparte, para no pulsarlo sin querer.
+//  La pestaña se recuerda en este navegador: es comodidad, no estado.
+// ============================================================
+type Pestana = 'vivo' | 'equipos' | 'sala' | 'pantallas' | 'ensayos';
+const PESTANA_KEY = 'hm:admin:pestana';
+const leerPestana = (): Pestana => {
+  try {
+    const p = localStorage.getItem(PESTANA_KEY);
+    return p === 'equipos' || p === 'sala' || p === 'pantallas' || p === 'ensayos' ? p : 'vivo';
+  } catch { return 'vivo'; }
+};
+/** Cómo se ven los equipos: fichas completas o lista para mover gente. */
+type VistaEquipos = 'fichas' | 'lista';
+const VISTA_EQUIPOS_KEY = 'hm:admin:vista-equipos';
+const leerVistaEquipos = (): VistaEquipos => {
+  try { return localStorage.getItem(VISTA_EQUIPOS_KEY) === 'lista' ? 'lista' : 'fichas'; } catch { return 'fichas'; }
+};
+
+/** Las vistas de sala, con lo que son. `ventana`: se abren aparte, con
+ *  nombre, y pulsar otra vez la trae al frente en vez de abrir otra. */
+const PANTALLAS: { nombre: string; que: string; vista?: Vista; ventana?: string }[] = [
+  { nombre: 'Carrera', que: 'La carrera de los equipos por las fases, para el proyector.', vista: 'carrera' },
+  { nombre: 'Proyección', que: 'La escena de la fase destacada, para la pared de la sala.', vista: 'proyeccion' },
+  { nombre: 'Mapa del auditorio', que: 'Dónde está cada mesa, para el proyector o la entrada.', ventana: 'mapa' },
+  { nombre: 'Editar mapa', que: 'Colocar mesas y equipos en el plano del auditorio.', vista: 'mapa-editor' },
+  { nombre: 'Luces', que: 'Las luces de la sala: botones infrarrojos y automatización.', vista: 'luces' },
+];
+
 const leerHash = (): Vista => {
   const h = window.location.hash.replace(/^#/, '');
   return (VISTAS as string[]).includes(h) ? (h as Vista) : 'panel';
@@ -49,6 +82,20 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
   const [vista, setVista] = useState<Vista>(leerHash);
   const [busy, setBusy] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [pestana, setPestana] = useState<Pestana>(leerPestana);
+  const [vistaEquipos, setVistaEquipos] = useState<VistaEquipos>(leerVistaEquipos);
+  const elegirVistaEquipos = (v: VistaEquipos) => {
+    setVistaEquipos(v);
+    try { localStorage.setItem(VISTA_EQUIPOS_KEY, v); } catch { /* sin almacenamiento */ }
+  };
+  const elegir = (p: Pestana) => {
+    setPestana(p);
+    try { localStorage.setItem(PESTANA_KEY, p); } catch { /* sin almacenamiento */ }
+  };
+  // El código va en el localStorage, así que la ventana nueva entra sola
+  // como admin.
+  const abrirVentana = (v: string) =>
+    window.open(`${window.location.pathname}${window.location.search}#${v}`, `hackmethon-${v}`);
 
   // Botón «atrás» del navegador y ventanas abiertas a mano: las dos
   // cambian el hash sin pasar por aquí.
@@ -151,6 +198,17 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
     );
   }
 
+  // Las pestañas: lo de durante el evento, separado de lo que se ensaya.
+  const alertas = teams.filter((t) => t.alertas.pegados > 0 || t.alertas.rafagas > 0 || t.alertas.rapidas.length > 0).length;
+  const activas = phases.filter((p) => p.status === 'ACTIVE').length;
+  const PESTANAS: { id: Pestana; nombre: string; marca?: string; peligro?: boolean }[] = [
+    { id: 'vivo', nombre: 'EN VIVO', marca: `${activas} abierta(s)` },
+    { id: 'equipos', nombre: 'EQUIPOS', marca: alertas ? `[!] ${alertas}` : `${teams.length}`, peligro: alertas > 0 },
+    { id: 'sala', nombre: 'MINIJUEGOS Y ATAQUES', marca: snapshot.minijuego ? 'en juego' : undefined },
+    { id: 'pantallas', nombre: 'PANTALLAS' },
+    { id: 'ensayos', nombre: 'ENSAYOS' },
+  ];
+
   return (
     <div className="admin">
       <header className="barra">
@@ -162,362 +220,443 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
           </span>
         </div>
         <div className="estado-evento">
-          <button className="ir-carrera" onClick={() => ir('carrera')}>
-            &gt;&gt; CARRERA
-          </button>
-          <button
-            className="ir-carrera"
-            title="Carrera simulada: los caballos corren solos y no se toca el juego"
-            onClick={() => ir('prueba-carrera')}
-          >
-            &gt;&gt; PROBAR CARRERA
-          </button>
-          <button
-            className="ir-carrera"
-            title="Mapa del auditorio en una ventana nueva, para el proyector o la entrada"
-            // Ventana con nombre: pulsarlo otra vez la trae al frente en
-            // vez de abrir otra. El código va en el localStorage, así que
-            // la ventana nueva entra sola como admin.
-            onClick={() => window.open(`${window.location.pathname}${window.location.search}#mapa`, 'hackmethon-mapa')}
-          >
-            &gt;&gt; MAPA
-          </button>
-          <button className="ir-carrera" title="Colocar mesas y equipos en el plano del auditorio" onClick={() => ir('mapa-editor')}>
-            &gt;&gt; EDITAR MAPA
-          </button>
-          <button
-            className="ir-carrera"
-            title="El mapa de ataque del jugador, simulado: los demás equipos se atacan solos y no se toca el juego"
-            onClick={() => ir('prueba-ataque')}
-          >
-            &gt;&gt; PROBAR ATAQUE
-          </button>
-          <button
-            className="ir-carrera"
-            title="Escena de la fase destacada, para el proyector de la sala"
-            onClick={() => ir('proyeccion')}
-          >
-            &gt;&gt; PROYECCIÓN
-          </button>
-          <button
-            className="ir-luces"
-            title="Luces de la sala: botones infrarrojos y automatización"
-            onClick={() => ir('luces')}
-          >
-            &gt;&gt; LUCES
-          </button>
+          {/* Pausar y reanudar, siempre a mano: es lo que corre prisa. */}
+          {event.status === 'RUNNING' && (
+            <button className="sutil" disabled={busy !== null}
+                    onClick={() => accion('ev-PAUSED', 'admin:event:status', { status: 'PAUSED' }, 'Evento → PAUSED')}>
+              || PAUSAR
+            </button>
+          )}
+          {event.status === 'PAUSED' && (
+            <button className="activo" disabled={busy !== null}
+                    onClick={() => accion('ev-RUNNING', 'admin:event:status', { status: 'RUNNING' }, 'Evento → RUNNING')}>
+              &gt; REANUDAR
+            </button>
+          )}
           <span className={`chip estado-${event.status}`}>{event.status}</span>
           <span className={`chip ${online ? 'ok' : 'err'}`}>{online ? 'conectado' : 'sin conexión'}</span>
         </div>
       </header>
 
+      <nav className="admin-pestanas" aria-label="Secciones del panel">
+        {PESTANAS.map((t) => (
+          <button key={t.id} type="button" className={pestana === t.id ? 'activo' : ''}
+                  aria-current={pestana === t.id ? 'page' : undefined} onClick={() => elegir(t.id)}>
+            {t.nombre}
+            {t.marca && <span className={`admin-pestanas__marca${t.peligro ? ' peligro' : ''}`}>{t.marca}</span>}
+          </button>
+        ))}
+      </nav>
+
       {aviso && <div className={`aviso ${aviso.tipo}`}>{aviso.texto}</div>}
 
-      <section className="panel">
-        <div className="panel__bar">
-          <span className="panel__name">EVENTO</span>
-          <span className="panel__stat">{event.status}</span>
-        </div>
-        <div className="panel__body">
-        <div className="fila-botones">
-          {(['RUNNING', 'PAUSED', 'FINISHED'] as const).map((s) => (
-            <button
-              key={s}
-              disabled={busy !== null || event.status === s}
-              className={event.status === s ? 'activo' : ''}
-              onClick={() => accion(`ev-${s}`, 'admin:event:status', { status: s }, `Evento → ${s}`)}
-            >
-              {s === 'RUNNING' ? '> REANUDAR' : s === 'PAUSED' ? '|| PAUSAR' : '[] FINALIZAR'}
-            </button>
-          ))}
-        </div>
-        {/* Acceso libre. Es un interruptor, no un boton de accion: tiene que
-            leerse de un vistazo si esta encendido, porque cambia como se
-            comporta el evento entero y es facil olvidarse de apagarlo. */}
-        <div className="fila-botones">
-          <button
-            className={`interruptor ${event.libreAcceso ? 'encendido' : ''}`}
-            disabled={busy !== null}
-            onClick={() => {
-              const libre = !event.libreAcceso;
-              if (libre && !confirm('¿Permitir que los equipos entren a CUALQUIER fase abierta?\n\nDejaran de necesitar haber resuelto la anterior. Las fases siguen necesitando que tu las abras, y una fase ya resuelta sigue sin poder rejugarse.')) return;
-              accion(
-                'acceso', 'admin:event:acceso', { libre },
-                libre ? 'Acceso libre ACTIVADO' : 'Acceso libre desactivado',
-              );
-            }}
-          >
-            {busy === 'acceso'
-              ? 'CAMBIANDO…'
-              : `[${event.libreAcceso ? 'X' : ' '}] ACCESO LIBRE A FASES ABIERTAS`}
-          </button>
-        </div>
+      {pestana === 'vivo' && (
+        <>
+          <section className="panel">
+            <div className="panel__bar">
+              <span className="panel__name">EVENTO</span>
+              <span className="panel__stat">{event.status}</span>
+            </div>
+            <div className="panel__body">
+            <div className="fila-botones">
+              {(['RUNNING', 'PAUSED', 'FINISHED'] as const).map((s) => (
+                <button
+                  key={s}
+                  disabled={busy !== null || event.status === s}
+                  className={event.status === s ? 'activo' : ''}
+                  onClick={() => accion(`ev-${s}`, 'admin:event:status', { status: s }, `Evento → ${s}`)}
+                >
+                  {s === 'RUNNING' ? '> REANUDAR' : s === 'PAUSED' ? '|| PAUSAR' : '[] FINALIZAR'}
+                </button>
+              ))}
+            </div>
+            {/* Acceso libre. Es un interruptor, no un boton de accion: tiene que
+                leerse de un vistazo si esta encendido, porque cambia como se
+                comporta el evento entero y es facil olvidarse de apagarlo. */}
+            <div className="fila-botones">
+              <button
+                className={`interruptor ${event.libreAcceso ? 'encendido' : ''}`}
+                disabled={busy !== null}
+                onClick={() => {
+                  const libre = !event.libreAcceso;
+                  if (libre && !confirm('¿Permitir que los equipos entren a CUALQUIER fase abierta?\n\nDejaran de necesitar haber resuelto la anterior. Las fases siguen necesitando que tu las abras, y una fase ya resuelta sigue sin poder rejugarse.')) return;
+                  accion(
+                    'acceso', 'admin:event:acceso', { libre },
+                    libre ? 'Acceso libre ACTIVADO' : 'Acceso libre desactivado',
+                  );
+                }}
+              >
+                {busy === 'acceso'
+                  ? 'CAMBIANDO…'
+                  : `[${event.libreAcceso ? 'X' : ' '}] ACCESO LIBRE A FASES ABIERTAS`}
+              </button>
+            </div>
 
-        {event.libreAcceso && (
-          <p className="nota-acceso">
-            Acceso libre activo: cualquier fase que abras es accesible aunque el equipo
-            no haya resuelto la anterior. La cadena vuelve al apagarlo.
-          </p>
-        )}
+            {event.libreAcceso && (
+              <p className="nota-acceso">
+                Acceso libre activo: cualquier fase que abras es accesible aunque el equipo
+                no haya resuelto la anterior. La cadena vuelve al apagarlo.
+              </p>
+            )}
 
-        <div className="fila-botones">
-          <button
-            className="peligro"
-            disabled={busy !== null}
-            onClick={() => {
-              if (!confirm('¿Reiniciar el juego?\n\nSe borra TODO el progreso (tiempos, intentos, fases resueltas), los roles vuelven a su reparto inicial y el acceso libre se apaga. Los equipos y sus códigos de acceso NO se tocan.')) return;
-              accion('reset', 'admin:event:reset', {}, 'Juego reiniciado');
-            }}
-          >
-            {busy === 'reset' ? 'REINICIANDO…' : '<< REINICIAR JUEGO'}
-          </button>
-        </div>
 
-        {event.paused && (
-          <p className="nota-pausa">
-            Evento en pausa: el cronómetro de todas las fases sin resolver está detenido.
-          </p>
-        )}
-        </div>
-      </section>
-
-      <PanelMinijuegos minijuego={snapshot.minijuego} bloqueado={busy !== null} accion={accion} />
-
-      <section className="panel">
-        <div className="panel__bar">
-          <span className="panel__name">BARRERAS</span>
-          <span className="panel__stat">
-            {phases.filter((p) => p.status === 'ACTIVE').length} activa(s) de {phases.length}
-          </span>
-        </div>
-        <div className="panel__body">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th><th>Fase</th><th>Estado</th><th>Resueltas</th><th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {phases.map((p) => {
-              const resueltas = teams.filter((t) =>
-                t.progress.some((x) => x.phaseId === p.id && x.status === 'SOLVED'),
-              ).length;
-              return (
-                <tr key={p.id} className={event.focusPhaseId === p.id ? 'destacada' : ''}>
-                  <td>{p.order}</td>
-                  <td>
-                    {p.title}
-                    {/* Cuál cierra el evento y cuál está fuera del recorrido.
-                        Sin esto hay que saberlo de memoria, y el que gobierna
-                        el evento no tiene por qué. */}
-                    {p.esFinal && <span className="chip mini marca-final">FINAL</span>}
-                    {p.esBonus && <span className="chip mini marca-bonus">BONUS</span>}
-                  </td>
-                  <td><span className={`chip fase-${p.status}`}>{p.status}</span></td>
-                  <td>{resueltas}/{teams.length}</td>
-                  <td className="acciones">
-                    <button
-                      className="primaria"
-                      disabled={busy !== null || p.status === 'ACTIVE'}
-                      onClick={() => accion(`open-${p.id}`, 'admin:phase:open', { phaseId: p.id }, `Fase abierta: ${p.title}`)}
-                    >
-                      Abrir
-                    </button>
-                    <button
-                      className="peligro"
-                      disabled={busy !== null || p.status !== 'ACTIVE'}
-                      onClick={() => {
-                        if (!confirm(`¿Cerrar "${p.title}"? Los equipos que no la hayan resuelto quedarán como FAILED.`)) return;
-                        accion(`close-${p.id}`, 'admin:phase:close', { phaseId: p.id }, `Fase cerrada: ${p.title}`);
-                      }}
-                    >
-                      Cerrar
-                    </button>
-                    <button
-                      className="sutil"
-                      disabled={busy !== null}
-                      onClick={() =>
-                        accion(`focus-${p.id}`, 'admin:phase:focus',
-                          { phaseId: event.focusPhaseId === p.id ? null : p.id },
-                          event.focusPhaseId === p.id ? 'Destacado retirado' : 'Fase destacada')
-                      }
-                    >
-                      {event.focusPhaseId === p.id ? '[*]' : '[ ]'}
-                    </button>
-                  </td>
+            {event.paused && (
+              <p className="nota-pausa">
+                Evento en pausa: el cronómetro de todas las fases sin resolver está detenido.
+              </p>
+            )}
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel__bar">
+              <span className="panel__name">BARRERAS</span>
+              <span className="panel__stat">
+                {phases.filter((p) => p.status === 'ACTIVE').length} activa(s) de {phases.length}
+              </span>
+            </div>
+            <div className="panel__body">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th><th>Fase</th><th>Estado</th><th>Resueltas</th><th>Acciones</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {phases.map((p) => {
+                  const resueltas = teams.filter((t) =>
+                    t.progress.some((x) => x.phaseId === p.id && x.status === 'SOLVED'),
+                  ).length;
+                  return (
+                    <tr key={p.id} className={event.focusPhaseId === p.id ? 'destacada' : ''}>
+                      <td>{p.order}</td>
+                      <td>
+                        {p.title}
+                        {/* Cuál cierra el evento y cuál está fuera del recorrido.
+                            Sin esto hay que saberlo de memoria, y el que gobierna
+                            el evento no tiene por qué. */}
+                        {p.esFinal && <span className="chip mini marca-final">FINAL</span>}
+                        {p.esBonus && <span className="chip mini marca-bonus">BONUS</span>}
+                      </td>
+                      <td><span className={`chip fase-${p.status}`}>{p.status}</span></td>
+                      <td>{resueltas}/{teams.length}</td>
+                      <td className="acciones">
+                        <button
+                          className="primaria"
+                          disabled={busy !== null || p.status === 'ACTIVE'}
+                          onClick={() => accion(`open-${p.id}`, 'admin:phase:open', { phaseId: p.id }, `Fase abierta: ${p.title}`)}
+                        >
+                          Abrir
+                        </button>
+                        <button
+                          className="peligro"
+                          disabled={busy !== null || p.status !== 'ACTIVE'}
+                          onClick={() => {
+                            if (!confirm(`¿Cerrar "${p.title}"? Los equipos que no la hayan resuelto quedarán como FAILED.`)) return;
+                            accion(`close-${p.id}`, 'admin:phase:close', { phaseId: p.id }, `Fase cerrada: ${p.title}`);
+                          }}
+                        >
+                          Cerrar
+                        </button>
+                        <button
+                          className="sutil"
+                          disabled={busy !== null}
+                          onClick={() =>
+                            accion(`focus-${p.id}`, 'admin:phase:focus',
+                              { phaseId: event.focusPhaseId === p.id ? null : p.id },
+                              event.focusPhaseId === p.id ? 'Destacado retirado' : 'Fase destacada')
+                          }
+                        >
+                          {event.focusPhaseId === p.id ? '[*]' : '[ ]'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+          </section>
+          {snapshot.final && (
+            <PanelFinal
+              final={snapshot.final}
+              socket={socket}
+              bloqueado={busy !== null}
+              paused={event.paused}
+              onAviso={avisar}
+            />
+          )}
 
-      <PanelAtaques
-        enfriamientoMs={event.enfriamientoAtaqueMs}
-        socket={socket}
-        bloqueado={busy !== null}
-        onAviso={avisar}
-        onProbar={() => ir('prueba-ataque')}
-      />
-
-      <PanelRobot bloqueado={busy !== null} accion={accion} />
-
-      <PanelIntros phases={snapshot.phases} />
-
-      {snapshot.final && (
-        <PanelFinal
-          final={snapshot.final}
-          socket={socket}
-          bloqueado={busy !== null}
-          paused={event.paused}
-          onAviso={avisar}
-        />
+          <section className="panel panel--peligro">
+            <div className="panel__bar">
+              <span className="panel__name">ZONA DE PELIGRO</span>
+            </div>
+            <div className="panel__body">
+              <div className="fila-botones">
+                <button
+                  className="peligro"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    if (!confirm('¿Reiniciar el juego?\n\nSe borra TODO el progreso (tiempos, intentos, fases resueltas), los roles vuelven a su reparto inicial y el acceso libre se apaga. Los equipos y sus códigos de acceso NO se tocan.')) return;
+                    accion('reset', 'admin:event:reset', {}, 'Juego reiniciado');
+                  }}
+                >
+                  {busy === 'reset' ? 'REINICIANDO…' : '<< REINICIAR JUEGO'}
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
       )}
 
-      <section className="panel">
-        <div className="panel__bar">
-          <span className="panel__name">EQUIPOS Y ROLES</span>
-          <span className="panel__stat">{conectados}/{jugadores.length} en línea</span>
-        </div>
-        <div className="panel__body">
-        <div className="cabecera-seccion">
-          <h2>Reparto actual</h2>
-          <div className="acciones-reparto">
-          <button
-            className="mezclar-todo"
-            disabled={busy !== null}
-            onClick={() => {
-              if (!confirm('¿Mezclar los roles de TODOS los equipos? El cambio es inmediato en sus pantallas.')) return;
-              accion('shuffle-all', 'admin:roles:shuffle', {}, 'Roles mezclados en todos los equipos');
-            }}
-          >
-            {busy === 'shuffle-all' ? 'MEZCLANDO…' : '>< MEZCLAR ROLES (TODOS)'}
-          </button>
-          {/* Ensayo de la pantalla de victoria: es lo único del juego que
-              no se puede ver sin jugar una fase entera. No guarda nada. */}
-          <button
-            className="ensayar-todo"
-            disabled={busy !== null}
-            onClick={() => {
-              if (!confirm('¿Lanzar la pantalla de VICTORIA en todos los equipos?\n\nEs un ensayo: no sella tiempos, no marca ninguna fase resuelta y no saca a nadie de la fase que esté jugando. Ellos la verán a pantalla completa.')) return;
-              accion('celebrar-all', 'admin:phase:celebrar', {}, 'Ensayo de victoria lanzado a todos los equipos');
-            }}
-          >
-            {busy === 'celebrar-all' ? 'LANZANDO…' : '[OK] ENSAYAR VICTORIA (TODOS)'}
-          </button>
+      {pestana === 'equipos' && (
+        <section className="panel">
+          <div className="panel__bar">
+            <span className="panel__name">EQUIPOS Y ROLES</span>
+            <span className="panel__stat">{conectados}/{jugadores.length} en línea</span>
           </div>
-        </div>
-
-        <div className="equipos">
-          {teams.map((t) => (
-            <article key={t.id} className="equipo">
-              <header>
-                <IdentidadEquipo
-                  equipo={t}
-                  socket={socket}
-                  bloqueado={busy !== null}
-                  onAviso={avisar}
-                />
-                <button
-                  className="sutil"
-                  disabled={busy !== null}
-                  onClick={() => accion(`shuffle-${t.id}`, 'admin:roles:shuffle', { teamIds: [t.id] }, `Roles mezclados en ${t.name}`)}
-                >
-                  &gt;&lt;
+          <div className="panel__body">
+          <div className="cabecera-seccion">
+            <h2>Reparto actual</h2>
+            <div className="vista-equipos" role="group" aria-label="Cómo ver los equipos">
+              {(['fichas', 'lista'] as const).map((v) => (
+                <button key={v} type="button" className={vistaEquipos === v ? 'activo' : ''}
+                        aria-pressed={vistaEquipos === v} onClick={() => elegirVistaEquipos(v)}>
+                  {v === 'fichas' ? '[#] FICHAS' : '[=] LISTA'}
                 </button>
-                <button
-                  className="sutil"
-                  title={`Ensayar la pantalla de victoria en ${t.name}`}
-                  disabled={busy !== null}
-                  onClick={() => accion(`celebrar-${t.id}`, 'admin:phase:celebrar', { teamIds: [t.id] }, `Ensayo de victoria lanzado a ${t.name}`)}
-                >
-                  [OK]
-                </button>
-              </header>
+              ))}
+            </div>
+            <div className="acciones-reparto">
+            <button
+              className="mezclar-todo"
+              disabled={busy !== null}
+              onClick={() => {
+                if (!confirm('¿Mezclar los roles de TODOS los equipos? El cambio es inmediato en sus pantallas.')) return;
+                accion('shuffle-all', 'admin:roles:shuffle', {}, 'Roles mezclados en todos los equipos');
+              }}
+            >
+              {busy === 'shuffle-all' ? 'MEZCLANDO…' : '>< MEZCLAR ROLES (TODOS)'}
+            </button>
+            <button
+              className="mandar-consejo"
+              disabled={busy !== null}
+              title="El robot asoma con un letrero: a cada persona, un consejo para su puesto en la fase y capa en que está su equipo"
+              onClick={() => {
+                if (!confirm('¿Mandar el letrero del robot con un consejo a TODOS los equipos?\n\nCada persona recibe uno para su puesto, según la fase y la capa en que esté su equipo.')) return;
+                accion('consejo-all', 'admin:consejo', {}, 'Consejo del robot mandado a todos los equipos');
+              }}
+            >
+              {busy === 'consejo-all' ? 'MANDANDO…' : '[?] MANDAR CONSEJO (TODOS)'}
+            </button>
+            </div>
+          </div>
 
-              <BolsaEquipo equipo={t} bloqueado={busy !== null} accion={accion} />
+          {vistaEquipos === 'lista' && (
+            <ListaEquipos teams={teams} bloqueado={busy !== null} accion={accion} />
+          )}
 
-              {/* Señales para acercarse a esa mesa. No castigan nada: solo
-                  dicen dónde mirar. */}
-              {(t.alertas.pegados > 0 || t.alertas.rafagas > 0 || t.alertas.rapidas.length > 0) && (
-                <p className="equipo-alertas" title="Señales de que quizá no están tecleando lo que piensan">
-                  <span className="equipo-alertas__marca">[!] MIRAR ESTA MESA</span>
-                  {t.alertas.pegados > 0 && <span>{t.alertas.pegados} intento(s) de pegar</span>}
-                  {t.alertas.rafagas > 0 && <span>{t.alertas.rafagas} comando(s) demasiado rápidos</span>}
-                  {t.alertas.rapidas.length > 0 && <span>resolvió muy rápido: {t.alertas.rapidas.join(', ')}</span>}
-                </p>
-              )}
+          {vistaEquipos === 'fichas' && <div className="equipos">
+            {teams.map((t) => (
+              <article key={t.id} className="equipo">
+                <header>
+                  <IdentidadEquipo
+                    equipo={t}
+                    socket={socket}
+                    bloqueado={busy !== null}
+                    onAviso={avisar}
+                  />
+                  <button
+                    className="sutil"
+                    disabled={busy !== null}
+                    onClick={() => accion(`shuffle-${t.id}`, 'admin:roles:shuffle', { teamIds: [t.id] }, `Roles mezclados en ${t.name}`)}
+                  >
+                    &gt;&lt;
+                  </button>
+                  <button
+                    className="sutil"
+                    title={`Mandar el letrero del robot con un consejo a ${t.name}`}
+                    disabled={busy !== null}
+                    onClick={() => accion(`consejo-${t.id}`, 'admin:consejo', { teamIds: [t.id] }, `Consejo del robot mandado a ${t.name}`)}
+                  >
+                    [?]
+                  </button>
+                  <button
+                    className="sutil"
+                    title={`Ensayar la pantalla de victoria en ${t.name}`}
+                    disabled={busy !== null}
+                    onClick={() => accion(`celebrar-${t.id}`, 'admin:phase:celebrar', { teamIds: [t.id] }, `Ensayo de victoria lanzado a ${t.name}`)}
+                  >
+                    [OK]
+                  </button>
+                </header>
 
-              <ul className="miembros">
-                {t.members.map((m) => (
-                  <li key={m.id}>
-                    <span className={`punto ${m.connected ? 'on' : 'off'}`} />
-                    <span className="nombre">{m.displayName.replace(`${t.name} · `, '')}</span>
-                    {/* El rol se cambia a mano aquí. La TERMINAL no se le quita a
-                        quien la tiene: se le da a otro, y entonces se intercambian.
-                        Así el equipo nunca se queda sin nadie que teclee. */}
-                    <select
-                      className={`rol rol-${m.role} rol-select`}
-                      value={m.role}
-                      disabled={busy !== null || m.role === 'TERMINAL'}
-                      title={m.role === 'TERMINAL'
-                        ? 'Para cambiar la TERMINAL, dásela a otro jugador del equipo'
-                        : 'Cambiar el rol de este jugador'}
-                      onChange={(e) => {
-                        const rol = e.target.value as Role;
-                        const quien = m.displayName.replace(`${t.name} · `, '');
-                        void accion(
-                          `rol-${m.id}`, 'admin:jugador:rol', { userId: m.id, rol },
-                          rol === 'TERMINAL' ? `${quien} toma la TERMINAL en ${t.name}` : `${quien} pasa a ${roleLabel[rol]}`,
-                        );
+                <BolsaEquipo equipo={t} bloqueado={busy !== null} accion={accion} />
+
+                {/* Señales para acercarse a esa mesa. No castigan nada: solo
+                    dicen dónde mirar. */}
+                {(t.alertas.pegados > 0 || t.alertas.rafagas > 0 || t.alertas.rapidas.length > 0) && (
+                  <p className="equipo-alertas" title="Señales de que quizá no están tecleando lo que piensan">
+                    <span className="equipo-alertas__marca">[!] MIRAR ESTA MESA</span>
+                    {t.alertas.pegados > 0 && <span>{t.alertas.pegados} intento(s) de pegar</span>}
+                    {t.alertas.rafagas > 0 && <span>{t.alertas.rafagas} comando(s) demasiado rápidos</span>}
+                    {t.alertas.rapidas.length > 0 && <span>resolvió muy rápido: {t.alertas.rapidas.join(', ')}</span>}
+                  </p>
+                )}
+
+                <ul className="miembros">
+                  {t.members.map((m) => (
+                    <li key={m.id}>
+                      <span className={`punto ${m.connected ? 'on' : 'off'}`} />
+                      <span className="nombre">{m.displayName.replace(`${t.name} · `, '')}</span>
+                      {/* El rol se cambia a mano aquí. La TERMINAL no se le quita a
+                          quien la tiene: se le da a otro, y entonces se intercambian.
+                          Así el equipo nunca se queda sin nadie que teclee. */}
+                      <select
+                        className={`rol rol-${m.role} rol-select`}
+                        value={m.role}
+                        disabled={busy !== null || m.role === 'TERMINAL'}
+                        title={m.role === 'TERMINAL'
+                          ? 'Para cambiar la TERMINAL, dásela a otro jugador del equipo'
+                          : 'Cambiar el rol de este jugador'}
+                        onChange={(e) => {
+                          const rol = e.target.value as Role;
+                          const quien = m.displayName.replace(`${t.name} · `, '');
+                          void accion(
+                            `rol-${m.id}`, 'admin:jugador:rol', { userId: m.id, rol },
+                            rol === 'TERMINAL' ? `${quien} toma la TERMINAL en ${t.name}` : `${quien} pasa a ${roleLabel[rol]}`,
+                          );
+                        }}
+                      >
+                        {ROLES.map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
+                      </select>
+                      <MoverEquipo miembro={m} equipo={t} equipos={teams} bloqueado={busy !== null} accion={accion} />
+                      <button
+                        className="averia"
+                        // La señal se manda siempre. Si esa persona no esta
+                        // conectada no pasa nada: se pierde y ya. Mirar la
+                        // presencia antes solo servia para bloquear el boton
+                        // cuando el panel la tenia desactualizada.
+                        title={`Avería para ${roleLabel[m.role]}: ${AVERIA[m.role]}`}
+                        disabled={busy !== null}
+                        onClick={() =>
+                          accion(
+                            `averia-${m.id}`,
+                            'admin:jugador:averia',
+                            { userId: m.id },
+                            `Avería lanzada a ${m.displayName.replace(`${t.name} · `, '')}: ${AVERIA[m.role]}`,
+                          )
+                        }
+                      >
+                        &gt;&lt;!
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                <table className="progreso">
+                  <tbody>
+                    {phases.map((p) => {
+                      const pr = t.progress.find((x) => x.phaseId === p.id);
+                      return (
+                        <tr key={p.id}>
+                          <td>F{p.order}</td>
+                          <td><span className={`chip mini prog-${pr?.status}`}>{pr?.status ?? '—'}</span></td>
+                          <td className="tiempo">{formatMs(pr?.timeToSolveMs)}</td>
+                          <td className="intentos">{pr?.attempts ?? 0} int.</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </article>
+            ))}
+          </div>}
+          </div>
+        </section>
+      )}
+
+      {pestana === 'sala' && (
+        <>
+          <PanelMinijuegos minijuego={snapshot.minijuego} bloqueado={busy !== null} accion={accion} />
+          <PanelAtaques
+            enfriamientoMs={event.enfriamientoAtaqueMs}
+            socket={socket}
+            bloqueado={busy !== null}
+            onAviso={avisar}
+            onProbar={() => ir('prueba-ataque')}
+          />
+        </>
+      )}
+
+      {pestana === 'pantallas' && (
+        <section className="panel">
+          <div className="panel__bar">
+            <span className="panel__name">PANTALLAS DE LA SALA</span>
+            <span className="panel__stat">cada una en su ventana</span>
+          </div>
+          <div className="panel__body">
+            <p className="ayuda">
+              Lo que se pone en el proyector o en otra pantalla. Lo normal es abrirlas en otra
+              pestaña con el mismo código y dejarlas ahí; este panel sigue gobernando el evento.
+            </p>
+            <div className="admin-tarjetas">
+              {PANTALLAS.map((t) => (
+                <article key={t.nombre} className="admin-tarjeta">
+                  <strong>{t.nombre}</strong>
+                  <p>{t.que}</p>
+                  <button type="button" className="ir-carrera" onClick={() => (t.ventana ? abrirVentana(t.ventana) : ir(t.vista!))}>
+                    &gt;&gt; {t.ventana ? 'ABRIR EN VENTANA' : 'ABRIR'}
+                  </button>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {pestana === 'ensayos' && (
+        <>
+          <section className="panel">
+            <div className="panel__bar">
+              <span className="panel__name">SIMULACIONES</span>
+              <span className="panel__stat">no tocan el juego</span>
+            </div>
+            <div className="panel__body">
+              <div className="admin-tarjetas">
+                <article className="admin-tarjeta">
+                  <strong>Carrera de prueba</strong>
+                  <p>Los caballos corren solos con una partida inventada.</p>
+                  <button type="button" className="ir-carrera" onClick={() => ir('prueba-carrera')}>&gt;&gt; PROBAR CARRERA</button>
+                </article>
+                <article className="admin-tarjeta">
+                  <strong>Mapa de ataque</strong>
+                  <p>Lo que ve un jugador al pulsar ATACAR; los demás equipos se atacan solos.</p>
+                  <button type="button" className="ir-carrera" onClick={() => ir('prueba-ataque')}>&gt;&gt; PROBAR ATAQUE</button>
+                </article>
+                <article className="admin-tarjeta">
+                  <strong>Pantalla de victoria</strong>
+                  <p>Se lanza a TODOS los equipos. No sella tiempos ni resuelve nada. Por equipo, con [OK] en su ficha.</p>
+                    {/* Ensayo de la pantalla de victoria: es lo único del juego que
+                        no se puede ver sin jugar una fase entera. No guarda nada. */}
+                    <button
+                      className="ensayar-todo"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        if (!confirm('¿Lanzar la pantalla de VICTORIA en todos los equipos?\n\nEs un ensayo: no sella tiempos, no marca ninguna fase resuelta y no saca a nadie de la fase que esté jugando. Ellos la verán a pantalla completa.')) return;
+                        accion('celebrar-all', 'admin:phase:celebrar', {}, 'Ensayo de victoria lanzado a todos los equipos');
                       }}
                     >
-                      {ROLES.map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
-                    </select>
-                    <button
-                      className="averia"
-                      // La señal se manda siempre. Si esa persona no esta
-                      // conectada no pasa nada: se pierde y ya. Mirar la
-                      // presencia antes solo servia para bloquear el boton
-                      // cuando el panel la tenia desactualizada.
-                      title={`Avería para ${roleLabel[m.role]}: ${AVERIA[m.role]}`}
-                      disabled={busy !== null}
-                      onClick={() =>
-                        accion(
-                          `averia-${m.id}`,
-                          'admin:jugador:averia',
-                          { userId: m.id },
-                          `Avería lanzada a ${m.displayName.replace(`${t.name} · `, '')}: ${AVERIA[m.role]}`,
-                        )
-                      }
-                    >
-                      &gt;&lt;!
+                      {busy === 'celebrar-all' ? 'LANZANDO…' : '[OK] ENSAYAR VICTORIA (TODOS)'}
                     </button>
-                  </li>
-                ))}
-              </ul>
-
-              <table className="progreso">
-                <tbody>
-                  {phases.map((p) => {
-                    const pr = t.progress.find((x) => x.phaseId === p.id);
-                    return (
-                      <tr key={p.id}>
-                        <td>F{p.order}</td>
-                        <td><span className={`chip mini prog-${pr?.status}`}>{pr?.status ?? '—'}</span></td>
-                        <td className="tiempo">{formatMs(pr?.timeToSolveMs)}</td>
-                        <td className="intentos">{pr?.attempts ?? 0} int.</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </article>
-          ))}
-        </div>
-        </div>
-      </section>
+                </article>
+                <PruebaConsejo socket={socket} phases={snapshot.phases} onAviso={avisar} />
+              </div>
+            </div>
+          </section>
+          <PanelRobot bloqueado={busy !== null} accion={accion} />
+          <PanelIntros phases={snapshot.phases} />
+          <PruebaAnimaciones />
+        </>
+      )}
     </div>
   );
 }

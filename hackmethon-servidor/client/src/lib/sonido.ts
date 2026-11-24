@@ -187,6 +187,11 @@ function ruido({ dur, f = 2400, f2, vol = 0.3, retardo = 0, paso = 'bandpass' }:
 const VOCES = {
   /** Una tecla del Operador de Terminal. Casi nada: se pulsan cientos. */
   tecla: () => tono({ f: 1500, dur: 0.014, onda: 'square', vol: 0.05 }),
+  /** El robot asoma con su letrero: dos notas amables, nada de alarma. */
+  consejo: () => {
+    tono({ f: 660, dur: 0.09, onda: 'triangle', vol: 0.15 });
+    tono({ f: 990, dur: 0.14, onda: 'triangle', vol: 0.15, retardo: 0.1 });
+  },
   /** Comando enviado. */
   enviar: () => { tono({ f: 420, f2: 780, dur: 0.07, vol: 0.16 }); },
   /** El sistema acepta. */
@@ -305,6 +310,41 @@ const VOCES = {
     tono({ f: 110, f2: 55, dur: 1.8, onda: 'sawtooth', vol: 0.08 });
     tono({ f: 165, f2: 330, dur: 1.2, onda: 'triangle', vol: 0.08, retardo: 2.6 });
   },
+  // ---- Fase 2 · la maraña ----
+  /** Un brote germina en la entrada: una semilla que se abre. */
+  brota: () => {
+    tono({ f: 196, f2: 392, dur: 0.35, onda: 'triangle', vol: 0.12 });
+    tono({ f: 784, dur: 0.12, onda: 'sine', vol: 0.06, retardo: 0.3 });
+  },
+  /** Un paso del brote: seis patas sobre hojarasca, apenas. */
+  paso: () => {
+    ruido({ dur: 0.05, f: 3200, f2: 1600, vol: 0.05 });
+    tono({ f: 520, dur: 0.035, onda: 'sine', vol: 0.03 });
+  },
+  /** Un giro: una bisagra pequeña. */
+  giro: () => {
+    tono({ f: 330, f2: 440, dur: 0.08, onda: 'triangle', vol: 0.06 });
+  },
+  /** Contra el seto: golpe sordo y un crujido de ramas. */
+  choque: () => {
+    tono({ f: 140, f2: 45, dur: 0.28, onda: 'sine', vol: 0.24 });
+    ruido({ dur: 0.22, f: 1400, f2: 300, vol: 0.12, retardo: 0.02 });
+    tono({ f: 300, f2: 120, dur: 0.6, onda: 'sawtooth', vol: 0.05, retardo: 0.25 });
+  },
+  /** Una espina: un pinchazo agudo y el brote que se seca. */
+  espina: () => {
+    tono({ f: 2200, f2: 900, dur: 0.12, onda: 'square', vol: 0.09 });
+    tono({ f: 300, f2: 90, dur: 0.8, onda: 'sawtooth', vol: 0.06, retardo: 0.12 });
+  },
+  /** Se queda quieto o se agota: se apaga, sin drama. */
+  marchita: () => {
+    tono({ f: 392, f2: 196, dur: 0.6, onda: 'triangle', vol: 0.08 });
+  },
+  /** Llega a la salida y arraiga: un acorde que florece. */
+  arraiga: () => {
+    [523, 659, 784, 1047].forEach((f, k) => tono({ f, dur: 0.5, onda: 'triangle', vol: 0.07, retardo: k * 0.09 }));
+    ruido({ dur: 0.5, f: 5000, f2: 2500, vol: 0.03, retardo: 0.3 });
+  },
 } as const;
 
 export type Voz = keyof typeof VOCES;
@@ -315,7 +355,7 @@ const MINIMO: Partial<Record<Voz, number>> = {
   // La estática va en pares —el salto y el desliz van seguidos—, así
   // que su tope tiene que dejar pasar los dos.
   tecla: 25, linea: 90, estatica: 45, golpe: 110, abrir: 60, boton: 40,
-  palpa: 300, impulso: 300, abre: 300, cierra: 300,
+  palpa: 300, impulso: 300, abre: 300, cierra: 300, paso: 120, giro: 100, brota: 300,
 };
 const ultima = new Map<Voz, number>();
 

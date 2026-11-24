@@ -11,47 +11,35 @@ const TEAMS = [
   'FOXTROT', 'GOLF', 'HOTEL', 'INDIA', 'JULIETT',
 ];
 
+// El recorrido del evento: cuatro fases en unas cuatro horas útiles, y un
+// bonus para quien le sobre tiempo. La Maraña abre porque es la más
+// amable con quien nunca ha programado —una flecha que avanza y gira, como
+// Karel— y El Reflejo va detrás, cuando ya saben cómo se hablan los tres
+// puestos. Muro de Repetición, Bóveda de Credenciales y El Rastro siguen
+// en el código, pero fuera del recorrido: este seed las borra de la base.
 const PHASES = [
-  // El Reflejo (antes Control de Acceso) abre el recorrido y El Enemigo va detrás. Es el
-  // orden que pide la curva: la primera fase enseña una idea sola —una
-  // condición decide— y la segunda pide cruzarla con datos de otra
-  // estación. Al revés, la sala empezaba por la fase con más piezas.
+  {
+    key: 'fase-2-enemigo',
+    order: 1,
+    title: 'Fase 1 — La Maraña',
+    description: 'SECUENCIAS Y CICLOS · Guiar un brote por la maraña de la pierna izquierda. '
+               + 'Dos capas: el semillero, para calentar, y el seto, donde el camino no cabe sin un ciclo.',
+    teaser: 'Para entrar en la máquina hay que cruzar su pierna, y con los años se volvió una maraña.',
+  },
   {
     key: 'fase-1-acceso',
-    order: 1,
-    title: 'Fase 1 — El Reflejo',
+    order: 2,
+    title: 'Fase 2 — El Reflejo',
     description: 'CONDICIONALES · Reescribir el sistema inmune de la pierna para que pasen '
                + 'nuestras esporas y se marchite. Dos capas: la rótula y la muda.',
     teaser: 'La pierna decide qué la toca antes de pensarlo.',
   },
   {
-    key: 'fase-2-enemigo',
-    order: 2,
-    title: 'Fase 2 — El Enemigo',
-    description: 'Aislar todas las cuentas con peticiones inválidas durante el ataque.',
-    teaser: 'Alguien está tocando puertas que no son suyas.',
-  },
-  {
-    key: 'fase-3-muro',
-    order: 3,
-    title: 'Fase 3 — Muro de Repetición',
-    description: 'CICLOS · Enseñarle a la máquina a hacer lo mismo muchas veces, sin cansarse.',
-    teaser: 'Mil quinientos noventa golpes. A mano no da tiempo.',
-  },
-  {
     key: 'fase-4-nucleo',
-    order: 4,
-    title: 'Fase 4 — Núcleo Modular',
+    order: 3,
+    title: 'Fase 3 — Núcleo Modular',
     description: 'FUNCIONES · Encontrar la pieza rota, arreglarla una vez y que sirva en todas.',
     teaser: 'El código del enemigo está partido en piezas que se llaman entre sí.',
-  },
-  {
-    key: 'fase-5-boveda',
-    order: 5,
-    title: 'Fase 5 — Bóveda de Credenciales',
-    description: 'BASES DE DATOS · Preguntarle bien a una base de datos es más rápido que '
-               + 'buscar con los ojos.',
-    teaser: 'Miles de registros y uno solo sirve.',
   },
   // La FINAL. Cierra el evento y es la única con reloj propio: la sala
   // tiene un rato contado para abortar el lanzamiento, y ese rato se ve
@@ -59,22 +47,23 @@ const PHASES = [
   // cambia desde el panel.
   {
     key: 'fase-6-puente',
-    order: 6,
-    title: 'Fase 6 — Puente de Lanzamiento',
+    order: 4,
+    title: 'Fase 4 — Puente de Lanzamiento',
     description: 'APIS · Mandarle el mensaje correcto y el ataque se cancela. El equivocado lo adelanta.',
     teaser: 'La última capa habla con el exterior.',
     esFinal: true,
     limiteMs: 30 * 60_000,
   },
-  // BONUS. Un reto forense completo y probado que no entra en el
-  // recorrido de programación: va detrás de la final, no cuenta para la
-  // meta y se abre solo si sobra tiempo.
+  // BONUS. La segunda mitad de la vieja Maraña: un seguidor de pared a
+  // oscuras, con cuatro brotes. Dificultad media: para los equipos que
+  // terminan antes, no cuenta para la meta y se abre solo si sobra tiempo.
   {
-    key: 'fase-7-rastro',
-    order: 7,
-    title: 'Fase 7 — El Rastro (bonus)',
-    description: 'Seguir el movimiento lateral del atacante hasta la máquina por la que entró.',
-    teaser: 'No entró por donde crees.',
+    key: 'fase-bonus-espesura',
+    order: 5,
+    title: 'Bonus — La Espesura',
+    description: 'CICLOS QUE DECIDEN · Un mismo programa tiene que llevar a cuatro brotes al claro, '
+               + 'a oscuras y desde cuatro esquinas.',
+    teaser: 'El corazón está en el centro, y alrededor creció la espesura.',
     esBonus: true,
   },
 ];

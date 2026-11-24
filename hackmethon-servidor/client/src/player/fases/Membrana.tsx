@@ -26,11 +26,11 @@ import { sonar } from '../../lib/sonido';
  *  llegó con la muda: lo mismo que dicen los fotogramas de texto. */
 export type Cuidador = { nombre: string; pasa: boolean; nuevo?: boolean; origen?: string };
 
-type Etapa = 'espera' | 'llega' | 'palpa' | 'decide' | 'veredicto' | 'fin';
+export type Etapa = 'espera' | 'llega' | 'palpa' | 'decide' | 'veredicto' | 'fin';
 
 /** Lo que dura cada tiempo del reflejo. Una persona son ~3,8 s: a ese
  *  ritmo se sigue a cada uno sin que la cola se haga eterna. */
-const DUR: Record<Etapa, number> = {
+export const DUR: Record<Etapa, number> = {
   espera: 700, llega: 900, palpa: 820, decide: 640, veredicto: 1550, fin: 1800,
 };
 /** La transición de capa: primero se celebra (la rótula cede), luego la
@@ -273,28 +273,23 @@ export function Silueta({ nuevo }: { nuevo?: boolean }) {
   );
 }
 
-// ---------- la escena ----------
+// ---------- el reloj del reflejo ----------
+//
+// Lo comparten la escena 2D (la sala) y la vista en primera persona de
+// Pantalla: quién está en la membrana, en qué tiempo del reflejo, la muda
+// y la rendición. Así las dos van exactamente igual, y el sonido sale de
+// aquí, una sola vez.
 
-export function Membrana({
-  cola, capa = 1, resuelta = false, muda = 0, etiquetas = true, conSonido = true, sala = false,
-}: {
-  cola: Cuidador[];
-  capa?: number;
-  resuelta?: boolean;
-  /** Contador de mudas. Cuando sube con la escena montada, se ve mudar. */
-  muda?: number;
-  /** Nombres y sello del veredicto. En la proyección van fuera: lo que
-   *  se ve en la pared no puede decir por dónde va nadie. */
-  etiquetas?: boolean;
-  conSonido?: boolean;
-  /** Para la proyección: más grande el trazo, sin rótulos de la cámara. */
-  sala?: boolean;
-}) {
-  const uid = useId().replace(/:/g, '');
+export type OpcionesReflejo = {
+  cola: Cuidador[]; capa?: number; resuelta?: boolean; muda?: number; corrida?: number;
+  conSonido?: boolean; sala?: boolean;
+};
+
+export function useReflejo({
+  cola, capa = 1, resuelta = false, muda = 0, corrida = 0, conSonido = true, sala = false,
+}: OpcionesReflejo) {
   const quieto = useMemo(reducido, []);
-  const geo = useMemo(() => raices(capa), [capa]);
-  const tejido = useMemo(fondo, []);
-  const clave = cola.map((c) => `${c.nombre}:${c.pasa ? 1 : 0}`).join('|') + `#${capa}`;
+  const clave = cola.map((c) => `${c.nombre}:${c.pasa ? 1 : 0}`).join('|') + `#${capa}#${corrida}`;
 
   // --- la muda ---
   // Se dispara con el CAMBIO del contador, no con su valor: quien entra
@@ -330,11 +325,6 @@ export function Membrana({
     return () => relojes.forEach(clearTimeout);
   }, [mudaDesde, conSonido]);
 
-  // Las raíces que se secan son las de ANTES de la muda: mientras dura,
-  // se siguen pintando las de la capa vieja.
-  const geoVieja = useMemo(() => raices(Math.max(1, capa - 1)), [capa]);
-  const raicesAhora = mudando === 'cede' || mudando === 'seca' || mudando === 'cae' ? geoVieja : geo;
-
   // --- la rendición ---
   const [rindiendo, setRindiendo] = useState(false);
   const eraResuelta = useRef(resuelta);
@@ -354,8 +344,8 @@ export function Membrana({
   const [paso, setPaso] = useState<Paso>(() => (quieto || resuelta ? final : { ciclo: 0, i: 0, etapa: 'espera' }));
   const anda = !quieto && !resuelta && mudando === null && n > 0;
 
-  // Otro reglamento, otra cola: el bucle vuelve a empezar desde el
-  // primero. Con el mismo, sigue donde iba.
+  // Otra corrida u otra cola: el bucle vuelve a empezar desde el
+  // primero. Sin cambios, sigue donde iba.
   const vista = useRef(clave);
   useEffect(() => {
     if (vista.current === clave) return;
@@ -390,6 +380,39 @@ export function Membrana({
 
   const mirada = paso.etapa === 'palpa' ? 'mira' : paso.etapa === 'decide' ? 'piensa'
     : paso.etapa === 'veredicto' && actual ? (actual.pasa ? 'calma' : 'furia') : 'vela';
+
+  return { quieto, paso, actual, enJuego, mudando, rindiendo, anda, estado, mirada, n };
+}
+
+// ---------- la escena ----------
+
+export function Membrana({
+  cola, capa = 1, resuelta = false, muda = 0, corrida = 0, etiquetas = true, conSonido = true, sala = false,
+}: {
+  cola: Cuidador[];
+  capa?: number;
+  resuelta?: boolean;
+  /** Contador de mudas. Cuando sube con la escena montada, se ve mudar. */
+  muda?: number;
+  /** El número del último `probar`. Cada corrida suelta la fila otra vez
+   *  desde el primero, aunque dé lo mismo que la anterior. */
+  corrida?: number;
+  /** Nombres y sello del veredicto. En la proyección van fuera: lo que
+   *  se ve en la pared no puede decir por dónde va nadie. */
+  etiquetas?: boolean;
+  conSonido?: boolean;
+  /** Para la proyección: más grande el trazo, sin rótulos de la cámara. */
+  sala?: boolean;
+}) {
+  const uid = useId().replace(/:/g, '');
+  const geo = useMemo(() => raices(capa), [capa]);
+  const tejido = useMemo(fondo, []);
+  const { paso, actual, enJuego, mudando, rindiendo, anda, estado, mirada } =
+    useReflejo({ cola, capa, resuelta, muda, corrida, conSonido, sala });
+  // Las raíces que se secan son las de ANTES de la muda: mientras dura,
+  // se siguen pintando las de la capa vieja.
+  const geoVieja = useMemo(() => raices(Math.max(1, capa - 1)), [capa]);
+  const raicesAhora = mudando === 'cede' || mudando === 'seca' || mudando === 'cae' ? geoVieja : geo;
 
   return (
     <svg

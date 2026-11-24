@@ -10,7 +10,6 @@ import { nucleo } from '../src/phases/nucleo.js';
 import { boveda } from '../src/phases/boveda.js';
 import { puente } from '../src/phases/puente.js';
 import { rastro } from '../src/phases/rastro.js';
-import { enemigo } from '../src/phases/enemigo.js';
 import type { ModuloFase } from '../src/phases/types.js';
 
 let fallos = 0;
@@ -38,7 +37,7 @@ const dice = (r: any) => JSON.stringify(r).toLowerCase();
 console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
 {
   const corre = corredor(acceso);
-  const ANTICUERPOS1 = ['liquen', 'esqueje', 'resina', 'corteza', 'humus'];
+  const ANTICUERPOS1 = ['liquen', 'esqueje', 'resina', 'corteza'];
   // Los resultados ya no salen en Pantalla: se leen de la ultima corrida
   // guardada en las tablas de Datos, como lo haria el equipo.
   const verDatos = (estado: Record<string, unknown>) =>
@@ -73,16 +72,21 @@ console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
   check(!dice(probado.bloques).includes('brote') && !dice(probado.bloques).includes('pasan'),
     'y Pantalla no recibe ni nombres ni recuentos: solo que se guardo');
   const prueba = ultima(probado.estado);
-  check(prueba.corrida[0] === 'R1' && prueba.corrida[2] === '9' && prueba.corrida[3] === '3',
+  check(prueba.corrida[0] === 'R1' && prueba.corrida[2] === '7' && prueba.corrida[3] === '3',
     `la tabla corridas guarda el recuento (pasan ${prueba.corrida[2]}, caen ${prueba.corrida[3]})`);
   check(['brote', 'raiz', 'polen'].every((n) => cae(prueba, n)), 'la defensa deja fuera a las tres esporas');
-  check(ANTICUERPOS1.every((n) => !cae(prueba, n)), 'y deja entrar a los cinco anticuerpos');
+  check(ANTICUERPOS1.every((n) => !cae(prueba, n)), 'y deja entrar a los cuatro anticuerpos');
   check(prueba.filtros.length === 1 && prueba.filtros[0][4] === 'pierna', 'corrida_filtros guarda el flujo y marca la defensa');
   check(prueba.filas.find((f: any) => f.nombre === 'brote').filtro === '1', 'resultados dice en que filtro cae cada uno');
 
   // Las trampas: condiciones demasiado anchas (sin la defensa delante).
   const ancha = (c: string) => ultima(sesion(acceso, ['quitar 1', `filtrar si ${c}`, 'probar']).estado);
-  check(cae(ancha('firma = caducada'), 'poda'), '«firma = caducada» tira a poda, que es rutina');
+  check(prueba.filas.length === 10, `la rotula se juega con diez programas (${prueba.filas.length})`);
+  check(cae(ancha('firma != valida'), 'polen'), '«firma != valida» tira a polen, que es espora');
+  check(dice(probado.bloques).includes('defensa de la pierna') && dice(probado.bloques).includes('quitar'),
+    'al probar con la defensa puesta, se recuerda que es de la pierna y que se puede quitar');
+  check(!dice(sesion(acceso, ['quitar 1', 'probar']).ultimo.bloques).includes('defensa de la pierna'),
+    '  y sin ella, ya no se dice');
   check(cae(ancha('origen = externo'), 'brote'), '«origen = externo» tira a brote, que es espora');
   check(cae(ancha('permisos >= 4'), 'savia'), '«permisos >= 4» tira a savia, que es rutina');
   check(!cae(ancha('firma = ausente'), 'corteza'), 'y la firma sola no basta: corteza la tiene valida');
@@ -95,9 +99,13 @@ console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
   check(corre('desplegar').fallo === true, 'desplegar con la defensa intacta penaliza');
   check(sesion(acceso, ['probar', 'probar', 'probar']).ultimo.fallo !== true, 'probar es gratis, siempre');
 
-  // El tope cuenta las defensas: nombrar a los cinco no cabe.
+  // El tope cuenta las defensas: nombrar a los cuatro no cabe.
   const tope = sesion(acceso, ['quitar 1', ...ANTICUERPOS1.map((n) => `filtrar si nombre = ${n}`)]);
-  check(dice(tope.ultimo).includes('no admite mas de 3'), 'nombrar a los cinco uno a uno no cabe en 3 filtros');
+  check(dice(tope.ultimo).includes('no admite mas de 3'), 'nombrar a los cuatro uno a uno no cabe en 3 filtros');
+  // El camino amable: un solo rasgo por filtro, y nombrar a los que quedan.
+  const simple = sesion(acceso, ['quitar 1', 'filtrar si firma = ausente', 'filtrar si nombre = esqueje',
+    'filtrar si nombre = corteza', 'desplegar']);
+  check(simple.estado.capa === 2, 'se cruza con un solo rasgo por filtro: firma = ausente y dos nombres');
 
   // La capa 1: quitar la defensa y dejar fuera a los anticuerpos.
   const CAPA1 = ['quitar 1', 'filtrar si permisos >= 3 y firma != valida', 'filtrar si origen = externo y permisos >= 3'];
@@ -118,7 +126,7 @@ console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
     'desplegar', 'filtrar si nombre = tallo']).ultimo).includes('ya no reconoce nombres'),
     'tras la muda `nombre` no vale, y se explica por que');
   const prueba2 = ultima(sesion(acceso, [...CAPA1, 'probar', 'desplegar', 'probar']).estado);
-  check(prueba2.filas.length === 16, `tras la muda llegan cuatro programas mas (${prueba2.filas.length})`);
+  check(prueba2.filas.length === 16, `tras la muda llegan seis programas mas: la muda sigue con dieciseis (${prueba2.filas.length})`);
   check(cae(prueba2, 'polen') && cae(prueba2, 'nectar'), 'la defensa nueva vuelve a frenar a dos esporas');
   check(cae(prueba2, 'micelio'), 'y el filtro ancho de la capa 1 tira a micelio, que es espora');
   check(!cae(prueba2, 'savia') && !cae(prueba2, 'tallo'), 'mientras savia y tallo, que ahora son anticuerpos, entran');
@@ -160,8 +168,8 @@ console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
     'y se puede preguntar por nombre o por id');
   check(dice(corre('firmas tipo dragon')).includes('pregunta a datos'), 'un tipo que no existe se explica');
   const d2 = verDatos(conNombre.estado);
-  check(d2.tablas[0].filas.length === 16 && d2.tablas[0].nuevas.join() === 'P13,P14,P15,P16',
-    'tras la muda Datos recibe a los cuatro nuevos, marcados');
+  check(d2.tablas[0].filas.length === 16 && d2.tablas[0].nuevas.join() === 'P4,P11,P13,P14,P15,P16',
+    'tras la muda Datos recibe a los seis nuevos, marcados');
   check(tablaDe(d2, 'encargo').filas.some((f: string[]) => f[1] === 'P3' && f[2].includes('ANTICUERPO')),
     'y el encargo nuevo: savia se ha vuelto anticuerpo');
   check(d2.flujo.marchitos.join() === 'nombre = corteza', 'y ve el filtro que se seco');
@@ -194,11 +202,16 @@ console.log('\n1) El Reflejo · CONDICIONALES (embudo de filtros)');
   }
 
   const antes = proy2('PANTALLA').camaras.vista;
-  const despues = proy2('PANTALLA', sesion(acceso, CAPA1).estado).camaras.vista;
-  check(antes.clave !== despues.clave, 'la firma de la imagen cambia con el flujo');
+  const escrito = proy2('PANTALLA', sesion(acceso, CAPA1).estado).camaras.vista;
+  check(antes.clave === escrito.clave, 'escribir filtros no cambia la camara: se ven al probar');
+  const despues = proy2('PANTALLA', sesion(acceso, [...CAPA1, 'probar']).estado).camaras.vista;
+  check(antes.clave !== despues.clave, 'con `probar` la fila cruza con los filtros nuevos');
+  const otra = proy2('PANTALLA', sesion(acceso, [...CAPA1, 'probar', 'probar']).estado).camaras.vista;
+  check(otra.clave !== despues.clave && otra.dibujo.corrida === despues.dibujo.corrida + 1,
+    'y cada `probar` la vuelve a soltar, aunque los filtros no cambien');
   check(despues.fotogramas.some((f: string[]) => f.join('\n').includes('corteza') && f.join('\n').includes('ALTO')),
     'y se ve a corteza rebotar contra la membrana');
-  check(despues.dibujo.tipo === 'membrana' && despues.dibujo.cola.length === 12, 'el dibujo trae la fila entera');
+  check(despues.dibujo.tipo === 'membrana' && despues.dibujo.cola.length === 10, 'el dibujo trae la fila entera (diez en la rotula)');
 
   check(corre('camara 2').estado?.camara === 2, '`camara 2` cambia la camara');
   check(corre('camara interior').estado?.camara === 2, 'tambien vale por nombre');
@@ -794,7 +807,6 @@ console.log('\n7) Circuito cerrado de todas las fases');
   const conCamaras: [string, ModuloFase, number, string[]][] = [
     // fase · modulo · cuantas camaras · lo que NO puede aparecer en la imagen
     ['Fase 1 · El Reflejo', acceso, 2, ['caducada', 'ausente', 'binario', 'anticuerpo']],
-    ['Fase 2 · El Enemigo', enemigo, 2, ['svc.backup', 'k.moreno', 'a.duarte', 'j.ortega', 'm.rivas']],
     ['Fase 4 · Nucleo Modular', nucleo, 2, ['v * f', 'n * 2', 'n - 1', '12', '24']],
     ['Fase 5 · Boveda', boveda, 2, ['cr-1843', 'maestra', 'torre']],
     ['Fase 6 · Puente', puente, 6, ['tk-4f19', 'k7qx', '/v2/']],

@@ -4525,3 +4525,45 @@ rect.an-conector.an-hilo--verde{ fill:var(--clorofila-dim); }
   inset:0 calc(var(--marco) * -.92) -30px;
 }
 .vista > .jardin-escena--marco canvas:first-child{ opacity:.85; }
+
+/* ── panel de admin · pestañas ── */
+.admin-pestanas{
+  display:flex; flex-wrap:wrap; gap:6px; position:sticky; top:var(--alto-barra, 74px); z-index:40;
+  padding:8px 0; background:var(--screen); border-bottom:1px solid var(--rule);
+}
+.admin-pestanas button{ display:flex; align-items:center; gap:8px; font-size:11px; padding:7px 14px; }
+.admin-pestanas__marca{ font-size:9px; letter-spacing:.08em; opacity:.75; padding:1px 6px; border:1px solid currentColor; }
+.admin-pestanas__marca.peligro{ color:var(--sangre-hi); opacity:1; }
+.admin-pestanas button.activo .admin-pestanas__marca.peligro{ color:var(--screen); }
+.admin-tarjetas{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:10px; }
+.admin-tarjeta{ display:grid; gap:6px; align-content:start; padding:12px 14px; border:1px solid var(--rule); background:rgba(26,14,32,.5); }
+.admin-tarjeta strong{ font-size:13px; color:var(--phos-hi); }
+.admin-tarjeta p{ margin:0; font-size:12px; color:var(--phos-soft); line-height:1.45; }
+.admin-tarjeta button{ justify-self:start; margin-top:4px; font-size:10px; padding:6px 12px; }
+.panel--peligro{ border-color:var(--blue-hi); }
+.panel--peligro .panel__bar{ background-color:var(--blue-hi); }
+/* Las acciones de la ficha (mezclar, consejo, victoria): compactas, para
+   que el nombre del equipo quepa entero. */
+.equipo > header > button.sutil{ flex:none; font-size:9px; padding:4px 6px; }
+
+/* ── panel de admin · equipos: fichas o lista, y mover de equipo ── */
+.vista-equipos{ display:flex; gap:4px; }
+.vista-equipos button{ font-size:10px; padding:5px 10px; }
+select.mover-equipo{
+  flex:none; font-size:9px; padding:1px 4px; max-width:9.5em; cursor:pointer;
+  background:transparent; color:var(--phos-soft); border:1px solid var(--rule);
+  opacity:.55;
+}
+select.mover-equipo:hover:not(:disabled), select.mover-equipo:focus-visible{ opacity:1; border-color:var(--phos); }
+select.mover-equipo:disabled{ opacity:.25; cursor:not-allowed; }
+select.mover-equipo option{ background:var(--screen); color:var(--phos-hi); }
+.lista-equipos{ display:grid; gap:10px; }
+.lista-equipos__busca{ width:min(320px, 100%); font-size:12px; padding:6px 10px; }
+.lista-equipos__grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px; }
+.lista-equipos__equipo{ border:1px solid var(--rule); padding:9px 11px; display:grid; gap:7px; align-content:start; }
+.lista-equipos__equipo > header{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.lista-equipos__equipo > header strong{ color:var(--phos-hi); font-size:13px; }
+.lista-equipos__equipo > header span{ font-size:10px; color:var(--phos-dim); }
+.lista-equipos__equipo > header .lista-equipos__aviso{ color:var(--sangre-hi); border:1px solid currentColor; padding:0 5px; }
+.lista-equipos__vacio{ margin:0; font-size:11px; color:var(--phos-dim); }
+.lista-equipos .miembros li .rol{ font-size:9px; padding:1px 6px; }

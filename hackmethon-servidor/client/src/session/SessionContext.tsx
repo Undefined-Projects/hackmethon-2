@@ -6,7 +6,7 @@ import { createSocket, call, type AppSocket } from '../lib/socket';
 import { sonar } from '../lib/sonido';
 import type { Role, TipoAveria } from '../shared/constants';
 import type {
-  AdminSnapshot, LobbyPhaseView, MarcaMinijuego, MovimientoTickets, RecordSala, MemberView, MinijuegoTablero, MinijuegoView, ParteRobot, PhaseWorkspace, PlayerSnapshot, Snapshot,
+  ConsejoRobot, AdminSnapshot, LobbyPhaseView, MarcaMinijuego, MovimientoTickets, RecordSala, MemberView, MinijuegoTablero, MinijuegoView, ParteRobot, PhaseWorkspace, PlayerSnapshot, Snapshot,
 } from '../shared/events';
 
 // ============================================================
@@ -47,6 +47,8 @@ type State = {
   /** Avería en curso, provocada desde el panel. Efímera: no se persiste
    *  ni toca el juego, solo molesta durante unos segundos. */
   averia: { tipo: TipoAveria; hasta: number; de?: string } | null;
+  /** El letrero del robot con un consejo, hasta que lo cierren. */
+  consejo: ConsejoRobot | null;
   /** Fase recién resuelta, para la pantalla de celebración.
    *  `ensayo` marca los disparos del panel: nada se ha guardado. */
   resuelta: {
@@ -82,6 +84,7 @@ type Action =
   | { t: 'solvedDone' }
   | { t: 'averia'; v: { tipo: TipoAveria; duracionMs: number; de?: string } }
   | { t: 'averiaFin' }
+  | { t: 'consejo'; v: ConsejoRobot | null }
   | { t: 'tickets'; v: MovimientoTickets }
   | { t: 'aviso'; v: { tipo: 'tickets' | 'gasto' | 'escudo'; texto: string } }
   | { t: 'avisoFin'; id: number }
@@ -203,6 +206,9 @@ function reducer(st: State, a: Action): State {
     case 'averiaFin':
       return { ...st, averia: null };
 
+    case 'consejo':
+      return { ...st, consejo: a.v };
+
     // El jugador recibe el minijuego sin ranking; el panel, con él.
     case 'minijuego':
       if (!isPlayer(st.snapshot)) return st;
@@ -238,6 +244,7 @@ type Ctx = State & {
   volverAlLobby: () => Promise<void>;
   cerrarSesion: () => void;
   cerrarCelebracion: () => void;
+  cerrarConsejo: () => void;
   /** Pide el snapshot entero otra vez. Para lo que cambia por lo que
    *  hacen OTROS sin que nadie nos avise —la intensidad de un ataque
    *  depende de las fases de cada rival—, justo antes de mirarlo. */
@@ -252,7 +259,7 @@ export function SessionProvider({
   const [socket, setSocket] = useState<AppSocket | null>(null);
   const [st, dispatch] = useReducer(reducer, {
     snapshot: null, conn: 'connecting', error: null, credencialRechazada: false,
-    stampedAt: Date.now(), clockOffset: 0, roleFlash: null, resuelta: null, averia: null,
+    stampedAt: Date.now(), clockOffset: 0, roleFlash: null, resuelta: null, averia: null, consejo: null,
     ensayoAnatomia: null, aviso: null,
   });
 
@@ -304,6 +311,10 @@ export function SessionProvider({
       dispatch({ t: 'event', v });
     });
     s.on('role:changed', (v) => { sonar('cortinilla'); dispatch({ t: 'role', v }); });
+    // El panel la cambió de equipo. Los manejadores del servidor llevan
+    // el equipo de la conexión, así que se reconecta para entrar en el
+    // nuevo; el snapshot que llega al volver ya es el de allá.
+    s.on('session:reconectar', () => { sonar('cortinilla'); s.disconnect(); s.connect(); });
     s.on('phase:solved', (v) => {
       sonar('victoria');
       return dispatch({
@@ -330,6 +341,7 @@ export function SessionProvider({
     s.on('minijuego:mis-marcas', (v) => dispatch({ t: 'marcas', v }));
     s.on('minijuego:records', (v) => dispatch({ t: 'records', v }));
     s.on('player:averia', (v) => { sonar('averia'); dispatch({ t: 'averia', v }); });
+    s.on('player:consejo', (v) => dispatch({ t: 'consejo', v }));
     s.on('tickets:movimiento', (v) => {
       dispatch({ t: 'tickets', v });
       // Lo que se gasta ya lo cuenta el botón que lo gastó; aquí suena y
@@ -420,6 +432,8 @@ export function SessionProvider({
     if (!eraEnsayo) await volverAlLobby();
   }, [st.resuelta, volverAlLobby]);
 
+  const cerrarConsejo = useCallback(() => dispatch({ t: 'consejo', v: null }), []);
+
   const refrescar = useCallback(() => {
     socket?.emit('session:resync', null, (v) => { if (v) dispatch({ t: 'snapshot', v }); });
   }, [socket]);
@@ -427,9 +441,9 @@ export function SessionProvider({
   const value = useMemo<Ctx>(
     () => ({
       ...st, socket, codigo: code,
-      entrarFase, volverAlLobby, cerrarSesion: onLogout, cerrarCelebracion, refrescar,
+      entrarFase, volverAlLobby, cerrarSesion: onLogout, cerrarCelebracion, cerrarConsejo, refrescar,
     }),
-    [st, socket, code, entrarFase, volverAlLobby, onLogout, cerrarCelebracion, refrescar],
+    [st, socket, code, entrarFase, volverAlLobby, onLogout, cerrarCelebracion, cerrarConsejo, refrescar],
   );
 
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;
