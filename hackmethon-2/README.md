@@ -160,6 +160,12 @@ general es `master.gain.value`.
     4–15 % (versión 4) al 91–99 %.
   Cada reto (y cada combinación) lo resuelve un bot de prueba que juega
   con el mismo motor, así que todos son posibles.
+- **Cada reto superado suma un punto** al puntaje, además del de cada
+  válvula: una prueba de 3 retos superada vale 3 puntos. El motor los
+  cuenta aparte (`e.retos`; `e.puntos` siguen siendo solo válvulas, que
+  marcan la dificultad, la furia y el volteo) y `puntaje(e)` da el total.
+  El servidor registra ese total al volver a jugar la partida. No cambia
+  la física, así que no subió `VERSION`.
 - **Regla de la tabla:** entran solo las partidas que llegaron al menos a
   la primera prueba y **superaron todas las que les salieron**. Fallar un
   reto, latir en rojo o morir a media prueba deja la partida fuera. Si

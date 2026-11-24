@@ -92,6 +92,11 @@ export async function prepara(){
   // basta con la casilla. La columna se queda (vacía) donde ya existía.
   await q`alter table inscripciones add column if not exists firma text`;
   await q`alter table inscripciones alter column firma drop not null`;
+  /* Organización (desde el 11-nov-2026): quien no estudia puede venir en
+     representación de una asociación civil, empresa, colectivo… Null en
+     las dos = viene por su cuenta (o estudia). */
+  await q`alter table inscripciones add column if not exists organizacion_tipo text`;
+  await q`alter table inscripciones add column if not exists organizacion text`;
   /* Equipos (desde el 12-oct-2026): quien crea uno le pone nombre, logo y
      contraseña; los demás lo eligen de la lista y dan la contraseña. Los
      integrantes se cuentan por equipo_key en inscripciones. */

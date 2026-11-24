@@ -15,7 +15,10 @@ import { cifraClave, claveCorrecta } from "../lib/clave.js";
 import { limpiaCurp, curpValida, nacimiento, edadDe, limpiaTelefono } from "../lib/curp.js";
 import { paraResend } from "../lib/confirmacion.js";
 
-const TOPE = { nombre: 60, apellidos: 80, correo: 120, institucion: 80, carrera: 80, equipo: 32 };
+const TOPE = { nombre: 60, apellidos: 80, correo: 120, institucion: 80, carrera: 80, equipo: 32, organizacion: 80 };
+// A quién puede representar quien no viene por una escuela (igual que en sitio/script.js).
+const ORG_TIPO = { asociacion_civil: "Asociación civil", empresa: "Empresa", colectivo: "Comunidad o colectivo",
+                   gobierno: "Dependencia de gobierno", otra: "Otra" };
 const EDAD = { min: 12, max: 99, mayor: 18 };
 const GENEROS = ["hombre", "mujer", "otro", "prefiero_no_decir"];
 const INSTITUCIONES = ["UTCH", "Tec de Monterrey", "Politécnico (UPCH)", "UACH", "UTCH Sur", "ULSA"];
@@ -71,6 +74,9 @@ export default async function handler(req, res){
       equipoId:    Number(c.equipoId),
       equipoClave: String(c.equipoClave ?? "").slice(0, CLAVE.max),
       logo:        String(c.logo ?? ""),
+      representa:  c.representa === true,
+      orgTipo:     String(c.orgTipo ?? ""),
+      organizacion: limpia(c.organizacion, TOPE.organizacion),
     };
 
     if (!p.nombre)    return mal(res, "FALTA TU NOMBRE.");
@@ -105,6 +111,15 @@ export default async function handler(req, res){
         return mal(res, `EL ${PERIODO_NOMBRE[p.periodo]} VA DE 1 A ${PERIODO_MAX[p.periodo]}.`);
     } else {
       p.institucion = p.carrera = p.periodo = ""; p.semestre = null;
+    }
+
+    // Organización: solo quien no estudia, y solo si dijo que representa a
+    // una. Un formulario viejo (en caché) no manda `representa`: cuenta como «no».
+    if (p.estudia || !p.representa){
+      p.representa = false; p.orgTipo = p.organizacion = "";
+    } else {
+      if (!(p.orgTipo in ORG_TIPO)) return mal(res, "ELIGE EL TIPO DE ORGANIZACIÓN.");
+      if (letras(p.organizacion) < 3) return mal(res, "ESCRIBE EL NOMBRE DE LA ORGANIZACIÓN.");
     }
 
     if (!EQUIPO_MODOS.includes(p.equipoModo)) return mal(res, "DINOS SI YA TIENES EQUIPO.");
@@ -189,12 +204,13 @@ export default async function handler(req, res){
         insert into inscripciones
           (nombre, apellidos, correo, telefono, curp, genero, nacimiento, cp,
            estudia, institucion, carrera, periodo, semestre,
-           equipo_modo, equipo, equipo_key, privacidad, responsiva, tutor)
+           equipo_modo, equipo, equipo_key, privacidad, responsiva, tutor,
+           organizacion_tipo, organizacion)
         values
           (${p.nombre}, ${p.apellidos}, ${p.correo}, ${p.telefono}, ${p.curp}, ${p.genero},
            ${p.nacimiento}, ${p.cp}, ${p.estudia}, ${p.institucion || null}, ${p.carrera || null},
            ${p.periodo || null}, ${p.semestre}, ${p.equipoModo}, ${p.equipo || null}, ${equipoKey},
-           now(), now(), ${menor})
+           now(), now(), ${menor}, ${p.orgTipo || null}, ${p.organizacion || null})
         returning id, creado`;
     } catch (e) {
       // El equipo recién creado no se queda huérfano en la lista.
@@ -268,6 +284,7 @@ function avisa(r){
     `TELÉFONO ....... ${r.telefono}`,
     `EDAD ........... ${r.edad} años${r.edad < 18 ? " (menor: tutor autorizó)" : ""}`,
     `ESTUDIA ........ ${r.estudia ? `${r.institucion} · ${r.carrera} · ${PERIODO_NOMBRE[r.periodo].toLowerCase()} ${r.semestre}` : "No"}`,
+    ...(r.representa ? [`REPRESENTA ..... ${r.organizacion} (${ORG_TIPO[r.orgTipo]})`] : []),
     `EQUIPO ......... ${EQUIPO_TEXTO[r.equipoModo]}${r.equipo ? `: ${r.equipo}` : ""}`,
   ].join("\n");
 
