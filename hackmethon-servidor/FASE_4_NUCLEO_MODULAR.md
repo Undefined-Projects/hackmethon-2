@@ -1,4 +1,4 @@
-# 📄 Documento de Diseño · Fase 4: Núcleo Modular
+# 📄 Documento de Diseño y Especificación Técnica · Fase 4: Núcleo Modular
 
 **Temas centrales:** Funciones Dependientes, Pila de Llamadas (*Call Stack · LIFO*) y Malas Prácticas de Validación en Código Modular.
 
@@ -6,87 +6,215 @@
 
 ## 1. Narrativa y Contexto dentro de la Historia
 
-En las fases anteriores, nuestros virus lograron atravesar el control de acceso, ocultarse en el tráfico y superar el muro perimetral hasta infiltrarse en el sistema interno del robot.
+En las fases anteriores logramos atravesar el control de acceso, filtrar las conexiones sospechosas y cruzar el muro perimetral hasta infiltrarnos en el sistema interno del robot.
 
-Ahora el objetivo es **colapsar físicamente los 3 subsistemas principales del robot desde adentro** (Tracción motriz, Presión hidráulica y Enfriamiento de marcha):
+Ahora el objetivo es **provocar un daño físico real colapsando los 3 subsistemas internos del robot** (Tracción motriz, Presión hidráulica y Enfriamiento de marcha):
 
-- **Las funciones maestras están selladas:** No podemos editar directamente las funciones de `nucleo/` (`reactor`, `escudo`, `latido`) porque el monitor central vigila su firma.
-- **El código empieza oculto (`[ ??? ]`):** Al entrar al núcleo, solo vemos cómo están organizados los archivos `.fn` en tres carpetas (`nucleo/`, `medio/`, `base/`). Debemos hacer pruebas (`sondear`) y cruzarlas con las tablas de Datos para reconstruir (`armar`) cada función y descompilar su código fuente.
-- **El punto débil (Malas prácticas al programar funciones dependientes):** Las funciones maestras de `nucleo/` dependen de funciones en `medio/`, que a su vez dependen de `base/`. Quienes programaron el robot pusieron comprobaciones de seguridad en algunas funciones, pero cometieron **malas prácticas de programación** en otras (olvidaron validar el retorno de una dependencia, validaron antes de tiempo en la pila, o acoplaron la verificación a la misma dependencia sin tope máximo).
+- **No podemos destruir las funciones principales a martillazos:** Las 3 funciones maestras que viven en `nucleo/` (`reactor`, `escudo`, `latido`) tienen su **firma sellada por el monitor central** y no permiten edición directa.
+- **No podemos meter un número gigante a lo loco:** Cada subsistema físico tiene un límite que el robot resiste (`aguanta_max`) y un **fusible de corte de emergencia (`fusible_corte`)**. Si el resultado final es demasiado bajo, el robot aguanta sin sufrir daño; si metemos un número exagerado (ej. `n * 2000000`), el resultado rebasa el `fusible_corte`, quema el fusible, dispara la alarma y manda al equipo a cuarentena.
+- **El obstáculo inicial (Código Compilado `[ ??? ]`):** Al entrar al núcleo, el código interno de los archivos `.fn` está oculto tras `[ ??? ]`. Primero debemos hacer pruebas (`sondear`) y cruzarlas con las tablas de Datos para reconstruir (`armar`) cada función. Al armar una función, se descompila y muestra en Pantalla su código real línea por línea.
+- **La vulnerabilidad (Malas Prácticas al Programar Funciones Dependientes):** Las funciones maestras de `nucleo/` dependen de funciones intermedias en `medio/`, que a su vez dependen de funciones en `base/`. Quienes programaron al robot pusieron comprobaciones de seguridad en algunas funciones, pero cometieron **tres malas prácticas clásicas de programación** en otras, dejando huecos donde una función confía a ciegas en su dependencia y **no comprueba lo que esta le devuelve**.
 
 ---
 
 ## 2. Conceptos Técnicos que Enseña el Reto
 
-1. **Funciones Dependientes y Modularidad:** Cómo un sistema complejo se divide en funciones pequeñas que se llaman unas a otras (`nucleo/ -> medio/ -> base/`), y cómo el comportamiento de una función superior depende de lo que le devuelven sus funciones auxiliares.
+1. **Funciones Dependientes y Modularidad:**
+   - Entender cómo un programa se divide en piezas que se llaman entre sí (`nucleo/ -> medio/ -> base/`).
+   - Comprender que el resultado de una función maestra depende directamente de los valores que calculan y retornan sus funciones auxiliares.
 2. **Pila de Llamadas (*Call Stack — LIFO: Último en entrar, primero en salir*):**
-   - Cuando se invoca una función de `nucleo/` (Nivel A), esta apila una llamada a `medio/` (Nivel B), que a su vez apila una llamada a `base/` (Nivel C).
-   - El fondo (`base/`) se resuelve primero y su valor sube de regreso por la pila hacia `medio/` y finalmente hacia `nucleo/`.
-3. **Malas Prácticas al Validar Dependencias:**
-   - Una función nunca debe confiar a ciegas en el valor que le devuelve otra sin comprobar sus límites.
-   - Validar los datos **antes** de llamar a una función hija no protege contra lo que esa función hija devuelva al desapilarse.
-   - Validar una función comparándola contra otra que depende de la misma pieza base sin validar el tope de la base crea una falsa sensación de seguridad.
+   - Cuando se ejecuta una función de Nivel A (`nucleo/`), esta pausa su ejecución y llama a una de Nivel B (`medio/`), que a su vez llama a una de Nivel C (`base/`).
+   - El flujo de llamadas baja (`A ↘ B ↘ C`), pero los resultados se resuelven desde el fondo y suben de regreso (`C ↗ B ↗ A`): primero termina `C`, su retorno alimenta a `B`, y el retorno de `B` alimenta a `A`.
+3. **Malas Prácticas de Programación en la Validación de Funciones:**
+   - **Confianza ciega en el nivel intermedio:** Validar el fondo de la pila (`B` comprueba a `C`), pero olvidar validar el nivel intermedio (`A` no comprueba a `B`).
+   - **Validación prematura antes de apilar:** Validar el parámetro de entrada `n` al inicio de una función **antes** de llamar a una función hija, y olvidar validar el valor `x` que esa función hija devuelve al regresar de la pila.
+   - **Acoplamiento a una dependencia compartida sin tope:** Intentar validar el resultado de `B` comparándolo contra `C(n) * 3` (llamando de nuevo a la misma dependencia `C`), sin que ni `A`, ni `B`, ni `C` comprueben el límite máximo de `C`. Si `C` devuelve un valor alterado, ambos lados de la comparación cambian por igual y la validación queda burlada.
 
 ---
 
 ## 3. Reparto Asimétrico entre los 3 Jugadores
 
-Ningún integrante puede resolver la fase por su cuenta:
+Ningún jugador puede resolver la fase por sí solo:
 
 ### 🔵 Operador de Datos (`DATOS`)
-No ve las carpetas, ni el código fuente, ni qué comprobaciones internas hace cada función. Tiene 3 tablas relacionales conectadas por `funcion_id`:
-1. **`funciones`**: Catálogo de las 9 funciones internas (`F1` a `F9`) y su rol en el robot.
-2. **`resultados`**: Qué devuelve cada función en operación normal para distintas entradas de prueba (lo que permite deducir la operación de cada pieza para poder armarla).
-3. **`tolerancias`**: Los 3 subsistemas físicos del robot (`M1`, `M2`, `M3`), su entrada de ciclo, cuánto aguanta cada uno sin romperse (`aguanta_max`) y a qué valor salta el fusible de emergencia (`fusible_corte`).
+No ve las carpetas (`nucleo/`, `medio/`, `base/`), no ve el código fuente desbloqueado ni sabe qué función comprueba a cuál. Tiene un esquema relacional con **3 tablas** conectadas por `funcion_id`:
+
+1. **`funciones`**: Catálogo de las 9 funciones del robot (`F1` a `F9`) y qué rol cumple cada una en el sistema.
+2. **`resultados`**: Qué devuelve cada función en operación normal para distintas entradas de prueba y qué valor recibe de abajo (permite deducir sin adivinanzas qué operación hace cada pieza para poder armarla).
+3. **`tolerancias`**: Los 3 subsistemas físicos del robot (`M1`, `M2`, `M3`), qué función maestra los controla (`F7`, `F8`, `F9`), su entrada fija de ciclo (`5`, `6`, `5`), su valor normal, cuánto aguanta el robot sin romperse (**`aguanta_max`**) y a qué valor salta la alarma del fusible (**`fusible_corte`**).
 
 ### 🌸 Operador de Pantalla (`PANTALLA`)
-No sabe cuánto aguanta cada subsistema (`aguanta_max`) ni dónde salta el fusible (`fusible_corte`), ni tiene la tabla de resultados de referencia. Ve tres cosas:
-1. **Monitor de Circuito Cerrado (2 cámaras animadas):**
-   - `CAM 1 · SALA DEL NUCLEO`: Las 3 torres (`NUC-A`, `MED-B`, `BAS-C`), el pulso viajando entre niveles y el dron posicionado sobre el módulo abierto.
-   - `CAM 2 · PILA DE EJECUCION`: Animación del flujo LIFO apilando llamadas hacia el fondo y retornando valores hacia arriba.
-2. **Árbol de Archivos y Visor de Código `.fn`:**
-   - Ve qué archivos viven en `nucleo/`, `medio/` y `base/`.
-   - Mientras una función no está armada, su interior aparece oculto con `[ ??? ]`.
-   - **En cuanto el equipo arma una función (`armar`)**, se revela su código completo en Pantalla, mostrando **qué comprobaciones de seguridad tiene y dónde está la mala práctica (qué retorno no se comprueba)**.
-3. **Salidas de la Consola:** Todo lo que `TERMINAL` ejecuta aparece aquí.
+No tiene las tablas de `resultados` ni sabe cuánto valen `aguanta_max` o `fusible_corte`. Ve tres superficies:
+
+1. **Monitor de Circuito Cerrado (2 cámaras animadas 15×36):**
+   - `CAM 1 · SALA DEL NUCLEO`: Las 3 torres físicas (`NUC-A`, `MED-B`, `BAS-C`), el pulso viajando por los conductos, el dron posicionado sobre la carpeta abierta y el contador de piezas armadas.
+   - `CAM 2 · PILA DE EJECUCION`: Animación en vivo de cómo las llamadas bajan apilándose (`[v] APILANDO LLAMADAS...`) y suben retornando valores (`[^] RETORNANDO VALORES...`), recordando que *"el fondo se resuelve primero"*.
+2. **Árbol de Carpetas y Visor de Código `.fn`:**
+   - Ve las 3 carpetas (`nucleo/`, `medio/`, `base/`) y qué archivos `.fn` viven dentro de cada una.
+   - Mientras una pieza **no está armada**, sus líneas internas y comprobaciones aparecen ocultas con `[ ??? ]`.
+   - **En cuanto el equipo arma esa pieza (`armar`)**, el archivo muestra su código completo: a qué función llama, qué operación realiza y **qué comprobación de seguridad tiene (o qué comprobación olvidó hacer el programador)**.
+3. **Salidas de la Consola:** Todo lo que `TERMINAL` ejecuta (`ayuda`, `sondear`, `armar`, `enganar`, `probar`, `ejecutar`) se imprime aquí.
 
 ### ⌨️ Operador de Terminal (`TERMINAL`)
-Está completamente a ciegas: solo tiene la línea de comandos y debe coordinarse con Pantalla y Datos para sondear, armar, engañar, probar y ejecutar.
+Está completamente a ciegas: solo ve la consola donde escribe los comandos. Debe pedirle a **Pantalla** que le lea la ayuda, el árbol de archivos, el código desbloqueado y las tablas de simulación, y apoyarse en **Datos** para conocer las operaciones de referencia y las ventanas entre `aguanta_max` y `fusible_corte`.
 
 ---
 
-## 4. Las 3 Cadenas de Funciones y sus Malas Prácticas
+## 4. Arquitectura de las 9 Funciones y sus 3 Malas Prácticas
 
-Cada subsistema del robot es una cadena de 3 funciones (`nucleo/ -> medio/ -> base/`). En cada cadena hay una validación que bloquea sabotajes descuidados y una **mala práctica de programación** que deja una dependencia sin comprobar:
+El robot cuenta con 3 subsistemas físicos (`M1`, `M2`, `M3`). Cada subsistema es una cadena de 3 niveles (`nucleo/ -> medio/ -> base/`):
 
-| Subsistema | Nivel A (`nucleo/` · Sellado) | Nivel B (`medio/`) | Nivel C (`base/`) | Mala Práctica y Pieza Vulnerable |
-| :--- | :--- | :--- | :--- | :--- |
-| **M1 · Tracción motriz**<br>*(entrada fija `n = 5`, normal = `30`)* | **`reactor(n)`**<br>Llama a `x = presion(n)`<br>Devuelve `x * 2`<br>❌ **No comprueba el retorno `x` de `presion`** | **`presion(n)`**<br>Llama a `x = carga(n)`<br>✅ **Comprueba `si x > 12 -> bloquear`**<br>Devuelve `x + 5` | **`carga(n)`**<br>Devuelve `n * 2` | Si saboteas `carga`, `presion` lo bloquea al superar 12.<br>Como **`reactor` no comprueba lo que devuelve `presion`**, se debe engañar a **`presion`**. |
-| **M2 · Presión hidráulica**<br>*(entrada fija `n = 6`, normal = `21`)* | **`escudo(n)`**<br>Llama a `x = valvula(n)`<br>✅ **Comprueba que `valvula` no haya alterado su fórmula (`x == pulso(n) - 3`)**<br>Devuelve `x + 6` | **`valvula(n)`**<br>✅ Comprueba `si n > 10` **antes** de llamar a `pulso(n)`<br>Llama a `x = pulso(n)`<br>❌ **No comprueba `x` al regresar de `pulso`**<br>Devuelve `x - 3` | **`pulso(n)`**<br>Devuelve `n * 3` | Si saboteas `valvula`, `escudo` detecta que su fórmula fue alterada.<br>Como **`valvula` validó antes de bajar a la pila y no comprueba el retorno de `pulso`**, se debe engañar a **`pulso`**. |
-| **M3 · Enfriamiento de marcha**<br>*(entrada fija `n = 5`, normal = `5`)* | **`latido(n)`**<br>Llama a `x = flujo(n)`<br>⚠️ **Comprueba `si x != freno(n) * 3 -> bloquear`**<br>Devuelve `x - 4` | **`flujo(n)`**<br>Llama a `x = freno(n)`<br>❌ **No comprueba tope máximo de `x`**<br>Devuelve `x * 3` | **`freno(n)`**<br>Comprueba `n >= 0`, pero ❌ **sin tope máximo**<br>Devuelve `n - 2` | Si saboteas `flujo`, `latido` detecta desfase contra `freno(n) * 3`.<br>Pero como **tanto `flujo` como la verificación de `latido` dependen de `freno(n)` sin comprobar su tope máximo**, al engañar a **`freno`** ambos lados cuadran y el sabotaje pasa limpio. |
+### Subsistema M1 · Tracción motriz (`reactor -> presion -> carga` · entrada de ciclo `n = 5`)
+- **`carga.fn` (`base/`):**
+  ```text
+  recibe n
+  devuelve n * 2
+  ```
+  *(Con `n = 5`, devuelve `10`).*
+- **`presion.fn` (`medio/`):**
+  ```text
+  recibe n
+  x = carga(n)
+  si x > 12 -> bloquear ("retorno de carga supera tope 12")
+  devuelve x + 5
+  ```
+  *(Con `x = 10`, comprueba `10 <= 12` OK y devuelve `15`).*
+- **`reactor.fn` (`nucleo/` · Firma sellada):**
+  ```text
+  recibe n
+  [firma sellada en nucleo · no editable]
+  x = presion(n)
+  // mala practica: confia en presion(n) y no comprueba su retorno
+  devuelve x * 2
+  ```
+  *(Con `x = 15`, devuelve `30`).*
+- **Diagnóstico y Solución de M1:**
+  - Si el equipo intenta sabotear `carga` (ej. `enganar carga n * 5` $\to 25$), la comprobación `si x > 12 -> bloquear` dentro de `presion` **lo detecta y lo bloquea** (y si `carga` devuelve $\le 12$, `reactor` da como máximo $(12 + 5) \times 2 = 34$, que no supera `aguanta_max = 40`).
+  - **La mala práctica:** `reactor` confía en que `presion` ya filtró todo y **no comprueba lo que devuelve `presion`**.
+  - **Pieza que se debe engañar:** **`presion`** (ej. `enganar presion x + 12`, haciendo que `presion(5)` devuelva `22` y `reactor(5)` devuelva `44`, superando `aguanta_max = 40` sin tocar `fusible_corte = 54`).
 
 ---
 
-## 5. Comandos de Terminal y Flujo de Resolución
+### Subsistema M2 · Presión hidráulica (`escudo -> valvula -> pulso` · entrada de ciclo `n = 6`)
+- **`pulso.fn` (`base/`):**
+  ```text
+  recibe n
+  // sin comprobacion de tope al salir hacia valvula
+  devuelve n * 3
+  ```
+  *(Con `n = 6`, devuelve `18`).*
+- **`valvula.fn` (`medio/`):**
+  ```text
+  recibe n
+  si n > 10 -> bloquear ("entrada n supera tope 10")
+  x = pulso(n)
+  // mala practica: valido n antes, pero no comprueba x al volver de pulso
+  devuelve x - 3
+  ```
+  *(Comprueba `6 <= 10` antes de llamar a `pulso`, recibe `x = 18` sin comprobarlo y devuelve `15`).*
+- **`escudo.fn` (`nucleo/` · Firma sellada):**
+  ```text
+  recibe n
+  [firma sellada en nucleo · no editable]
+  x = valvula(n)
+  si valvula fue alterada (x != pulso(n) - 3) -> bloquear
+  devuelve x + 6
+  ```
+  *(Verifica que `valvula` haya respetado su fórmula `pulso(n) - 3`, y con `x = 15` devuelve `21`).*
+- **Diagnóstico y Solución de M2:**
+  - Si el equipo intenta sabotear `valvula` (ej. `enganar valvula x + 15`), la comprobación de integridad dentro de `escudo` (`x != pulso(n) - 3`) **lo detecta y lo bloquea**.
+  - **La mala práctica:** `valvula` comprueba el parámetro `n <= 10` **antes** de bajar por la pila a llamar a `pulso(n)`, y cuando `pulso(n)` termina y devuelve `x`, **`valvula` no comprueba el retorno `x`**. Como `valvula` le resta 3 limpiamente al valor que le mande `pulso`, `escudo` ve que `x == pulso(n) - 3` se cumple y no sospecha nada.
+  - **Pieza que se debe engañar:** **`pulso`** (ej. `enganar pulso n + 27` o `n * 5`, haciendo que `pulso(6)` devuelva `33`, `valvula(6)` devuelva `30` y `escudo(6)` devuelva `36`, entre `aguanta_max = 30` y `fusible_corte = 44`).
 
-1. **Explorar y Descompilar (`abrir`, `sondear`, `armar`):**
-   - `abrir <pieza>`: Muestra el archivo `.fn` en Pantalla (inicialmente con `[ ??? ]`).
-   - `sondear <pieza> <numero>`: Ejecuta la función con un número de prueba y muestra en Pantalla la traza LIFO de la Pila.
-   - Cruzando la traza con la tabla `resultados` de Datos, el equipo reconstruye las piezas:
-     - En `base/`: `armar <pieza> <operacion>` (ej. `armar pulso n * 3`).
-     - En `medio/` y `nucleo/`: `armar <pieza> llama <hija> luego <operacion>` (ej. `armar presion llama carga luego x + 5`).
-   - Al armar cada pieza, Pantalla ve sus líneas de código reales y descubre qué validaciones tiene y cuál retorno quedó sin comprobar.
+---
 
-2. **Sabotear la Dependencia Vulnerable (`enganar`):**
-   - `enganar <pieza> <operacion>`: Modifica la operación de una función dependiente (`medio/` o `base/`) que ya haya sido armada.
-   - Si intentan engañar una función de `nucleo/`, el sistema rechaza la edición porque su firma está sellada.
+### Subsistema M3 · Enfriamiento de marcha (`latido -> flujo -> freno` · entrada de ciclo `n = 5`)
+- **`freno.fn` (`base/`):**
+  ```text
+  recibe n
+  si n < 0 -> bloquear ("entrada negativa")
+  // mala practica: comprueba negativo pero no tiene tope maximo
+  devuelve n - 2
+  ```
+  *(Con `n = 5`, devuelve `3`).*
+- **`flujo.fn` (`medio/`):**
+  ```text
+  recibe n
+  x = freno(n)
+  // mala practica: confia en freno(n) sin comprobar tope maximo
+  devuelve x * 3
+  ```
+  *(Con `x = 3`, devuelve `9`).*
+- **`latido.fn` (`nucleo/` · Firma sellada):**
+  ```text
+  recibe n
+  [firma sellada en nucleo · no editable]
+  x = flujo(n)
+  si x != freno(n) * 3 -> bloquear ("desfase entre flujo y freno")
+  devuelve x - 4
+  ```
+  *(Comprueba que `flujo(5)` coincida con `freno(5) * 3`, y con `x = 9` devuelve `5`).*
+- **Diagnóstico y Solución de M3:**
+  - Si el equipo intenta sabotear `flujo` (ej. `enganar flujo x + 20`), `flujo(5)` devuelve `23`, pero `latido` llama a `freno(5) * 3` (que sigue siendo `3 * 3 = 9`), detecta que `23 != 9` y **lo bloquea por desfase**.
+  - **La mala práctica:** Para "validar" a `flujo`, `latido` vuelve a llamar a la **misma dependencia `freno(n)`**, y **ni `freno`, ni `flujo`, ni `latido` comprueban un tope máximo para lo que devuelve `freno`**.
+  - **Pieza que se debe engañar:** **`freno`** (ej. `enganar freno n + 4` o `n * 2`, haciendo que `freno(5)` devuelva `9`, `flujo(5)` devuelva `9 * 3 = 27`, la comprobación de `latido` compare `27 == 9 * 3` dando **OK**, y `latido(5)` devuelva `27 - 4 = 23`, entre `aguanta_max = 20` y `fusible_corte = 34`).
 
-3. **Simular y Verificar con Datos (`probar`):**
-   - `probar`: Corre una simulación gratuita de los 3 subsistemas (`reactor(5)`, `escudo(6)`, `latido(5)`).
-   - Pantalla ve el recorrido por la pila, si alguna validación interna bloqueó el cambio (`BLOQUEADO`) o si pasó limpio (`PASO LIMPIO`), y el valor numérico de `salida`.
-   - Pantalla le canta las 3 salidas a Datos, quien verifica en la tabla `tolerancias` que cada salida supere `aguanta_max` y quede por debajo de `fusible_corte`.
+---
 
-4. **Ejecutar el Ataque (`ejecutar`):**
-   - `ejecutar`: Aplica el sabotaje real sobre el núcleo.
-   - Si algún subsistema fue bloqueado por validación interna, no superó `aguanta_max` o quemó el `fusible_corte`, se registra un fallo y se activa la cuarentena progresiva.
-   - Si los 3 subsistemas caen dentro de su ventana de sobrecarga pasando limpios por la pila, los 3 sistemas colapsan y el equipo supera la Fase 4.
+## 5. Sistema Anti-Fuerza Bruta (`aguanta_max`, `fusible_corte` y Semilla por Equipo)
+
+1. **Doble límite (`aguanta_max` y `fusible_corte`):**
+   - Si una salida final queda en o por debajo de `aguanta_max`, el subsistema **AGUANTA** y no colapsa.
+   - Si alguien intenta hacer trampa metiendo una operación absurda como `n * 20000000000000`, la salida final supera el `fusible_corte`, **QUEMA EL FUSIBLE DE EMERGENCIA**, el ataque falla y el equipo recibe una penalización de **cuarentena progresiva** (`20 s → 45 s → 90 s`).
+   - Esto obliga al equipo a **calcular hacia atrás en la Pila**: sabiendo qué operación hace la función maestra de `nucleo/`, deben elegir una operación en la dependencia vulnerable para que el resultado final caiga dentro de la ventana `(aguanta_max, fusible_corte)`.
+2. **Semilla aleatoria por equipo:**
+   - Al entrar a la fase, cada equipo recibe una semilla distinta que desplaza las ventanas `(aguanta_max, fusible_corte)` de su tabla `tolerancias`. Así, dos equipos en mesas contiguas tienen límites distintos y no pueden copiarse los números.
+
+---
+
+## 6. Referencia Completa de Comandos de `TERMINAL`
+
+| Comando | Qué recibe (Número vs. Operación) | Para qué sirve y Ejemplo |
+| :--- | :--- | :--- |
+| **`ayuda`** | *(Sin argumentos)* | Imprime en Pantalla la lista de comandos, cómo escribir operaciones y la condición de victoria. |
+| **`abrir <pieza>`** | Nombre de la pieza | Abre `<pieza>.fn` en el visor de Pantalla.<br>Ej: `abrir reactor` |
+| **`sondear <pieza> <numero>`** | **Un NÚMERO entero** | *(Gratis)* Ejecuta la función con ese número de entrada y muestra en Pantalla la traza LIFO paso a paso.<br>Ej: `sondear reactor 5` |
+| **`armar <pieza> <operacion>`** | **Una OPERACIÓN** *(con `n` o `x` y `+ - * /`)* | Reconstruye una función de `base/`. Si coincide con el robot, desbloquea su código en Pantalla y permite sabotearla.<br>Ej: `armar carga n * 2` |
+| **`armar <pieza> llama <hija> luego <operacion>`** | Nombre de función hija + **OPERACIÓN** | Reconstruye una función de `medio/` o `nucleo/`. Si coincide, revela en Pantalla todo su código y sus comprobaciones.<br>Ej: `armar presion llama carga luego x + 5` |
+| **`enganar <pieza> <operacion>`** | **Una OPERACIÓN** *(o valor de retorno)* | Sabotea una función dependiente (`medio/` o `base/`) previamente armada.<br>Ej: `enganar presion x + 12` |
+| **`probar`** | *(Sin argumentos)* | *(Gratis)* Simula los 3 subsistemas (`reactor(5)`, `escudo(6)`, `latido(5)`), mostrando en Pantalla el recorrido de la pila, la salida final y si pasó limpio o fue bloqueado por validación interna. |
+| **`ejecutar`** | *(Sin argumentos)* | *(No es gratis)* Lanza el sabotaje real al núcleo. Si los 3 subsistemas pasan las comprobaciones internas y caen entre `aguanta_max` y `fusible_corte`, gana la fase; si no, penaliza con cuarentena. |
+| **`reiniciar`** | *(Sin argumentos)* | Borra todos los sabotajes puestos con `enganar`, pero **conserva todas las piezas que ya estaban armadas**. |
+| **`estado`** | *(Sin argumentos)* | Muestra cuántas piezas llevan armadas (`X de 9`) y qué sabotajes están activos. |
+| **`camaras` / `camara <n>`** | Número o nombre de cámara | Cambia a ciegas entre la cámara 1 (`SALA DEL NUCLEO`) y la cámara 2 (`PILA DE EJECUCION`) que ve Pantalla. |
+
+---
+
+## 7. Recorrido Paso a Paso de una Partida Ideal
+
+1. **Inicio:** `TERMINAL` escribe `ayuda`. `PANTALLA` le lee los comandos y qué archivos `.fn` ve en `nucleo/`, `medio/` y `base/`.
+2. **Descompilación (`sondear` + `armar`):**
+   - Cruzando la tabla `resultados` de `DATOS` con `sondear`, el equipo arma las funciones:
+     - `armar carga n * 2`
+     - `armar pulso n * 3`
+     - `armar freno n - 2`
+     - `armar presion llama carga luego x + 5`
+     - `armar valvula llama pulso luego x - 3`
+     - `armar flujo llama freno luego x * 3`
+     - `armar reactor llama presion luego x * 2`
+     - `armar escudo llama valvula luego x + 6`
+     - `armar latido llama flujo luego x - 4`
+3. **Lectura de malas prácticas en `PANTALLA`:**
+   - Al quedar armadas, `PANTALLA` lee el código de cada cadena y descubre quién sí comprueba y quién no comprueba:
+     - En **M1**: `presion` comprueba a `carga` (`x <= 12`), pero `reactor` **no comprueba** a `presion` $\to$ hay que atacar **`presion`**.
+     - En **M2**: `escudo` vigila la fórmula de `valvula`, pero `valvula` **no comprueba** el retorno `x` de `pulso` $\to$ hay que atacar **`pulso`**.
+     - En **M3**: `latido` compara `flujo` contra `freno(n) * 3`, pero ninguno comprueba el tope máximo de **`freno`** $\to$ hay que atacar **`freno`**.
+4. **Cálculo con `DATOS` e inyección (`enganar` + `probar`):**
+   - `DATOS` revisa su tabla `tolerancias` (ej. para semilla base: M1 entre `40` y `54`, M2 entre `30` y `44`, M3 entre `20` y `34`).
+   - `TERMINAL` inyecta los sabotajes:
+     - `enganar presion x + 12` *(da `22`, y `reactor` devuelve `22 * 2 = 44`)*
+     - `enganar pulso n + 27` *(da `33`, `valvula` devuelve `30` y `escudo` devuelve `36`)*
+     - `enganar freno n + 4` *(da `9`, `flujo` devuelve `27`, cuadra con `9 * 3` y `latido` devuelve `23`)*
+   - `TERMINAL` corre `probar`. `PANTALLA` confirma que las 3 cadenas dicen `PASO LIMPIO` con salidas `44`, `36` y `23`. `DATOS` confirma que las 3 están dentro de sus ventanas.
+5. **Victoria (`ejecutar`):**
+   - `TERMINAL` corre `ejecutar`. Los 3 subsistemas colapsan al mismo tiempo y la Fase 4 queda superada.
