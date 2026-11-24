@@ -335,7 +335,7 @@ console.log('\n3) Muro de Repeticion · CICLOS');
   check(!dice(corre('ayuda')).includes('chapa'), 'y la ayuda no lleva materiales dentro');
 }
 
-console.log('\n4) Nucleo Modular · FUNCIONES, PILAS Y COLAS');
+console.log('\n4) Nucleo Modular · FUNCIONES Y PILA DE LLAMADAS');
 {
   const corre = corredor(nucleo);
   const ctx = (estado: Record<string, unknown> = {}) =>
@@ -354,21 +354,19 @@ console.log('\n4) Nucleo Modular · FUNCIONES, PILAS Y COLAS');
   check(pant.codigo.abierta === null, 'al inicio no hay ningun documento abierto');
   const pantAbierta: any = nucleo.proyectar('PANTALLA', ctx(sesion(nucleo, ['abrir reactor']).estado));
   check(pantAbierta.codigo.abierta.lineas.some((l: any) => l.texto.includes('[ ??? ]')),
-    'y al abrir una pieza sin armar muestra [ ??? ] (sin revelar codigo)');
+    'y al abrir una pieza sin armar muestra [ ??? ] (sin revelar codigo ni comprobaciones)');
 
-  const datosP1: any = nucleo.proyectar('DATOS', vacio);
-  check(datosP1.tablas.length === 3, 'en Parte 1 Datos recibe solo 3 tablas (funciones, resultados, tolerancias)');
-  check(!JSON.stringify(datosP1).includes('colas_filtro'),
-    'y la tabla colas_filtro NO aparece en Parte 1 (no spoilea la Parte 2)');
-  check(!JSON.stringify(datosP1).includes('nucleo/') && !JSON.stringify(datosP1).includes('medio/'),
-    'y Datos no sabe en que carpeta vive cada funcion');
+  const datos: any = nucleo.proyectar('DATOS', vacio);
+  check(datos.tablas.length === 3, 'Datos recibe las 3 tablas (funciones, resultados, tolerancias)');
+  check(!JSON.stringify(datos).includes('nucleo/') && !JSON.stringify(datos).includes('medio/'),
+    'y Datos no sabe en que carpeta vive cada funcion ni que comprobaciones tiene el codigo');
 
   const ayudaTxt = dice(corre('ayuda')).toLowerCase();
   const nombresReales = ['carga', 'pulso', 'freno', 'presion', 'valvula', 'flujo', 'reactor', 'escudo', 'latido'];
   check(nombresReales.every((n) => !ayudaTxt.includes(n)),
     'la ayuda no filtra el nombre de ninguna de las funciones');
 
-  // 2. Parte 1: Sondeo, Ramas Par/Impar, Fusible superior y Hueco
+  // 2. Sondeo y armado (Descompilación del código y sus comprobaciones)
   const sCarga = dice(corre('sondear carga 5'));
   check(sCarga.includes('10') && sCarga.includes('1 nivel'),
     'sondear carga 5 devuelve 10 y profundidad 1 nivel (base)');
@@ -376,174 +374,89 @@ console.log('\n4) Nucleo Modular · FUNCIONES, PILAS Y COLAS');
   check(sReactor.includes('30') && sReactor.includes('3 niveles'),
     'sondear reactor 5 devuelve 30 y profundidad 3 niveles (nucleo -> medio -> base)');
 
-  // No se puede engañar a ciegas
+  // No se puede engañar a ciegas ni modificar funciones maestras de nucleo/
   check(dice(corre('enganar carga n * 3')).includes('primero descubre'),
     'enganar carga n * 3 falla si carga aun no ha sido armada');
+  check(dice(corre('enganar reactor x + 10')).includes('firma sellada'),
+    'las funciones maestras de nucleo/ tienen la firma sellada y no se pueden editar');
 
-  // Armar requiere coincidencia matemática
+  // Armar requiere coincidencia con el comportamiento real y revela las comprobaciones en Pantalla
   check(dice(corre('armar carga n + 99')).includes('no coincide'),
     'armar carga n + 99 falla sin penalizar si no coincide con el robot');
-  const armaCarga = sesion(nucleo, ['armar carga n * 2']);
-  check((armaCarga.estado.armadas as any)?.carga === true,
-    'armar carga n * 2 confirma y marca carga como armada');
+  const armaPresion = sesion(nucleo, ['armar presion llama carga luego x + 5']);
+  check((armaPresion.estado.armadas as any)?.presion === true,
+    'armar presion llama carga luego x + 5 confirma y descompila presion.fn');
+  const pantPresion: any = nucleo.proyectar('PANTALLA', ctx(armaPresion.estado));
+  check(JSON.stringify(pantPresion.codigo.abierta.lineas).includes('tope 12'),
+    'al armar presion, Pantalla ve en el codigo la comprobacion `si x > 12 -> bloquear`');
 
-  // Limite superior (fusible_corte): poner un número gigante quema el fusible y falla
-  const quemaFusible = sesion(nucleo, [
-    'armar carga n * 2', 'armar pulso n * 3', 'armar freno n - 2',
-    'enganar carga n * 20', 'enganar pulso n * 20', 'enganar freno n * 20',
-    'ejecutar',
-  ]);
-  check(quemaFusible.ultimo.fallo === true,
-    'poner numeros gigantes al azar quema el fusible_corte superior y penaliza');
-
-  // Seguro de paridad (el hueco): caer entre 40 y 52 en M1 con un PAR (50) es bloqueado
-  // carga(5) con n * 4 = 20 (par) -> presion(20) = 25 (impar) -> reactor(25) = 50 (PAR, bloqueado)
-  const paridadBloqueada = sesion(nucleo, [
-    'armar carga n * 2', 'armar pulso n * 3', 'armar freno n - 2',
-    'enganar carga n * 4',   // reactor da 50 (entre 40 y 52, pero es PAR y el hueco exige IMPAR)
-    'enganar pulso n + 15',  // pulso(6)=21 (impar) -> valvula(21)=26 (par) -> escudo(26)=36 (PAR, ok)
-    'enganar freno n + 4',   // freno(5)=9 (impar) -> flujo(9)=27 (impar) -> latido(27)=23 (IMPAR, ok)
-    'ejecutar',
-  ]);
-  check(paridadBloqueada.ultimo.fallo === true,
-    'caer dentro del rango con la paridad equivocada (50 PAR en M1) es bloqueado por el seguro');
-
-  // Entrar exactamente por el hueco de las 3 características activa la Parte 2:
-  // M1: carga(5) con n * 3 = 15 (impar) -> presion(15)=20 (par) -> reactor(20)=45 (IMPAR, 40<45<52)
-  // M2: pulso(6) con n + 15 = 21 (impar) -> valvula(21)=26 (par) -> escudo(26)=36 (PAR, 30<36<44)
-  // M3: freno(5) con n + 4 = 9 (impar) -> flujo(9)=27 (impar) -> latido(27)=23 (IMPAR, 20<23<34)
-  const cmdsParte1 = [
+  // 3. Malas prácticas de programación y validaciones en funciones dependientes:
+  // En M1: `presion` SÍ comprueba lo que devuelve `carga` (x <= 12). Sabotear `carga` para subir M1 es bloqueado:
+  const bloqueoM1 = sesion(nucleo, [
     'armar carga n * 2',
+    'enganar carga n * 5', // carga(5) = 25 > 12 -> bloqueado por presion
+    'probar',
+  ]);
+  check(dice(bloqueoM1.ultimo).includes('presion rechazo el retorno de carga'),
+    'M1: sabotear `carga` por encima de 12 es bloqueado por la comprobacion de `presion`');
+
+  // En M2: `escudo` SÍ comprueba que `valvula` no altere su fórmula. Sabotear `valvula` es bloqueado:
+  const bloqueoM2 = sesion(nucleo, [
+    'armar valvula llama pulso luego x - 3',
+    'enganar valvula x + 15', // alteración detectada por escudo
+    'probar',
+  ]);
+  check(dice(bloqueoM2.ultimo).includes('escudo detecto alteracion en valvula'),
+    'M2: sabotear `valvula` es bloqueado por la comprobacion de integridad de `escudo`');
+
+  // En M3: `latido` comprueba `flujo(n) == freno(n) * 3`. Sabotear `flujo` rompe la igualdad y es bloqueado:
+  const bloqueoM3 = sesion(nucleo, [
+    'armar flujo llama freno luego x * 3',
+    'enganar flujo x + 20', // 23 != freno(5)*3 (9) -> bloqueado por latido
+    'probar',
+  ]);
+  check(dice(bloqueoM3.ultimo).includes('latido detecto desfase entre flujo'),
+    'M3: sabotear `flujo` es bloqueado por `latido` al comparar contra `freno(n) * 3`');
+
+  // 4. Límite superior (fusible_corte): poner números gigantes en las dependencias vulnerables quema el fusible
+  const quemaFusible = sesion(nucleo, [
+    'armar presion llama carga luego x + 5',
     'armar pulso n * 3',
     'armar freno n - 2',
-    'enganar carga n * 3',
-    'enganar pulso n + 15',
+    'enganar presion x * 20',
+    'enganar pulso n * 20',
+    'enganar freno n * 20',
+    'ejecutar',
+  ]);
+  check(quemaFusible.ultimo.fallo === true && dice(quemaFusible.ultimo).includes('fusible quemado'),
+    'sobrepasar fusible_corte quema el fusible de emergencia y penaliza');
+
+  // 5. Victoria explotando la mala práctica de cada cadena:
+  //   - M1: engañar `presion` (`reactor` no comprueba el retorno de `presion`) -> presion(5)=22 -> reactor(5)=44 (40 < 44 < 54)
+  //   - M2: engañar `pulso` (`valvula` validó n<=10 antes y no comprueba el retorno de `pulso`) -> pulso(6)=33 -> valvula(6)=30 -> escudo(6)=36 (30 < 36 < 44)
+  //   - M3: engañar `freno` (dependencia compartida sin tope máximo en `flujo` ni `latido`) -> freno(5)=9 -> flujo(5)=27 (cuadra con 9*3) -> latido(5)=23 (20 < 23 < 34)
+  const winFase4 = sesion(nucleo, [
+    'armar presion llama carga luego x + 5',
+    'armar pulso n * 3',
+    'armar freno n - 2',
+    'enganar presion x + 12',
+    'enganar pulso n + 27',
     'enganar freno n + 4',
     'ejecutar',
-  ];
-  const pasoParte2 = sesion(nucleo, cmdsParte1);
-  check(pasoParte2.estado.parte === 2,
-    'vulnerar el hueco de paridad y rango en las 3 caracteristicas activa la Parte 2');
-  check(pasoParte2.ultimo.resuelto !== true, 'y la fase aun no termina (pasa a Parte 2)');
+  ]);
+  check(winFase4.ultimo.resuelto === true,
+    'explotar las 3 dependencias sin comprobacion (presion, pulso y freno) dentro de rango resuelve la fase');
 
-  // Condiciones aleatorias por equipo y por ciclo (semilla):
+  // 6. Semilla dinámica por equipo
   const datosEquipoA = JSON.stringify(nucleo.proyectar('DATOS', ctx({ semilla: 1 })));
   const datosEquipoB = JSON.stringify(nucleo.proyectar('DATOS', ctx({ semilla: 5 })));
   check(datosEquipoA !== datosEquipoB,
     'dos equipos con distinta semilla reciben ventanas distintas en la tabla tolerancias');
-  const pasoConSemilla = nucleo.ejecutar('ejecutar', {
-    estado: {
-      semilla: 1,
-      armadas: { carga: true, pulso: true, freno: true },
-      // Para semilla=1 (d1=1: 52..64, d2=0: 30..44, d3=0: 20..34)
-      enganos: { carga: 'n + 22', pulso: 'n + 15', freno: 'n + 4' },
-    },
-    intentos: 0, ahora: AHORA, traficoActivo: false,
-  }) as any;
-  check(pasoConSemilla.estado?.parte === 2 && pasoConSemilla.estado?.semilla !== 1,
-    'al pasar a la Parte 2 la semilla rota a un nuevo ciclo de condiciones');
 
-  // 3. Parte 2: Aparición de la 4ª tabla y Colas de Inspección (FIFO -> 3 características)
-  const enParte2 = pasoParte2.estado;
-  const datosP2: any = nucleo.proyectar('DATOS', ctx(enParte2));
-  check(datosP2.tablas.length === 4 && JSON.stringify(datosP2).includes('colas_filtro'),
-    'al pasar a la Parte 2 aparece la 4a tabla (colas_filtro) en Datos');
-
-  const correP2 = (cmd: string, est = enParte2) =>
-    nucleo.ejecutar(cmd, { estado: est, intentos: 0, ahora: AHORA, traficoActivo: false }) as any;
-
-  // En Parte 2 enganar directo está bloqueado
-  check(dice(correP2('enganar carga n - 2')).includes('blindado'),
-    'en Parte 2 el sabotaje directo con enganar esta bloqueado por el blindaje');
-
-  // Filtro de COLA-C (SEN): exige múltiplo de 3, impar, firma = valor + 7
-  check(dice(correP2('encolar SEN 6 13')).includes('rechazo'), 'COLA-C rechaza pares (SEN 6 13)');
-  check(dice(correP2('encolar SEN 5 12')).includes('rechazo'), 'COLA-C rechaza no multiplos de 3 (SEN 5 12)');
-  check(dice(correP2('encolar SEN 15 99')).includes('rechazo'), 'COLA-C rechaza firma incorrecta (SEN 15 99)');
-  const cValida = correP2('encolar SEN 15 22');
-  check((cValida.estado.paquetes as any)?.length === 1, 'COLA-C admite SEN 15 22 (cumple las 4 reglas)');
-
-  // Filtro de COLA-B (CTL): exige múltiplo de 5 entre -50 y 50
-  check(dice(correP2('encolar CTL 12')).includes('rechazo'), 'COLA-B rechaza no multiplos de 5 (CTL 12)');
-  check(dice(correP2('encolar CTL 55')).includes('rechazo'), 'COLA-B rechaza fuera de rango (CTL 55)');
-  const bValida = correP2('encolar CTL 15');
-  check((bValida.estado.paquetes as any)?.length === 1, 'COLA-B admite CTL 15 (multiplo de 5 en rango)');
-
-  // Filtro de COLA-A (NUC): exige entero entre -100 y 100
-  const aValida = correP2('encolar NUC 15');
-  check((aValida.estado.paquetes as any)?.length === 1, 'COLA-A admite NUC 15 (baja exigencia)');
-
-  // Disparar con menos de 3 paquetes avisa sin penalizar
-  const menosDe3 = sesion(nucleo, [...cmdsParte1, 'encolar SEN 15 22', 'disparar']);
-  check(!menosDe3.ultimo.fallo && dice(menosDe3.ultimo).includes('llevas 1 de 3'),
-    'disparar con menos de 3 paquetes pide completar los 3 turnos FIFO');
-
-  // Disparar por COLA-A sin haber armado las piezas de medio y nucleo es interceptado
-  const sinArmarA = sesion(nucleo, [
-    ...cmdsParte1,
-    'encolar NUC 15', 'encolar NUC 15', 'encolar NUC 20', 'disparar',
-  ]);
-  check(dice(sinArmarA.ultimo).includes('intercepto'),
-    'disparar por COLA-A sin armar medio/ y nucleo/ es interceptado por la seguridad de la Pila');
-
-  // Victoria por Ruta C (los 3 paquetes por COLA-C, entrando por los 3 huecos de paridad):
-  // M1: SEN 15 22 -> carga=15 (impar) -> presion(15)=20 (par) -> reactor(20)=45 (IMPAR, 40<45<52)
-  // M2: SEN 21 28 -> pulso=21 (impar) -> valvula(21)=26 (par) -> escudo(26)=36 (PAR, 30<36<44)
-  // M3: SEN 9 16  -> freno=9 (impar)  -> flujo(9)=27 (impar)  -> latido(27)=23 (IMPAR, 20<23<34)
-  const winRutaC = sesion(nucleo, [
-    ...cmdsParte1,
-    'encolar SEN 15 22',
-    'encolar SEN 21 28',
-    'encolar SEN 9 16',
-    'disparar',
-  ]);
-  check(winRutaC.ultimo.resuelto === true,
-    'Ruta C: 3 paquetes SEN en orden FIFO entran por los 3 huecos y resuelven la fase');
-
-  // Victoria por Ruta B (armando medio/ y encolando 3 paquetes CTL múltiplos de 5):
-  // M1: CTL 5  -> presion=15+5=20 (par)   -> reactor(20)=45 (IMPAR, 40<45<52)
-  // M2: CTL 15 -> valvula=15+15=30 (par)  -> escudo(30)=40  (PAR, 30<40<44)
-  // M3: CTL 20 -> flujo=9+20=29 (impar)   -> latido(29)=25  (IMPAR, 20<25<34)
-  const winRutaB = sesion(nucleo, [
-    ...cmdsParte1,
-    'armar presion llama carga luego x + 5',
-    'armar valvula llama pulso luego x - 3',
-    'armar flujo llama freno luego x * 3',
-    'encolar CTL 5',
-    'encolar CTL 15',
-    'encolar CTL 20',
-    'disparar',
-  ]);
-  check(winRutaB.ultimo.resuelto === true,
-    'Ruta B: armando medio/ y encolando 3 paquetes CTL entra por los 3 huecos');
-
-  // Victoria por Ruta A (armando las 9 funciones y encolando 3 paquetes NUC):
-  // M1: NUC 15 -> reactor=30+15=45 (IMPAR, 40<45<52)
-  // M2: NUC 15 -> escudo=21+15=36  (PAR, 30<36<44)
-  // M3: NUC 20 -> latido=5+20=25   (IMPAR, 20<25<34)
-  const winRutaA = sesion(nucleo, [
-    ...cmdsParte1,
-    'armar presion llama carga luego x + 5',
-    'armar valvula llama pulso luego x - 3',
-    'armar flujo llama freno luego x * 3',
-    'armar reactor llama presion luego x * 2',
-    'armar escudo llama valvula luego x + 6',
-    'armar latido llama flujo luego x - 4',
-    'encolar NUC 15',
-    'encolar NUC 15',
-    'encolar NUC 20',
-    'disparar',
-  ]);
-  check(winRutaA.ultimo.resuelto === true,
-    'Ruta A: armando las 9 funciones y encolando 3 paquetes NUC resuelve la fase');
-
-  // Reiniciar
-  const rP1 = sesion(nucleo, ['armar carga n * 2', 'enganar carga n * 3', 'reiniciar']);
-  check(Object.keys(rP1.estado.enganos as any).length === 0, 'reiniciar en Parte 1 limpia los enganos');
-  check((rP1.estado.armadas as any)?.carga === true, 'pero conserva las piezas armadas');
-
-  const rP2 = sesion(nucleo, [...cmdsParte1, 'encolar SEN 15 22', 'reiniciar']);
-  check((rP2.estado.paquetes as any)?.length === 0, 'reiniciar en Parte 2 limpia las colas');
+  // 7. Reiniciar conserva lo armado y limpia los sabotajes
+  const rReset = sesion(nucleo, ['armar pulso n * 3', 'enganar pulso n * 5', 'reiniciar']);
+  check(Object.keys(rReset.estado.enganos as any).length === 0, 'reiniciar limpia los sabotajes activos');
+  check((rReset.estado.armadas as any)?.pulso === true, 'pero conserva las piezas armadas');
 }
 
 console.log('\n5) Boveda de Credenciales · BASES DE DATOS');

@@ -1,25 +1,41 @@
 // ============================================================
-//  FASE 4 — Núcleo Modular   ·   FUNCIONES, PILAS Y COLAS
+//  FASE 4 — Núcleo Modular   ·   FUNCIONES Y PILA DE LLAMADAS
 //
-//  Nuestros virus ya lograron entrar al sistema, aprovechando que no
-//  parecian peligrosos. Ahora toca danar las funciones del robot desde
-//  adentro: enganarlas para que, haciendo su trabajo aparentemente
-//  "bien", entren exactamente por el hueco entre lo que el robot
-//  aguanta (`aguanta_max`) y el fusible de emergencia (`fusible_corte`).
+//  Nuestros virus ya lograron infiltrarse hasta el sistema interno del
+//  robot. Ahora toca colapsar sus 3 subsistemas fisicos (Traccion,
+//  Hidraulica y Enfriamiento) sobrecargando las funciones que los
+//  controlan para que superen `aguanta_max` sin quemar `fusible_corte`.
 //
-//  POR QUÉ NO SE PUEDE PASAR TANTEANDO NÚMEROS AL AZAR:
-//    1. Las funciones intermedias (medio/) y maestras (nucleo/) tienen
-//       ramas segun la paridad (si x es PAR vs si x es IMPAR).
-//    2. En operacion normal, la paridad que sale de base/ encierra a la
-//       funcion maestra en la rama que el seguro del robot bloquea
-//       (por ejemplo, reactor siempre devuelve PAR para cualquier n,
-//       pero el hueco entre aguanta_max y fusible_corte exige un IMPAR).
-//    3. Si metes un numero chico no supera aguanta_max; si metes un
-//       numero gigante revienta el fusible_corte; y si no inviertes la
-//       paridad exacta que pide la funcion, el seguro interno lo corta.
-//    4. Cada equipo (y cada ciclo Parte 1 -> Parte 2) tiene ventanas
-//       distintas generadas por su semilla de ciclo, evitando que un
-//       equipo copie los numeros de la mesa vecina.
+//  LO QUE ENSEÑA:
+//    1. Funciones dependientes y Pila de Llamadas (Call Stack · LIFO):
+//       Una funcion de `nucleo/` llama a una de `medio/`, y esta llama
+//       a una de `base/`. La llamada baja hasta el fondo y los valores
+//       de retorno suben de vuelta.
+//    2. Descompilacion y pruebas (`sondear`, `armar`, `probar`):
+//       El codigo empieza oculto con `[ ??? ]`. Cruzando las trazas de
+//       ejecucion con el manual de Datos, el equipo reconstruye (`armar`)
+//       cada pieza para revelar su codigo fuente real en Pantalla.
+//    3. Malas practicas de programacion en funciones dependientes:
+//       Las funciones maestras de `nucleo/` tienen la firma sellada y
+//       no se pueden editar. Hay que atacar sus dependencias en `medio/`
+//       o `base/`, pero no cualquiera: cada cadena tiene una validacion
+//       activa y una MALA PRACTICA donde una funcion confia a ciegas en
+//       otra y no comprueba lo que le devuelve:
+//         · En M1 (`reactor -> presion -> carga`):
+//           `presion` SI comprueba el tope de lo que devuelve `carga`
+//           (si carga > 12, lo bloquea). Pero `reactor` NO comprueba lo
+//           que le devuelve `presion`. El hueco esta en `presion`.
+//         · En M2 (`escudo -> valvula -> pulso`):
+//           `escudo` SI vigila que `valvula` no altere su formula. Pero
+//           `valvula` solo comprueba el parametro `n` ANTES de llamar a
+//           `pulso(n)` y olvida comprobar el valor `x` que regresa de la
+//           pila. El hueco esta en `pulso`.
+//         · En M3 (`latido -> flujo -> freno`):
+//           `latido` comprueba que `flujo(n)` cuadre con `freno(n) * 3`
+//           volviendo a llamar a la misma dependencia `freno(n)`, pero
+//           ni `flujo` ni `latido` comprueban el tope maximo de `freno`.
+//           Al enganar a la dependencia compartida `freno`, ambos lados
+//           de la comprobacion reciben el valor inflado y pasa limpio.
 // ============================================================
 
 import type { Role } from '../lib/constants.js';
@@ -32,7 +48,7 @@ import {
   cuarentenaActiva, error, exito, normalizar, numero, rechazo, tabla, texto,
 } from './comun.js';
 
-// ---------- Funciones del núcleo con ramas par / impar ----------
+// ---------- Las 9 funciones del núcleo ----------
 
 type Nivel = 'nucleo' | 'medio' | 'base';
 
@@ -42,27 +58,25 @@ type PiezaInfo = {
   carpeta: Nivel;
   llama: string | null;
   param: string;
-  /** En base/ hay una sola cuenta; en medio/ y nucleo/ hay rama par e impar. */
-  cuentaPar: string;
-  cuentaImpar: string;
-  evalPar: (x: number) => number;
-  evalImpar: (x: number) => number;
+  formula: string;
+  evalFn: (x: number) => number;
+  lineasArmada: string[];
 };
 
-const esPar = (n: number) => Math.abs(n % 2) === 0;
-
 export const PIEZAS: Record<string, PiezaInfo> = {
-  // base/ (Nivel C · nunca llaman a nadie)
+  // base/ (Nivel C · fondo de la pila, no llaman a otra funcion)
   carga: {
     id: 'F1',
     nombre: 'carga',
     carpeta: 'base',
     llama: null,
     param: 'n',
-    cuentaPar: 'n * 2',
-    cuentaImpar: 'n * 2',
-    evalPar: (n) => n * 2,
-    evalImpar: (n) => n * 2,
+    formula: 'n * 2',
+    evalFn: (n) => n * 2,
+    lineasArmada: [
+      'recibe n',
+      'devuelve n * 2',
+    ],
   },
   pulso: {
     id: 'F2',
@@ -70,10 +84,13 @@ export const PIEZAS: Record<string, PiezaInfo> = {
     carpeta: 'base',
     llama: null,
     param: 'n',
-    cuentaPar: 'n * 3',
-    cuentaImpar: 'n * 3',
-    evalPar: (n) => n * 3,
-    evalImpar: (n) => n * 3,
+    formula: 'n * 3',
+    evalFn: (n) => n * 3,
+    lineasArmada: [
+      'recibe n',
+      '// sin comprobacion de tope al salir hacia valvula',
+      'devuelve n * 3',
+    ],
   },
   freno: {
     id: 'F3',
@@ -81,25 +98,31 @@ export const PIEZAS: Record<string, PiezaInfo> = {
     carpeta: 'base',
     llama: null,
     param: 'n',
-    cuentaPar: 'n - 2',
-    cuentaImpar: 'n - 2',
-    evalPar: (n) => n - 2,
-    evalImpar: (n) => n - 2,
+    formula: 'n - 2',
+    evalFn: (n) => n - 2,
+    lineasArmada: [
+      'recibe n',
+      'si n < 0 -> bloquear ("entrada negativa")',
+      '// mala practica: comprueba negativo pero no tiene tope maximo',
+      'devuelve n - 2',
+    ],
   },
 
-  // medio/ (Nivel B · llaman a una de base/ y ramifican por paridad)
+  // medio/ (Nivel B · funciones intermedias)
   presion: {
     id: 'F4',
     nombre: 'presion',
     carpeta: 'medio',
     llama: 'carga',
     param: 'x',
-    // Si recibe par (normal de carga): suma 5 -> lo vuelve IMPAR.
-    // Si recibe impar (saboteado): suma 5 -> lo vuelve PAR (abre el hueco de reactor).
-    cuentaPar: 'x + 5',
-    cuentaImpar: 'x + 5',
-    evalPar: (x) => x + 5,
-    evalImpar: (x) => x + 5,
+    formula: 'x + 5',
+    evalFn: (x) => x + 5,
+    lineasArmada: [
+      'recibe n',
+      'x = carga(n)',
+      'si x > 12 -> bloquear ("retorno de carga supera tope 12")',
+      'devuelve x + 5',
+    ],
   },
   valvula: {
     id: 'F5',
@@ -107,12 +130,15 @@ export const PIEZAS: Record<string, PiezaInfo> = {
     carpeta: 'medio',
     llama: 'pulso',
     param: 'x',
-    // Si recibe par (normal de pulso(6)=18): resta 3 -> sale 15 (IMPAR).
-    // Si recibe impar (hueco): suma 5 -> sale PAR (abre la rama par de escudo).
-    cuentaPar: 'x - 3',
-    cuentaImpar: 'x + 5',
-    evalPar: (x) => x - 3,
-    evalImpar: (x) => x + 5,
+    formula: 'x - 3',
+    evalFn: (x) => x - 3,
+    lineasArmada: [
+      'recibe n',
+      'si n > 10 -> bloquear ("entrada n supera tope 10")',
+      'x = pulso(n)',
+      '// mala practica: valido n antes, pero no comprueba x al volver de pulso',
+      'devuelve x - 3',
+    ],
   },
   flujo: {
     id: 'F6',
@@ -120,27 +146,32 @@ export const PIEZAS: Record<string, PiezaInfo> = {
     carpeta: 'medio',
     llama: 'freno',
     param: 'x',
-    // Si recibe par: multiplica por 2 -> sale PAR.
-    // Si recibe impar (normal de freno(5)=3): multiplica por 3 -> sale IMPAR.
-    cuentaPar: 'x * 2',
-    cuentaImpar: 'x * 3',
-    evalPar: (x) => x * 2,
-    evalImpar: (x) => x * 3,
+    formula: 'x * 3',
+    evalFn: (x) => x * 3,
+    lineasArmada: [
+      'recibe n',
+      'x = freno(n)',
+      '// mala practica: confia en freno(n) sin comprobar tope maximo',
+      'devuelve x * 3',
+    ],
   },
 
-  // nucleo/ (Nivel A · llaman a medio/ y tienen el seguro par/impar)
+  // nucleo/ (Nivel A · funciones maestras con firma sellada)
   reactor: {
     id: 'F7',
     nombre: 'reactor',
     carpeta: 'nucleo',
     llama: 'presion',
     param: 'x',
-    // Normalmente presion(5)=15 es IMPAR -> reactor hace x * 2 = 30 (siempre PAR).
-    // El hueco exige salida IMPAR, que solo ocurre si a reactor le entra un PAR (x + 25 = IMPAR).
-    cuentaPar: 'x + 25',
-    cuentaImpar: 'x * 2',
-    evalPar: (x) => x + 25,
-    evalImpar: (x) => x * 2,
+    formula: 'x * 2',
+    evalFn: (x) => x * 2,
+    lineasArmada: [
+      'recibe n',
+      '[firma sellada en nucleo · no editable]',
+      'x = presion(n)',
+      '// mala practica: confia en presion(n) y no comprueba su retorno',
+      'devuelve x * 2',
+    ],
   },
   escudo: {
     id: 'F8',
@@ -148,12 +179,15 @@ export const PIEZAS: Record<string, PiezaInfo> = {
     carpeta: 'nucleo',
     llama: 'valvula',
     param: 'x',
-    // Normalmente valvula(6)=15 es IMPAR -> escudo hace x + 6 = 21 (siempre IMPAR).
-    // El hueco exige salida PAR, que solo ocurre si a escudo le entra un PAR (x + 10 = PAR).
-    cuentaPar: 'x + 10',
-    cuentaImpar: 'x + 6',
-    evalPar: (x) => x + 10,
-    evalImpar: (x) => x + 6,
+    formula: 'x + 6',
+    evalFn: (x) => x + 6,
+    lineasArmada: [
+      'recibe n',
+      '[firma sellada en nucleo · no editable]',
+      'x = valvula(n)',
+      'si valvula fue alterada (x != pulso(n) - 3) -> bloquear',
+      'devuelve x + 6',
+    ],
   },
   latido: {
     id: 'F9',
@@ -161,24 +195,27 @@ export const PIEZAS: Record<string, PiezaInfo> = {
     carpeta: 'nucleo',
     llama: 'flujo',
     param: 'x',
-    // Si entra par: x - 2 (sale PAR, bloqueado por el seguro de M3).
-    // Si entra impar: x - 4 (sale IMPAR, que es la paridad del hueco de M3).
-    cuentaPar: 'x - 2',
-    cuentaImpar: 'x - 4',
-    evalPar: (x) => x - 2,
-    evalImpar: (x) => x - 4,
+    formula: 'x - 4',
+    evalFn: (x) => x - 4,
+    lineasArmada: [
+      'recibe n',
+      '[firma sellada en nucleo · no editable]',
+      'x = flujo(n)',
+      'si x != freno(n) * 3 -> bloquear ("desfase entre flujo y freno")',
+      'devuelve x - 4',
+    ],
   },
 };
 
 const CARPETAS: Nivel[] = ['nucleo', 'medio', 'base'];
 
-// ---------- Condiciones por ciclo y por equipo (Semilla) ----------
+// ---------- Tolerancias por equipo (Semilla) ----------
 //
-// Cada equipo (y cada ciclo Parte 1 / Parte 2) obtiene una combinación
-// (d1, d2, d3) en {0, 1, 2}^3 a partir de `estado.semilla`.
-// Con seed = 0 (por defecto en tests sin semilla), d1 = 0, d2 = 0, d3 = 0.
+// Cada equipo obtiene una combinación (d1, d2, d3) en {0, 1, 2}^3 a partir
+// de `estado.semilla` para evitar que dos mesas vecinas se copien los números.
+// Con semilla = 0 (por defecto en tests sin semilla), d1 = 0, d2 = 0, d3 = 0.
 
-export type CaracteristicaCiclo = {
+export type SubsistemaInfo = {
   id: string;
   orden: number;
   nombre: string;
@@ -190,21 +227,19 @@ export type CaracteristicaCiclo = {
   normal: number;
   aguantaMax: number;
   fusibleCorte: number;
-  paridadHueco: 'IMPAR' | 'PAR';
-  descripcionHueco: string;
 };
 
-export function variantesDeCiclo(estado: Record<string, unknown>): [number, number, number] {
+export function variantesDeSemilla(estado: Record<string, unknown>): [number, number, number] {
   const s = Math.abs(Math.trunc(numero(estado, 'semilla')));
   if (s === 0) return [0, 0, 0];
   return [s % 3, Math.floor(s / 3) % 3, Math.floor(s / 9) % 3];
 }
 
-export function caracteristicasDe(estado: Record<string, unknown>): CaracteristicaCiclo[] {
-  const [d1, d2, d3] = variantesDeCiclo(estado);
+export function subsistemasDe(estado: Record<string, unknown>): SubsistemaInfo[] {
+  const [d1, d2, d3] = variantesDeSemilla(estado);
 
   const m1Min = 40 + d1 * 12;
-  const m1Max = m1Min + 12;
+  const m1Max = m1Min + 14;
 
   const m2Min = 30 + d2 * 12;
   const m2Max = m2Min + 14;
@@ -225,8 +260,6 @@ export function caracteristicasDe(estado: Record<string, unknown>): Caracteristi
       normal: 30,
       aguantaMax: m1Min,
       fusibleCorte: m1Max,
-      paridadHueco: 'IMPAR',
-      descripcionHueco: `IMPAR entre ${m1Min + 1} y ${m1Max - 1} (el seguro bloquea pares)`,
     },
     {
       id: 'M2',
@@ -240,8 +273,6 @@ export function caracteristicasDe(estado: Record<string, unknown>): Caracteristi
       normal: 21,
       aguantaMax: m2Min,
       fusibleCorte: m2Max,
-      paridadHueco: 'PAR',
-      descripcionHueco: `PAR entre ${m2Min + 2} y ${m2Max - 2} (el seguro bloquea impares)`,
     },
     {
       id: 'M3',
@@ -255,49 +286,8 @@ export function caracteristicasDe(estado: Record<string, unknown>): Caracteristi
       normal: 5,
       aguantaMax: m3Min,
       fusibleCorte: m3Max,
-      paridadHueco: 'IMPAR',
-      descripcionHueco: `IMPAR entre ${m3Min + 1} y ${m3Max - 1} (el seguro bloquea pares)`,
     },
   ];
-}
-
-/** Verifica si una salida entra exactamente por el hueco de esa característica. */
-function evaluarImpacto(c: CaracteristicaCiclo, salida: number): {
-  rota: boolean;
-  motivo: string;
-} {
-  if (salida <= c.aguantaMax) {
-    return { rota: false, motivo: `AGUANTA (<= ${c.aguantaMax})` };
-  }
-  if (salida >= c.fusibleCorte) {
-    return { rota: false, motivo: `FUSIBLE QUEMADO (>= ${c.fusibleCorte})` };
-  }
-  const paridadActual = esPar(salida) ? 'PAR' : 'IMPAR';
-  if (paridadActual !== c.paridadHueco) {
-    return { rota: false, motivo: `BLOQUEADO POR SEGURO (salio ${paridadActual}, hueco exige ${c.paridadHueco})` };
-  }
-  return { rota: true, motivo: `HUECO VULNERADO (${salida} ${paridadActual})` };
-}
-
-/** Avanza la semilla al cambiar de ciclo para que la Parte 2 tenga otras ventanas. */
-function siguienteSemilla(semillaActual: number): number {
-  if (semillaActual <= 0) return 0; // mantiene determinismo cuando semilla === 0 en tests base
-  const nueva = ((semillaActual * 13 + 7) % 26) + 1;
-  return nueva === semillaActual ? (nueva % 26) + 1 : nueva;
-}
-
-// ---------- Paquetes de Cola (Parte 2) ----------
-
-type PaqueteCola = {
-  cola: 'COLA-A' | 'COLA-B' | 'COLA-C';
-  etiqueta: 'NUC' | 'CTL' | 'SEN';
-  nivel: Nivel;
-  valor: number;
-  firma?: number;
-};
-
-function paquetesDe(estado: Record<string, unknown>): PaqueteCola[] {
-  return Array.isArray(estado.paquetes) ? (estado.paquetes as PaqueteCola[]) : [];
 }
 
 // ---------- Evaluador de expresiones y ejecutor de la Pila ----------
@@ -333,7 +323,7 @@ function evaluarExpr(expr: string, vars: Record<string, number>): number | null 
   return null;
 }
 
-function coincideRama(exprJugador: string, fnReal: (v: number) => number): boolean {
+function coincideFormula(exprJugador: string, fnReal: (v: number) => number): boolean {
   const pruebas = [2, 3, 4, 5, 6, 7, 10];
   for (const v of pruebas) {
     const real = fnReal(v);
@@ -343,203 +333,364 @@ function coincideRama(exprJugador: string, fnReal: (v: number) => number): boole
   return true;
 }
 
-/**
- * Comprueba si la expresión propuesta en `armar` coincide con la pieza.
- * Acepta:
- *  - `par <expr1> impar <expr2>` (o al revés) comprobando ambas ramas.
- *  - `<expr>` simple si coincide con al menos una de las ramas reales de la pieza.
- */
-function validarArmado(exprTexto: string, pieza: PiezaInfo): boolean {
-  const t = exprTexto.trim();
-  const mParImpar = t.match(/^par\s+(.+?)\s+impar\s+(.+)$/i);
-  if (mParImpar) {
-    return coincideRama(mParImpar[1], pieza.evalPar) && coincideRama(mParImpar[2], pieza.evalImpar);
-  }
-  const mImparPar = t.match(/^impar\s+(.+?)\s+par\s+(.+)$/i);
-  if (mImparPar) {
-    return coincideRama(mImparPar[1], pieza.evalImpar) && coincideRama(mImparPar[2], pieza.evalPar);
-  }
-  return coincideRama(t, pieza.evalPar) || coincideRama(t, pieza.evalImpar);
-}
-
-function evalPiezaReal(pieza: PiezaInfo, x: number): number {
-  return esPar(x) ? pieza.evalPar(x) : pieza.evalImpar(x);
-}
-
-type TrazaPaso = {
+export type TrazaPaso = {
   pieza: string;
   nivel: Nivel;
   entrada: number;
-  rama: 'par' | 'impar';
   salida: number;
   llamaA?: string;
   esEnganada?: boolean;
+  comprobacion: string;
+  bloqueado?: boolean;
 };
 
-function ejecutarCadena(
+export type ResultadoCadena = {
+  salida: number;
+  traza: TrazaPaso[];
+  bloqueado: boolean;
+  bloqueadoPor?: string;
+  motivoBloqueo?: string;
+  error?: string;
+};
+
+function evaluarPiezaBase(
+  nombre: string,
+  n: number,
+  enganos: Record<string, string>,
+): { valor: number; esEnganada: boolean; bloqueado?: string; error?: string } {
+  const pieza = PIEZAS[nombre];
+  if (nombre === 'freno' && n < 0) {
+    return {
+      valor: NaN,
+      esEnganada: false,
+      bloqueado: `freno rechazo entrada negativa (n = ${n} < 0)`,
+    };
+  }
+  if (enganos[nombre]) {
+    const v = evaluarExpr(enganos[nombre], { n, x: n });
+    if (v === null) return { valor: NaN, esEnganada: true, error: `Error evaluando operacion en ${nombre}` };
+    return { valor: v, esEnganada: true };
+  }
+  return { valor: pieza.evalFn(n), esEnganada: false };
+}
+
+export function ejecutarCadena(
   nombre: string,
   entrada: number,
-  enganos: Record<string, string> = {}
-): { salida: number; traza: TrazaPaso[]; error?: string } {
+  enganos: Record<string, string> = {},
+): ResultadoCadena {
   const pieza = PIEZAS[nombre];
-  if (!pieza) return { salida: NaN, traza: [], error: `Pieza «${nombre}» no existe` };
+  if (!pieza) {
+    return { salida: NaN, traza: [], bloqueado: false, error: `Pieza «${nombre}» no existe` };
+  }
 
+  // Nivel C: base/
   if (pieza.carpeta === 'base') {
-    const rama: 'par' | 'impar' = esPar(entrada) ? 'par' : 'impar';
-    let salida: number;
-    if (enganos[nombre]) {
-      const v = evaluarExpr(enganos[nombre], { n: entrada, x: entrada });
-      if (v === null) return { salida: NaN, traza: [], error: `Error evaluando enganar en ${nombre}` };
-      salida = v;
-    } else {
-      salida = evalPiezaReal(pieza, entrada);
+    const r = evaluarPiezaBase(nombre, entrada, enganos);
+    if (r.error) return { salida: NaN, traza: [], bloqueado: false, error: r.error };
+    if (r.bloqueado) {
+      return {
+        salida: NaN,
+        bloqueado: true,
+        bloqueadoPor: nombre,
+        motivoBloqueo: r.bloqueado,
+        traza: [
+          {
+            pieza: nombre,
+            nivel: 'base',
+            entrada,
+            salida: NaN,
+            esEnganada: r.esEnganada,
+            comprobacion: `BLOQUEADO: ${r.bloqueado}`,
+            bloqueado: true,
+          },
+        ],
+      };
     }
+    const notaBase = nombre === 'freno'
+      ? `n >= 0 OK · sin comprobacion de tope maximo`
+      : `sin comprobacion de salida`;
     return {
-      salida,
-      traza: [{ pieza: nombre, nivel: 'base', entrada, rama, salida, esEnganada: !!enganos[nombre] }],
+      salida: r.valor,
+      bloqueado: false,
+      traza: [
+        {
+          pieza: nombre,
+          nivel: 'base',
+          entrada,
+          salida: r.valor,
+          esEnganada: r.esEnganada,
+          comprobacion: notaBase,
+        },
+      ],
     };
   }
 
-  const sub = ejecutarCadena(pieza.llama!, entrada, enganos);
-  if (sub.error) return sub;
+  // Nivel B: medio/
+  if (pieza.carpeta === 'medio') {
+    //En valvula, la comprobación de n <= 10 ocurre ANTES de llamar a pulso(n)
+    if (nombre === 'valvula' && entrada > 10) {
+      const motivo = `valvula rechazo entrada n = ${entrada} (supera tope 10)`;
+      return {
+        salida: NaN,
+        bloqueado: true,
+        bloqueadoPor: 'valvula',
+        motivoBloqueo: motivo,
+        traza: [
+          {
+            pieza: 'valvula',
+            nivel: 'medio',
+            entrada,
+            salida: NaN,
+            llamaA: 'pulso',
+            comprobacion: `BLOQUEADO: ${motivo}`,
+            bloqueado: true,
+          },
+        ],
+      };
+    }
 
-  const rama: 'par' | 'impar' = esPar(sub.salida) ? 'par' : 'impar';
-  let salida: number;
-  if (enganos[nombre]) {
-    const v = evaluarExpr(enganos[nombre], { n: sub.salida, x: sub.salida });
-    if (v === null) return { salida: NaN, traza: [], error: `Error evaluando enganar en ${nombre}` };
-    salida = v;
-  } else {
-    salida = evalPiezaReal(pieza, sub.salida);
+    const sub = ejecutarCadena(pieza.llama!, entrada, enganos);
+    if (sub.error || sub.bloqueado) return sub;
+
+    const x = sub.salida;
+
+    // En presion, SI comprueba lo que devuelve carga(n): x <= 12
+    if (nombre === 'presion' && (x > 12 || x < 0)) {
+      const motivo = `presion rechazo el retorno de carga (recibio x = ${x}, tope maximo 12)`;
+      return {
+        salida: NaN,
+        bloqueado: true,
+        bloqueadoPor: 'presion',
+        motivoBloqueo: motivo,
+        traza: [
+          ...sub.traza,
+          {
+            pieza: 'presion',
+            nivel: 'medio',
+            entrada: x,
+            salida: NaN,
+            llamaA: 'carga',
+            comprobacion: `BLOQUEADO: ${motivo}`,
+            bloqueado: true,
+          },
+        ],
+      };
+    }
+
+    let salida: number;
+    const esEnganada = !!enganos[nombre];
+    if (esEnganada) {
+      const v = evaluarExpr(enganos[nombre], { n: entrada, x });
+      if (v === null) {
+        return { salida: NaN, traza: [], bloqueado: false, error: `Error evaluando operacion en ${nombre}` };
+      }
+      salida = v;
+    } else {
+      salida = pieza.evalFn(x);
+    }
+
+    const notaMedio = nombre === 'presion'
+      ? `comprobo retorno de carga (x = ${x} <= 12 OK)`
+      : nombre === 'valvula'
+        ? `comprobo n = ${entrada} <= 10 antes · NO comprobo retorno x = ${x} de pulso`
+        : `NO comprobo tope de retorno x = ${x} de freno`;
+
+    return {
+      salida,
+      bloqueado: false,
+      traza: [
+        ...sub.traza,
+        {
+          pieza: nombre,
+          nivel: 'medio',
+          entrada: x,
+          salida,
+          llamaA: pieza.llama!,
+          esEnganada,
+          comprobacion: notaMedio,
+        },
+      ],
+    };
   }
+
+  // Nivel A: nucleo/
+  const sub = ejecutarCadena(pieza.llama!, entrada, enganos);
+  if (sub.error || sub.bloqueado) return sub;
+
+  const x = sub.salida;
+
+  // En escudo (M2): vigila que valvula no haya sido alterada (x debe ser pulso(n) - 3)
+  if (nombre === 'escudo') {
+    const resPulso = evaluarPiezaBase('pulso', entrada, enganos);
+    const esperadoDeValvula = resPulso.valor - 3;
+    if (enganos.valvula || x !== esperadoDeValvula) {
+      const motivo = `escudo detecto alteracion en valvula (devolvio ${x} en vez de pulso(${entrada}) - 3 = ${esperadoDeValvula})`;
+      return {
+        salida: NaN,
+        bloqueado: true,
+        bloqueadoPor: 'escudo',
+        motivoBloqueo: motivo,
+        traza: [
+          ...sub.traza,
+          {
+            pieza: 'escudo',
+            nivel: 'nucleo',
+            entrada: x,
+            salida: NaN,
+            llamaA: 'valvula',
+            comprobacion: `BLOQUEADO: ${motivo}`,
+            bloqueado: true,
+          },
+        ],
+      };
+    }
+  }
+
+  // En latido (M3): comprueba que flujo(n) == freno(n) * 3 llamando a la misma dependencia freno(n)
+  if (nombre === 'latido') {
+    const resFreno = evaluarPiezaBase('freno', entrada, enganos);
+    const esperadoDeFlujo = resFreno.valor * 3;
+    if (x !== esperadoDeFlujo) {
+      const motivo = `latido detecto desfase entre flujo (${x}) y freno(${entrada}) * 3 (${esperadoDeFlujo})`;
+      return {
+        salida: NaN,
+        bloqueado: true,
+        bloqueadoPor: 'latido',
+        motivoBloqueo: motivo,
+        traza: [
+          ...sub.traza,
+          {
+            pieza: 'latido',
+            nivel: 'nucleo',
+            entrada: x,
+            salida: NaN,
+            llamaA: 'flujo',
+            comprobacion: `BLOQUEADO: ${motivo}`,
+            bloqueado: true,
+          },
+        ],
+      };
+    }
+  }
+
+  const salida = pieza.evalFn(x);
+  const notaNucleo = nombre === 'reactor'
+    ? `NO comprobo el retorno x = ${x} de presion`
+    : nombre === 'escudo'
+      ? `comprobo integridad de valvula (x = pulso(${entrada}) - 3 OK) · sin tope maximo`
+      : `comprobo x == freno(${entrada}) * 3 (${x} == ${x} OK) · sin tope maximo`;
 
   return {
     salida,
+    bloqueado: false,
     traza: [
       ...sub.traza,
       {
         pieza: nombre,
-        nivel: pieza.carpeta,
-        entrada: sub.salida,
-        rama,
+        nivel: 'nucleo',
+        entrada: x,
         salida,
         llamaA: pieza.llama!,
-        esEnganada: !!enganos[nombre],
+        esEnganada: false,
+        comprobacion: notaNucleo,
       },
     ],
   };
 }
 
-// ---------- Esquema Relacional Dinámico para el Operador de Datos ----------
-//
-// 3 tablas permanentes (`funciones`, `resultados`, `tolerancias`) presentes
-// en ambas partes.
-// La 4ª tabla (`colas_filtro`) SOLO aparece cuando el equipo pasa a la Parte 2.
-
-function construirTablasBase(estado: Record<string, unknown>) {
-  const caracteristicas = caracteristicasDe(estado);
-
-  return [
-    {
-      id: 'funciones',
-      nombre: 'funciones',
-      x: 40, y: 30, w: 290,
-      descripcion: 'Catalogo de funciones internas del robot',
-      clave: 'id',
-      columnas: ['id', 'funcion', 'comportamiento'],
-      filas: [
-        ['F1', 'carga', 'operacion directa'],
-        ['F2', 'pulso', 'operacion directa'],
-        ['F3', 'freno', 'operacion directa'],
-        ['F4', 'presion', 'segun paridad (par / impar)'],
-        ['F5', 'valvula', 'segun paridad (par / impar)'],
-        ['F6', 'flujo', 'segun paridad (par / impar)'],
-        ['F7', 'reactor', 'segun paridad (par / impar)'],
-        ['F8', 'escudo', 'segun paridad (par / impar)'],
-        ['F9', 'latido', 'segun paridad (par / impar)'],
-      ],
-    },
-    {
-      id: 'resultados',
-      nombre: 'resultados',
-      x: 610, y: 30, w: 350,
-      descripcion: 'Salidas observadas con distintas entradas y paridades',
-      clave: 'id',
-      columnas: ['id', 'funcion_id', 'condicion_entrada', 'salida'],
-      filas: [
-        ['R1', 'F1', 'n = 4', '8'],
-        ['R2', 'F1', 'n = 5', '10'],
-        ['R3', 'F2', 'n = 5', '15'],
-        ['R4', 'F2', 'n = 6', '18'],
-        ['R5', 'F3', 'n = 5', '3'],
-        ['R6', 'F3', 'n = 6', '4'],
-        ['R7', 'F4', 'n = 5 (recibe x=10 par)', '15'],
-        ['R8', 'F4', 'si recibe x=11 impar', '16'],
-        ['R9', 'F5', 'n = 6 (recibe x=18 par)', '15'],
-        ['R10', 'F5', 'n = 5 (recibe x=15 impar)', '20'],
-        ['R11', 'F6', 'n = 5 (recibe x=3 impar)', '9'],
-        ['R12', 'F6', 'n = 6 (recibe x=4 par)', '8'],
-        ['R13', 'F7', 'n = 5 (recibe x=15 impar)', '30'],
-        ['R14', 'F7', 'si recibe x=20 par', '45'],
-        ['R15', 'F8', 'n = 6 (recibe x=15 impar)', '21'],
-        ['R16', 'F8', 'n = 5 (recibe x=20 par)', '30'],
-        ['R17', 'F9', 'n = 5 (recibe x=9 impar)', '5'],
-        ['R18', 'F9', 'n = 6 (recibe x=8 par)', '6'],
-      ],
-    },
-    {
-      id: 'tolerancias',
-      nombre: 'tolerancias',
-      x: 40, y: 300, w: 450,
-      descripcion: 'Limites que aguanta el robot, fusible superior y hueco del seguro en este ciclo',
-      clave: 'id',
-      columnas: ['id', 'caracteristica', 'funcion_id', 'entrada', 'aguanta_max', 'fusible_corte', 'hueco_vulnerable'],
-      filas: caracteristicas.map((c) => [
-        c.id,
-        c.nombre,
-        c.funcionId,
-        String(c.entrada),
-        String(c.aguantaMax),
-        String(c.fusibleCorte),
-        c.descripcionHueco,
-      ]),
-    },
-  ];
+/** Evalúa si un subsistema colapsa con el resultado de su cadena. */
+function evaluarImpactoSubsistema(s: SubsistemaInfo, res: ResultadoCadena): {
+  rota: boolean;
+  estado: string;
+} {
+  if (res.bloqueado) {
+    return { rota: false, estado: `BLOQUEADO (${res.motivoBloqueo})` };
+  }
+  if (res.salida <= s.aguantaMax) {
+    return { rota: false, estado: `AGUANTA (${res.salida} <= ${s.aguantaMax})` };
+  }
+  if (res.salida >= s.fusibleCorte) {
+    return { rota: false, estado: `FUSIBLE QUEMADO (${res.salida} >= ${s.fusibleCorte})` };
+  }
+  return { rota: true, estado: `SOBRECARGA (${res.salida} entre ${s.aguantaMax} y ${s.fusibleCorte})` };
 }
 
-const TABLA_COLAS_PARTE_2 = {
-  id: 'colas_filtro',
-  nombre: 'colas_filtro',
-  x: 540, y: 300, w: 420,
-  descripcion: 'Blindaje activo · Reglas de cada cola y su efecto en las 3 caracteristicas (M1->M2->M3)',
-  clave: 'id',
-  columnas: ['id', 'cola', 'tolerancia_id', 'exigencia', 'requisitos', 'efecto_en_pila'],
-  filas: [
-    ['Q1', 'COLA-A (nucleo)', 'M1', 'BAJA', 'Etiqueta NUC · cualquier entero (-100 a 100)', 'Recorre la pila y al final suma V a la salida de nucleo'],
-    ['Q2', 'COLA-B (medio)', 'M2', 'MEDIA', 'Etiqueta CTL · multiplo de 5 · entre -50 y 50', 'Baja a base y al subir a medio suma V antes de entrar a nucleo'],
-    ['Q3', 'COLA-C (base)', 'M3', 'MAXIMA', 'Etiqueta SEN · multiplo de 3 · IMPAR · firma = valor + 7', 'Entra directo al fondo y reemplaza con V la salida de base'],
-  ],
-};
+// ---------- Esquema Relacional para el Operador de Datos ----------
 
 function esquemaParaDatos(estado: Record<string, unknown>) {
-  const parte = numero(estado, 'parte') || 1;
-  const tablasBase = construirTablasBase(estado);
+  const subsistemas = subsistemasDe(estado);
 
-  if (parte === 1) {
-    return {
-      tablas: tablasBase,
-      relaciones: [
-        { desde: 'resultados', campo: 'funcion_id', hasta: 'funciones' },
-        { desde: 'tolerancias', campo: 'funcion_id', hasta: 'funciones' },
-      ],
-    };
-  }
   return {
-    tablas: [...tablasBase, TABLA_COLAS_PARTE_2],
+    tablas: [
+      {
+        id: 'funciones',
+        nombre: 'funciones',
+        x: 40, y: 30, w: 300,
+        descripcion: 'Catalogo de funciones internas del robot',
+        clave: 'id',
+        columnas: ['id', 'funcion', 'rol_en_sistema'],
+        filas: [
+          ['F1', 'carga', 'impulso base de traccion'],
+          ['F2', 'pulso', 'caudal base hidraulico'],
+          ['F3', 'freno', 'retencion base de enfriamiento'],
+          ['F4', 'presion', 'regulador intermedio de traccion'],
+          ['F5', 'valvula', 'paso intermedio hidraulico'],
+          ['F6', 'flujo', 'multiplicador intermedio termico'],
+          ['F7', 'reactor', 'controlador maestro de traccion'],
+          ['F8', 'escudo', 'controlador maestro hidraulico'],
+          ['F9', 'latido', 'controlador maestro de enfriamiento'],
+        ],
+      },
+      {
+        id: 'resultados',
+        nombre: 'resultados',
+        x: 590, y: 30, w: 370,
+        descripcion: 'Salidas observadas de cada funcion en operacion normal',
+        clave: 'id',
+        columnas: ['id', 'funcion_id', 'entrada_prueba', 'salida'],
+        filas: [
+          ['R1', 'F1', 'n = 4 (directa)', '8'],
+          ['R2', 'F1', 'n = 5 (directa)', '10'],
+          ['R3', 'F2', 'n = 5 (directa)', '15'],
+          ['R4', 'F2', 'n = 6 (directa)', '18'],
+          ['R5', 'F3', 'n = 5 (directa)', '3'],
+          ['R6', 'F3', 'n = 6 (directa)', '4'],
+          ['R7', 'F4', 'n = 5 (recibe x = 10)', '15'],
+          ['R8', 'F4', 'n = 6 (recibe x = 12)', '17'],
+          ['R9', 'F5', 'n = 5 (recibe x = 15)', '12'],
+          ['R10', 'F5', 'n = 6 (recibe x = 18)', '15'],
+          ['R11', 'F6', 'n = 5 (recibe x = 3)', '9'],
+          ['R12', 'F6', 'n = 6 (recibe x = 4)', '12'],
+          ['R13', 'F7', 'n = 5 (recibe x = 15)', '30'],
+          ['R14', 'F7', 'n = 6 (recibe x = 17)', '34'],
+          ['R15', 'F8', 'n = 5 (recibe x = 12)', '18'],
+          ['R16', 'F8', 'n = 6 (recibe x = 15)', '21'],
+          ['R17', 'F9', 'n = 5 (recibe x = 9)', '5'],
+          ['R18', 'F9', 'n = 6 (recibe x = 12)', '8'],
+        ],
+      },
+      {
+        id: 'tolerancias',
+        nombre: 'tolerancias',
+        x: 40, y: 310, w: 500,
+        descripcion: 'Limites fisicos de cada subsistema: debe superar aguanta_max sin tocar fusible_corte',
+        clave: 'id',
+        columnas: ['id', 'subsistema', 'funcion_id', 'entrada', 'normal', 'aguanta_max', 'fusible_corte'],
+        filas: subsistemas.map((s) => [
+          s.id,
+          s.nombre,
+          s.funcionId,
+          String(s.entrada),
+          String(s.normal),
+          String(s.aguantaMax),
+          String(s.fusibleCorte),
+        ]),
+      },
+    ],
     relaciones: [
       { desde: 'resultados', campo: 'funcion_id', hasta: 'funciones' },
       { desde: 'tolerancias', campo: 'funcion_id', hasta: 'funciones' },
-      { desde: 'colas_filtro', campo: 'tolerancia_id', hasta: 'tolerancias' },
     ],
   };
 }
@@ -548,22 +699,20 @@ function esquemaParaDatos(estado: Record<string, unknown>) {
 
 const CAMARAS: CamaraDef[] = [
   { n: 1, id: 'nucleo', nombre: 'SALA DEL NUCLEO', sector: 'N-01', que: 'las tres torres del nucleo y el pulso' },
-  { n: 2, id: 'filtro', nombre: 'CONDUCTO Y FILTRO', sector: 'N-02', que: 'el movimiento de la pila y las cintas de cola' },
+  { n: 2, id: 'pila', nombre: 'PILA DE EJECUCION', sector: 'N-02', que: 'el flujo de llamadas entre niveles (LIFO)' },
 ];
 
 function escenaNucleo(
-  parte: number,
   armadasCount: number,
   saboteadasCount: number,
   abierta: string | null,
-  f: number
+  f: number,
 ): string[] {
   const nivelAbierto = abierta && PIEZAS[abierta] ? PIEZAS[abierta].carpeta : null;
   const colDron = nivelAbierto === 'nucleo' ? 6 : nivelAbierto === 'medio' ? 17 : nivelAbierto === 'base' ? 28 : 4 + (f * 5) % 26;
 
   const bobina = (i: number) => {
-    if (parte === 2) return f % 2 === 0 ? '|###|' : '|[!]|';
-    if (saboteadasCount > 0 && i === 2) return f % 2 === 0 ? '|*!*|' : '|!#!|';
+    if (saboteadasCount > 0 && i >= 1) return f % 2 === 0 ? '|*!*|' : '|!#!|';
     return (f + i) % 2 === 0 ? '|/\\/|' : '|\\/\\|';
   };
 
@@ -591,136 +740,86 @@ function escenaNucleo(
     '  ::::::::::::::::::::::::::::::::::',
     '                                    ',
     tira(
-      parte === 1
-        ? `  armadas: ${armadasCount}/9 · ${saboteadasCount > 0 ? 'pulso alterado' : 'flujo estable'}`
-        : '  blindaje activo · 3 cintas en guardia',
+      `  armadas: ${armadasCount}/9 · ${saboteadasCount > 0 ? 'dependencia alterada' : 'flujo original'}`,
       ANCHO_CAMARA,
     ),
   ]);
 }
 
-function escenaFiltro(
-  parte: number,
-  colasCount: { A: number; B: number; C: number; total: number },
-  f: number
-): string[] {
-  if (parte === 1) {
-    const paso = f % 6;
-    const bajando = paso < 3;
-    const pisoActivo = bajando ? paso : 5 - paso;
-    const flecha = bajando ? 'v' : '^';
+function escenaPila(f: number): string[] {
+  const paso = f % 6;
+  const bajando = paso < 3;
+  const pisoActivo = bajando ? paso : 5 - paso;
+  const flecha = bajando ? 'v' : '^';
 
-    const caja = (piso: number, etq: string) => {
-      const activo = piso === pisoActivo;
-      const marca = activo ? (bajando ? '>>' : '<<') : '  ';
-      const luz = activo ? '(*)' : '( )';
-      return tira(`    ${marca} | ${luz} ${etq.padEnd(10)} | ${activo ? flecha : ' '}`, ANCHO_CAMARA);
-    };
-
-    return lienzo([
-      '       .--------------------.       ',
-      caja(0, 'NIVEL A'),
-      tira(`       |       ${pisoActivo === 0 ? flecha : '|'}            |`, ANCHO_CAMARA),
-      caja(1, 'NIVEL B'),
-      tira(`       |       ${pisoActivo === 1 ? flecha : '|'}            |`, ANCHO_CAMARA),
-      caja(2, 'NIVEL C'),
-      "       '--------------------'       ",
-      '                                    ',
-      tira(
-        bajando
-          ? '     [v] BAJANDO POR LA PILA...    '
-          : '     [^] SUBIENDO RESULTADOS...    ',
-        ANCHO_CAMARA,
-      ),
-      '                                    ',
-      '  ==================================',
-      '  ::::::::::::::::::::::::::::::::::',
-      '                                    ',
-      tira('  el fondo se resuelve primero.', ANCHO_CAMARA),
-    ]);
-  }
-
-  const cinta = (n: number, desfase: number) => {
-    if (n <= 0) return '........';
-    const carriles = Array(8).fill('.');
-    for (let k = 0; k < Math.min(n, 3); k++) {
-      const pos = (f + desfase + k * 3) % 8;
-      carriles[pos] = '#';
-    }
-    return carriles.join('');
+  const caja = (piso: number, etq: string) => {
+    const activo = piso === pisoActivo;
+    const marca = activo ? (bajando ? '>>' : '<<') : '  ';
+    const luz = activo ? '(*)' : '( )';
+    return tira(`    ${marca} | ${luz} ${etq.padEnd(10)} | ${activo ? flecha : ' '}`, ANCHO_CAMARA);
   };
 
-  const scan = f % 2 === 0 ? '|!|' : '|:|';
-  const rodillos = f % 2 === 0 ? 'o-o-o-o-' : '-o-o-o-o';
-
   return lienzo([
+    '       .--------------------.       ',
+    caja(0, 'NIVEL A'),
+    tira(`       |       ${pisoActivo === 0 ? flecha : '|'}            |`, ANCHO_CAMARA),
+    caja(1, 'NIVEL B'),
+    tira(`       |       ${pisoActivo === 1 ? flecha : '|'}            |`, ANCHO_CAMARA),
+    caja(2, 'NIVEL C'),
+    "       '--------------------'       ",
     '                                    ',
-    tira(`  COLA-A [${cinta(colasCount.A, 0)}]${scan}->[NUC]`, ANCHO_CAMARA),
-    tira(`         ${rodillos}                   `, ANCHO_CAMARA),
-    tira(`  COLA-B [${cinta(colasCount.B, 2)}]${scan}->[MED]`, ANCHO_CAMARA),
-    tira(`         ${rodillos}                   `, ANCHO_CAMARA),
-    tira(`  COLA-C [${cinta(colasCount.C, 4)}]${scan}->[BAS]`, ANCHO_CAMARA),
-    tira(`         ${rodillos}                   `, ANCHO_CAMARA),
+    tira(
+      bajando
+        ? '     [v] APILANDO LLAMADAS...       '
+        : '     [^] RETORNANDO VALORES...      ',
+      ANCHO_CAMARA,
+    ),
     '                                    ',
-    tira(`  ESCANER ${scan}  formados: ${colasCount.total}/3`, ANCHO_CAMARA),
     '  ==================================',
     '  ::::::::::::::::::::::::::::::::::',
     '                                    ',
-    tira('  1o->M1 · 2o->M2 · 3o->M3 (FIFO).', ANCHO_CAMARA),
+    tira('  el fondo se resuelve primero.', ANCHO_CAMARA),
   ]);
 }
 
 function vistaDeCamaras(estado: Record<string, unknown>) {
-  const parte = numero(estado, 'parte') || 1;
   const armadas = (estado.armadas as Record<string, boolean>) ?? {};
   const armadasCount = Object.keys(armadas).filter((k) => armadas[k]).length;
   const enganos = (estado.enganos as Record<string, string>) ?? {};
   const saboteadasCount = Object.keys(enganos).length;
   const abierta = (estado.abierta as string | null) ?? null;
-  const pcks = paquetesDe(estado);
-  const colasCount = {
-    A: pcks.filter((p) => p.cola === 'COLA-A').length,
-    B: pcks.filter((p) => p.cola === 'COLA-B').length,
-    C: pcks.filter((p) => p.cola === 'COLA-C').length,
-    total: pcks.length,
-  };
 
   return circuitoCerrado(CAMARAS, estado, (cam) => {
     const escena: Escena = cam.id === 'nucleo'
       ? {
           fotogramas: [0, 1, 2, 3, 4, 5].map((f) =>
-            escenaNucleo(parte, armadasCount, saboteadasCount, abierta, f),
+            escenaNucleo(armadasCount, saboteadasCount, abierta, f),
           ),
           ritmo: 300,
         }
       : {
-          fotogramas: [0, 1, 2, 3, 4, 5].map((f) => escenaFiltro(parte, colasCount, f)),
+          fotogramas: [0, 1, 2, 3, 4, 5].map((f) => escenaPila(f)),
           ritmo: 260,
         };
     const rotulos: Rotulo[] = [
-      { texto: parte === 1 ? 'PARTE 1 · PILA' : 'PARTE 2 · COLAS', tono: parte === 1 ? 'neutro' : 'alerta' },
       { texto: `ARMADAS ${armadasCount}/9`, tono: armadasCount === 9 ? 'ok' : 'neutro' },
+      { texto: `SABOTAJES ${saboteadasCount}`, tono: saboteadasCount > 0 ? 'alerta' : 'neutro' },
     ];
-    if (parte === 2) {
-      rotulos.push({ texto: `EN COLA ${colasCount.total}/3`, tono: colasCount.total === 3 ? 'ok' : 'neutro' });
-    }
     return {
       escena,
       rotulos,
-      clave: `${cam.n}:${parte}:${armadasCount}:${saboteadasCount}:${abierta ?? '-'}:${colasCount.A}-${colasCount.B}-${colasCount.C}`,
+      clave: `${cam.n}:${armadasCount}:${saboteadasCount}:${abierta ?? '-'}`,
     };
   });
 }
 
-// ---------- Visualizador de Documentos para PantallaView ----------
+// ---------- Visualizador de Documentos `.fn` para PantallaView ----------
 
 function vistaDeCodigo(estado: Record<string, unknown>) {
-  const parte = numero(estado, 'parte') || 1;
   const armadas = (estado.armadas as Record<string, boolean>) ?? {};
   const enganos = (estado.enganos as Record<string, string>) ?? {};
   const abiertaRaw = (estado.abierta as string | null) ?? null;
   const abiertaKey = abiertaRaw && PIEZAS[abiertaRaw] ? abiertaRaw : null;
-  const pcks = paquetesDe(estado);
 
   const carpetas = CARPETAS.map((c) => ({
     nombre: c,
@@ -743,46 +842,29 @@ function vistaDeCodigo(estado: Record<string, unknown>) {
   const enganada = enganos[pz.nombre];
   const lineas: { n: number; texto: string; cursor: boolean }[] = [];
 
-  lineas.push({ n: 1, texto: `recibe ${pz.param}`, cursor: false });
-  if (pz.carpeta === 'base') {
-    lineas.push({
-      n: 2,
-      texto: estaArmada ? `devuelve ${pz.cuentaPar}` : 'devuelve [ ??? ]',
-      cursor: !enganada,
-    });
-    if (enganada) {
-      lineas.push({ n: 3, texto: `sabotaje -> devuelve ${enganada}`, cursor: true });
+  if (!estaArmada) {
+    lineas.push({ n: 1, texto: 'recibe n', cursor: false });
+    if (pz.carpeta === 'nucleo') {
+      lineas.push({ n: 2, texto: '[firma sellada en nucleo · no editable]', cursor: false });
+      lineas.push({ n: 3, texto: 'x = [ ??? ](n)', cursor: false });
+      lineas.push({ n: 4, texto: 'comprobacion: [ ??? ]', cursor: false });
+      lineas.push({ n: 5, texto: 'devuelve [ ??? ]', cursor: true });
+    } else if (pz.carpeta === 'medio') {
+      lineas.push({ n: 2, texto: 'x = [ ??? ](n)', cursor: false });
+      lineas.push({ n: 3, texto: 'comprobacion: [ ??? ]', cursor: false });
+      lineas.push({ n: 4, texto: 'devuelve [ ??? ]', cursor: true });
+    } else {
+      lineas.push({ n: 2, texto: 'devuelve [ ??? ]', cursor: true });
     }
   } else {
-    lineas.push({
-      n: 2,
-      texto: estaArmada ? `x = ${pz.llama}(n)` : 'x = [ ??? ](n)',
-      cursor: false,
-    });
-    lineas.push({
-      n: 3,
-      texto: estaArmada ? `si x es par   -> devuelve ${pz.cuentaPar}` : 'si x es par   -> devuelve [ ??? ]',
-      cursor: !enganada,
-    });
-    lineas.push({
-      n: 4,
-      texto: estaArmada ? `si x es impar -> devuelve ${pz.cuentaImpar}` : 'si x es impar -> devuelve [ ??? ]',
-      cursor: !enganada,
+    pz.lineasArmada.forEach((txt, idx) => {
+      const esUltima = idx === pz.lineasArmada.length - 1;
+      lineas.push({ n: idx + 1, texto: txt, cursor: esUltima && !enganada });
     });
     if (enganada) {
-      lineas.push({ n: 5, texto: `sabotaje -> devuelve ${enganada}`, cursor: true });
-    }
-  }
-
-  if (parte === 2) {
-    const deEsteNivel = pcks.filter((p) => p.nivel === pz.carpeta);
-    if (deEsteNivel.length > 0) {
-      const txt = deEsteNivel
-        .map((p) => (p.firma !== undefined ? `${p.etiqueta} ${p.valor} (sig:${p.firma})` : `${p.etiqueta} ${p.valor}`))
-        .join(', ');
       lineas.push({
         n: lineas.length + 1,
-        texto: `cola en espera -> [ ${txt} ]`,
+        texto: `sabotaje activo -> devuelve ${enganada}`,
         cursor: true,
       });
     }
@@ -803,49 +885,46 @@ function vistaDeCodigo(estado: Record<string, unknown>) {
   };
 }
 
-function ayuda(parte: number): ResultadoComando {
+function ayuda(): ResultadoComando {
   return {
     bloques: [
       texto(
         [
-          'abrir <pieza>                   — inspeccionar un documento en Pantalla',
-          'sondear <pieza> <numero>        — probar una funcion y ver que rama toma. Gratis',
-          'armar <pieza> <operacion>       — registrar formula de funcion base',
-          'armar <pieza> llama <hija> luego <operacion> — registrar funcion intermedia o maestra',
-          'estado                          — ver avance de armado y sabotaje',
-          'reiniciar                       — limpiar sabotajes o colas (conserva lo armado)',
-          ...(parte === 1
-            ? [
-                'enganar <pieza> <operacion>     — intervenir una funcion descubierta',
-                'ejecutar                        — probar si las 3 caracteristicas entran por su hueco. No es gratis',
-              ]
-            : [
-                'colas                           — ver los paquetes formados para M1, M2 y M3',
-                'encolar <etiqueta> <valor> [sig]— formar paquete en cola (NUC, CTL o SEN)',
-                'vaciar                          — limpiar los paquetes formados',
-                'disparar                        — desencolar en orden FIFO y atacar las 3 caracteristicas. No es gratis',
-              ]),
+          'abrir <pieza>                                — ver un archivo .fn en Pantalla',
+          'sondear <pieza> <numero>                     — correr una funcion y ver su traza. Gratis',
+          'armar <pieza> <operacion>                    — reconstruir una funcion de base/',
+          'armar <pieza> llama <hija> luego <operacion> — reconstruir una funcion de medio/ o nucleo/',
+          'enganar <pieza> <operacion>                  — alterar una dependencia ya armada',
+          'probar                                       — simular el ciclo en los 3 sistemas. Gratis',
+          'ejecutar                                     — lanzar el sabotaje real al nucleo. No es gratis',
+          'reiniciar                                    — quitar los sabotajes (conserva lo armado)',
+          'estado                                       — ver piezas armadas y sabotajes activos',
           ...AYUDA_CAMARAS,
         ],
         'Comandos disponibles',
       ),
       texto(
         [
-          'Las funciones de medio/ y nucleo/ cambian su operacion segun si el valor',
-          'que reciben es PAR o IMPAR.',
+          'El codigo del robot esta partido en tres niveles: `nucleo/` llama a `medio/`,',
+          'y `medio/` llama a `base/`. Cuando se ejecuta una funcion maestra, la llamada',
+          'baja por la Pila hasta el fondo y los valores de retorno suben de vuelta.',
           '',
-          'En operacion normal, la paridad que sale de base/ encierra al sistema en',
-          'una rama que el seguro del robot bloquea. Para colarte por el hueco tienes',
-          'que calcular como invertir o conservar la paridad para caer exactamente',
-          'entre `aguanta_max` y `fusible_corte` con la paridad que pide Datos.',
+          'Al inicio cada archivo `.fn` tiene su interior oculto con `[ ??? ]`.',
+          'Cruza lo que devuelve `sondear` con las tablas de Datos para reconstruirlo',
+          'usando `armar`. Al armar una pieza, Pantalla podra leer su codigo completo.',
         ],
-        'El hueco y el fusible',
+        'Como descompilar las funciones',
       ),
       texto(
         [
-          parte === 1
-            ? 'Para superar esta parte hay que vulnerar el hueco de las 3 caracteristicas a la vez: superar `aguanta_max`, no tocar `fusible_corte` y entrar con la paridad del hueco.'
-            : 'El robot procesa las 3 caracteristicas en orden FIFO (1er paquete -> M1, 2o -> M2, 3o -> M3). Forma los 3 paquetes cumpliendo las reglas de `colas_filtro` y usa `disparar`.',
+          'Las 3 funciones maestras de `nucleo/` estan selladas y no se pueden editar,',
+          'asi que tienes que colapsarlas enganando a las funciones de las que dependen.',
+          '',
+          'Algunas funciones comprueban lo que les devuelve su dependencia y bloquean',
+          'cualquier valor fuera de lugar, pero otras tienen malas practicas al programar',
+          'y no comprueban el retorno. Lee el codigo armado en Pantalla para descubrir',
+          'donde falta la comprobacion, usa `enganar`, verifica con `probar` y confirma',
+          'con Datos que las 3 salidas superen `aguanta_max` sin quemar `fusible_corte`.',
         ],
         'Condicion de victoria',
       ),
@@ -857,18 +936,15 @@ export const nucleo: ModuloFase = {
   key: 'fase-4-nucleo',
 
   proyectar(role: Role, ctx) {
-    const parte = numero(ctx.estado, 'parte') || 1;
-
     switch (role) {
       case 'DATOS':
         return {
-          titulo: parte === 1
-            ? 'Nucleo · funciones y tolerancias del robot'
-            : 'Nucleo · funciones, tolerancias y filtrado de colas',
-          nota: parte === 1
-            ? 'Tu tienes que funciones existen, sus salidas para entradas pares e impares, y la ventana entre `aguanta_max` y `fusible_corte` con la paridad del hueco que rompe cada caracteristica.'
-            : 'El robot activo el blindaje y cambio el ciclo de tolerancias: ha aparecido la tabla `colas_filtro` en tu esquema. Revisa las ventanas actuales de M1, M2 y M3.',
-          lienzo: { w: 1000, h: 550 },
+          titulo: 'Manual del nucleo · funciones y tolerancias del robot',
+          nota: 'Tu tienes el catalogo de funciones, que devuelve cada una en operacion normal '
+              + 'y los limites fisicos de los 3 subsistemas (`aguanta_max` y `fusible_corte`). '
+              + 'No ves las carpetas ni las comprobaciones del codigo: cuando Pantalla te cante '
+              + 'que salio en una prueba, tu le dices si supera `aguanta_max` sin quemar el fusible.',
+          lienzo: { w: 1000, h: 520 },
           ...esquemaParaDatos(ctx.estado),
         };
 
@@ -877,9 +953,10 @@ export const nucleo: ModuloFase = {
           salidas: ctx.salidas,
           camaras: vistaDeCamaras(ctx.estado),
           codigo: vistaDeCodigo(ctx.estado),
-          nota: 'Tu ves el nucleo por circuito cerrado, el arbol de carpetas y el documento abierto '
-              + 'con sus ramas par e impar. Cuanto aguanta el robot, donde salta el fusible y que '
-              + 'paridad pide cada hueco lo tiene Datos. Quien escribe no ve nada: cantaselo.',
+          nota: 'Tu ves el nucleo por circuito cerrado, el arbol de carpetas y el archivo `.fn` '
+              + 'abierto. Al armar una funcion se revela su codigo y que comprobaciones hace '
+              + '(o cuales olvido hacer). Cuanto aguanta el robot y donde salta el fusible lo '
+              + 'tiene Datos. Quien escribe no ve nada: cantaselo.',
         };
 
       case 'TERMINAL':
@@ -900,11 +977,9 @@ export const nucleo: ModuloFase = {
     const [verbo, ...resto] = cmd.split(' ');
     const arg = resto.join(' ');
 
-    const parte = numero(ctx.estado, 'parte') || 1;
     const armadas = { ...((ctx.estado.armadas as Record<string, boolean>) ?? {}) };
     const enganos = { ...((ctx.estado.enganos as Record<string, string>) ?? {}) };
-    const paquetes = [...paquetesDe(ctx.estado)];
-    const caracteristicas = caracteristicasDe(ctx.estado);
+    const subsistemas = subsistemasDe(ctx.estado);
 
     const mando = mandoDeCamaras(CAMARAS, verbo, arg, ctx.estado);
     if (mando) return mando;
@@ -912,7 +987,7 @@ export const nucleo: ModuloFase = {
     switch (verbo) {
       case 'ayuda':
       case 'help':
-        return ayuda(parte);
+        return ayuda();
 
       case 'abrir': {
         if (!arg) return { bloques: [error('Falta la pieza. `abrir <pieza>`.')] };
@@ -926,8 +1001,7 @@ export const nucleo: ModuloFase = {
         };
       }
 
-      case 'sondear':
-      case 'probar': {
+      case 'sondear': {
         const partes = arg.split(/\s+/).filter(Boolean);
         if (partes.length < 2) {
           return { bloques: [error('Formato: `sondear <pieza> <numero>`.')] };
@@ -953,11 +1027,11 @@ export const nucleo: ModuloFase = {
         const trazaLineas: string[] = [];
         for (const paso of res.traza) {
           const estaArmada = !!armadas[paso.pieza];
-          const paridadSalida = esPar(paso.salida) ? 'PAR' : 'IMPAR';
-          const desc = estaArmada
-            ? `${paso.pieza}(${paso.entrada}) [rama ${paso.rama}] -> ${paso.salida} (${paridadSalida})`
-            : `[pieza sin armar](${paso.entrada}) [rama ${paso.rama}] -> ${paso.salida} (${paridadSalida})`;
-          trazaLineas.push(`  [${paso.nivel.padEnd(6)}] ${desc}`);
+          const nombreMostrar = estaArmada ? paso.pieza : `${paso.pieza} [sin armar]`;
+          const estadoPaso = paso.bloqueado
+            ? `-> ${paso.comprobacion}`
+            : `-> devuelve ${paso.salida}${paso.esEnganada ? ' (saboteada)' : ''} [${paso.comprobacion}]`;
+          trazaLineas.push(`  [${paso.nivel.padEnd(6)}] ${nombreMostrar}(${paso.entrada}) ${estadoPaso}`);
         }
 
         return {
@@ -966,13 +1040,13 @@ export const nucleo: ModuloFase = {
             texto(
               [
                 `Sondeo de ${piezaNombre}(${num})`,
-                `Resultado devuelto: ${res.salida} (${esPar(res.salida) ? 'PAR' : 'IMPAR'})`,
+                res.bloqueado
+                  ? `Resultado: BLOQUEADO POR VALIDACION (${res.motivoBloqueo})`
+                  : `Resultado devuelto: ${res.salida}`,
                 `Profundidad de Pila: ${nivelDesc}`,
                 '',
-                'Traza de ejecucion (LIFO):',
+                'Traza de ejecucion en la Pila (LIFO):',
                 ...trazaLineas,
-                '',
-                'Observa que rama (par o impar) tomo cada nivel y comparalo con las tablas de Datos.',
               ],
               'Resultado del sondeo',
             ),
@@ -987,7 +1061,7 @@ export const nucleo: ModuloFase = {
               error('Falta la especificacion.'),
               texto([
                 'Para base: `armar <pieza> <operacion>`.',
-                'Para medio/nucleo: `armar <pieza> llama <otra> luego <operacion>`.',
+                'Para medio/nucleo: `armar <pieza> llama <hija> luego <operacion>`.',
               ]),
             ],
           };
@@ -1003,17 +1077,20 @@ export const nucleo: ModuloFase = {
 
         if (pieza.carpeta === 'base') {
           if (tokens.includes('llama')) {
-            return { bloques: [error(`«${piezaNombre}» vive en base/: nunca llama a nadie. Usa: \`armar ${piezaNombre} <operacion>\`.`)] };
+            return {
+              bloques: [
+                error(`«${piezaNombre}» vive en base/: nunca llama a nadie. Usa: \`armar ${piezaNombre} <operacion>\`.`),
+              ],
+            };
           }
-          const opTokens = tokens.slice(1);
-          const expr = opTokens.join(' ');
+          const expr = tokens.slice(1).join(' ');
           if (!expr) return { bloques: [error(`Falta la operacion para ${piezaNombre}.`)] };
 
-          if (!validarArmado(expr, pieza)) {
+          if (!coincideFormula(expr, pieza.evalFn)) {
             return {
               bloques: [
-                error(`La formula «${expr}» no coincide con las respuestas del robot para ${piezaNombre}.`),
-                texto(['Verifica con `sondear` y con la tabla de resultados de Datos.']),
+                error(`La formula «${expr}» no coincide con el comportamiento de ${piezaNombre}.`),
+                texto(['Verifica con `sondear` y con la tabla `resultados` de Datos.']),
               ],
             };
           }
@@ -1024,84 +1101,83 @@ export const nucleo: ModuloFase = {
             bloques: [
               texto(
                 [
-                  `[OK] Estructura de ${piezaNombre}.fn confirmada: devuelve ${pieza.cuentaPar}.`,
-                  'El documento ahora muestra su codigo en Pantalla.',
-                ],
-                'Pieza armada',
-              ),
-            ],
-          };
-        } else {
-          const idxLlama = tokens.indexOf('llama');
-          if (idxLlama === -1 || idxLlama !== 1 || !tokens[idxLlama + 1]) {
-            return {
-              bloques: [
-                error(`«${piezaNombre}» vive en ${pieza.carpeta}/: debe llamar a otra funcion.`),
-                texto([`Sintaxis: \`armar ${piezaNombre} llama <hija> luego <operacion>\`.`]),
-              ],
-            };
-          }
-
-          const hijaPropuesta = tokens[idxLlama + 1].replace(/\.fn$/, '').toLowerCase();
-          if (hijaPropuesta !== pieza.llama) {
-            return {
-              bloques: [
-                error(`«${piezaNombre}» no llama a «${hijaPropuesta}».`),
-                texto(['Recuerda: nucleo/ llama a medio/, y medio/ llama a base/. Usa `sondear` para ver la Pila.']),
-              ],
-            };
-          }
-
-          let opTokens = tokens.slice(idxLlama + 2);
-          if (opTokens[0] === 'luego') opTokens = opTokens.slice(1);
-          const expr = opTokens.join(' ');
-          if (!expr) {
-            return { bloques: [error(`Falta la operacion despues de llamar a ${hijaPropuesta}.`)] };
-          }
-
-          if (!validarArmado(expr, pieza)) {
-            return {
-              bloques: [
-                error(`La formula «${expr}» no coincide con ninguna rama de ${piezaNombre}.`),
-                texto(['Revisa en la tabla `resultados` de Datos que devuelve cuando recibe un valor par o impar.']),
-              ],
-            };
-          }
-
-          armadas[piezaNombre] = true;
-          return {
-            estado: { ...ctx.estado, armadas, abierta: piezaNombre },
-            bloques: [
-              texto(
-                [
-                  `[OK] Estructura de ${piezaNombre}.fn confirmada:`,
-                  `  · llama a ${pieza.llama}(n)`,
-                  `  · si x es par   -> devuelve ${pieza.cuentaPar}`,
-                  `  · si x es impar -> devuelve ${pieza.cuentaImpar}`,
-                  'El documento completo ahora es visible en Pantalla.',
+                  `[OK] Codigo de ${piezaNombre}.fn reconstruido: devuelve ${pieza.formula}.`,
+                  'El archivo completo y sus comprobaciones ya son visibles en Pantalla.',
                 ],
                 'Pieza armada',
               ),
             ],
           };
         }
+
+        const idxLlama = tokens.indexOf('llama');
+        if (idxLlama === -1 || idxLlama !== 1 || !tokens[idxLlama + 1]) {
+          return {
+            bloques: [
+              error(`«${piezaNombre}» vive en ${pieza.carpeta}/: depende de otra funcion.`),
+              texto([`Sintaxis: \`armar ${piezaNombre} llama <hija> luego <operacion>\`.`]),
+            ],
+          };
+        }
+
+        const hijaPropuesta = tokens[idxLlama + 1].replace(/\.fn$/, '').toLowerCase();
+        if (hijaPropuesta !== pieza.llama) {
+          return {
+            bloques: [
+              error(`«${piezaNombre}» no llama a «${hijaPropuesta}».`),
+              texto(['Recuerda: nucleo/ llama a medio/, y medio/ llama a base/. Usa `sondear` para ver la Pila.']),
+            ],
+          };
+        }
+
+        let opTokens = tokens.slice(idxLlama + 2);
+        if (opTokens[0] === 'luego') opTokens = opTokens.slice(1);
+        const expr = opTokens.join(' ');
+        if (!expr) {
+          return { bloques: [error(`Falta la operacion despues de llamar a ${hijaPropuesta}.`)] };
+        }
+
+        if (!coincideFormula(expr, pieza.evalFn)) {
+          return {
+            bloques: [
+              error(`La operacion «${expr}» no coincide con lo que hace ${piezaNombre} tras recibir el valor de ${pieza.llama}.`),
+              texto(['Revisa en la tabla `resultados` de Datos que recibe y que devuelve.']),
+            ],
+          };
+        }
+
+        armadas[piezaNombre] = true;
+        return {
+          estado: { ...ctx.estado, armadas, abierta: piezaNombre },
+          bloques: [
+            texto(
+              [
+                `[OK] Codigo de ${piezaNombre}.fn reconstruido:`,
+                ...pieza.lineasArmada.map((l) => `  · ${l}`),
+                'Revisa en Pantalla que comprobaciones hace y cuales olvido hacer.',
+              ],
+              'Pieza armada',
+            ),
+          ],
+        };
       }
 
       case 'enganar':
       case 'sabotear': {
-        if (parte === 2) {
-          return {
-            bloques: [
-              error('El robot ha blindado las funciones con colas de inspeccion.'),
-              texto(['En la Parte 2 debes infiltrar paquetes usando `encolar` y lanzarlos con `disparar`.']),
-            ],
-          };
-        }
-
         const tokens = arg.split(/\s+/).filter(Boolean);
         const piezaNombre = tokens[0]?.replace(/\.fn$/, '').toLowerCase();
         if (!piezaNombre || !(piezaNombre in PIEZAS)) {
           return { bloques: [error('Formato: `enganar <pieza> <operacion>`.')] };
+        }
+
+        const pieza = PIEZAS[piezaNombre];
+        if (pieza.carpeta === 'nucleo') {
+          return {
+            bloques: [
+              error(`No puedes modificar «${piezaNombre}»: las funciones maestras de nucleo/ tienen la firma sellada.`),
+              texto(['Debes sabotear una funcion dependiente en `medio/` o `base/` cuyo retorno no sea comprobado.']),
+            ],
+          };
         }
 
         if (!armadas[piezaNombre]) {
@@ -1127,368 +1203,115 @@ export const nucleo: ModuloFase = {
           bloques: [
             texto(
               [
-                `[OK] Sabotaje infiltrado en ${piezaNombre}.fn: ahora devolvera «${expr}».`,
-                'Usa `sondear` sobre la funcion maestra para verificar que el resultado caiga en el hueco sin quemar el fusible.',
+                `[OK] Sabotaje inyectado en ${piezaNombre}.fn: ahora devolvera «${expr}».`,
+                'Usa `probar` o `sondear` para verificar si el cambio pasa las comprobaciones de la Pila y pregunta a Datos si cae en rango.',
               ],
-              'Funcion enganada',
+              'Dependencia intervenida',
             ),
           ],
         };
       }
 
-      case 'ejecutar':
-      case 'aplicar': {
-        if (parte === 2) {
-          return nucleo.ejecutar(`disparar ${arg}`, ctx);
-        }
-
-        const sinArmar = caracteristicas.filter(
-          (c) => !armadas[c.piezaA] && !armadas[c.piezaB] && !armadas[c.piezaC],
-        );
-        if (sinArmar.length > 0) {
-          return {
-            bloques: [
-              error(`Falta descubrir funciones en ${sinArmar.length} de las 3 cadenas del robot.`),
-              texto(['Debes armar al menos una funcion en cada una de las 3 cadenas antes de ejecutar el sabotaje.']),
-            ],
-          };
-        }
-
-        const evaluaciones = caracteristicas.map((c) => {
-          const r = ejecutarCadena(c.piezaA, c.entrada, enganos);
-          const imp = evaluarImpacto(c, r.salida);
-          return { c, salida: r.salida, rota: imp.rota, motivo: imp.motivo };
+      case 'probar':
+      case 'simular': {
+        const filasSim = subsistemas.map((s) => {
+          const res = ejecutarCadena(s.piezaA, s.entrada, enganos);
+          const pasos = res.traza
+            .map((p) => (p.bloqueado ? `${p.pieza}=BLOQUEO` : `${p.pieza}=${p.salida}`))
+            .join(' -> ');
+          const salidaTxt = res.bloqueado ? 'BLOQUEADO' : String(res.salida);
+          const estadoInterno = res.bloqueado
+            ? `BLOQUEADO: ${res.motivoBloqueo}`
+            : 'PASO LIMPIO (sin bloqueo interno)';
+          return [s.id, `${s.piezaA}(${s.entrada})`, pasos, salidaTxt, estadoInterno];
         });
 
-        const rotasCount = evaluaciones.filter((e) => e.rota).length;
-
-        if (rotasCount === caracteristicas.length) {
-          const semillaActual = numero(ctx.estado, 'semilla');
-          const nuevaSemilla = siguienteSemilla(semillaActual);
-
-          return {
-            estado: {
-              ...ctx.estado,
-              parte: 2,
-              semilla: nuevaSemilla,
-              enganos: {},
-              abierta: null,
-              paquetes: [],
-            },
-            bloques: [
-              tabla(
-                'Impacto en las 3 caracteristicas (Parte 1 superada)',
-                ['id', 'funcion', 'resultado', 'estado'],
-                evaluaciones.map((e) => [
-                  e.c.id,
-                  `${e.c.piezaA}(${e.c.entrada})`,
-                  `${e.salida} (${esPar(e.salida) ? 'PAR' : 'IMPAR'})`,
-                  e.motivo,
-                ]),
-              ),
-              exito('LAS 3 CARACTERISTICAS COLAPSARON · Sabotaje inicial confirmado', [
-                'Los tres sistemas entraron exactamente por el hueco de paridad sin disparar el fusible.',
-                '',
-                '[!] ALERTA DEL ROBOT: "INFILTRACION EN LOS 3 REGULADORES DE PARIDAD."',
-                '[!] "ROTANDO VENTANAS DE TOLERANCIA Y ACTIVANDO BLINDAJE POR COLAS (FIFO)."',
-                '',
-                '--- PASO A LA PARTE 2 ---',
-                '1. Ha aparecido la 4a tabla (`colas_filtro`) en el esquema de Datos.',
-                '2. Si el robot rozo limites, las ventanas de `tolerancias` pueden haberse ajustado para este nuevo ciclo: pidele a Datos que las verifique.',
-                '3. Encola 3 paquetes en orden FIFO (1er paquete -> M1, 2o -> M2, 3o -> M3) y usa `disparar`.',
-              ]),
-            ],
-          };
-        }
-
-        return {
-          ...rechazo(
-            ctx,
-            `Solo ${rotasCount} de las 3 caracteristicas entraron por el hueco vulnerable. Revisa en Datos el limite inferior, el fusible de corte y la paridad exigida.`,
-            { armadas, enganos },
-          ),
-          bloques: [
-            tabla(
-              'Resultado de la ejecucion',
-              ['id', 'funcion', 'resultado', 'diagnostico'],
-              evaluaciones.map((e) => [
-                e.c.id,
-                `${e.c.piezaA}(${e.c.entrada})`,
-                `${e.salida} (${esPar(e.salida) ? 'PAR' : 'IMPAR'})`,
-                e.rota ? 'HUECO VULNERADO (ROTA)' : 'BLOQUEADO / FUERA DE HUECO',
-              ]),
-            ),
-            ...rechazo(
-              ctx,
-              `Solo ${rotasCount} de las 3 caracteristicas entraron por su hueco vulnerable.`,
-              { armadas, enganos },
-            ).bloques,
-          ],
-        };
-      }
-
-      case 'colas': {
-        if (parte === 1) {
-          return { bloques: [error('El blindaje por colas todavia no esta activo (aparece en la Parte 2).')] };
-        }
         return {
           bloques: [
             tabla(
-              'Paquetes formados en orden FIFO (1o->M1, 2o->M2, 3o->M3)',
-              ['turno', 'destino_ciclo', 'cola', 'paquete'],
-              [0, 1, 2].map((i) => {
-                const c = caracteristicas[i];
-                const p = paquetes[i];
-                return [
-                  `${i + 1}o`,
-                  `${c.id} (${c.piezaA})`,
-                  p ? p.cola : '—',
-                  p
-                    ? p.firma !== undefined
-                      ? `${p.etiqueta} ${p.valor} (sig:${p.firma})`
-                      : `${p.etiqueta} ${p.valor}`
-                    : '(pendiente)',
-                ];
-              }),
+              'Simulacion de la Pila en los 3 subsistemas',
+              ['id', 'llamada', 'recorrido_pila', 'salida', 'comprobaciones_internas'],
+              filasSim,
             ),
             texto([
-              'Consulta la tabla `colas_filtro` y las ventanas actuales de `tolerancias` en Datos.',
-              'Usa `encolar <etiqueta> <valor> [firma]` para formar los 3 paquetes.',
+              'Compara cada `salida` que paso limpio con la tabla `tolerancias` de Datos:',
+              'debe superar `aguanta_max` y quedar por debajo de `fusible_corte`.',
+              'Probar es gratis. Cuando los 3 subsistemas esten listos, usa `ejecutar`.',
             ]),
           ],
         };
       }
 
-      case 'encolar': {
-        if (parte === 1) {
-          return { bloques: [error('Las colas se activan en la Parte 2. En la Parte 1 usa `enganar` y `ejecutar`.')] };
-        }
-
-        if (paquetes.length >= 3) {
+      case 'ejecutar':
+      case 'desplegar':
+      case 'aplicar': {
+        const sinArmar = subsistemas.filter(
+          (s) => !armadas[s.piezaA] && !armadas[s.piezaB] && !armadas[s.piezaC],
+        );
+        if (sinArmar.length > 0) {
           return {
             bloques: [
-              error('Ya hay 3 paquetes formados para las 3 caracteristicas (M1, M2 y M3).'),
-              texto(['Usa `disparar` para procesarlos o `vaciar` si quieres volver a formarlos.']),
+              error(`Falta mapear funciones en ${sinArmar.length} de las 3 cadenas del robot.`),
+              texto(['Debes armar al menos una funcion en cada una de las 3 cadenas antes de ejecutar el ataque.']),
             ],
           };
         }
 
-        const tokens = arg.split(/\s+/).filter(Boolean);
-        if (tokens.length < 2) {
-          return { bloques: [error('Formato: `encolar <etiqueta> <valor> [firma]` (etiquetas: NUC, CTL, SEN).')] };
-        }
-
-        const etiqueta = tokens[0].toUpperCase();
-        const valor = Number(tokens[1]);
-
-        if (!Number.isFinite(valor) || !Number.isInteger(valor)) {
-          return { bloques: [error('El valor debe ser un numero entero.')] };
-        }
-
-        const destinoCar = caracteristicas[paquetes.length];
-
-        if (etiqueta === 'NUC') {
-          if (valor < -100 || valor > 100) {
-            return { bloques: [error('COLA-A rechazo el paquete: el valor debe estar entre -100 y 100.')] };
-          }
-          paquetes.push({ cola: 'COLA-A', etiqueta: 'NUC', nivel: 'nucleo', valor });
-          return {
-            estado: { ...ctx.estado, paquetes },
-            bloques: [
-              texto([
-                `[OK] Paquete #${paquetes.length} [ NUC ${valor} ] admitido en COLA-A (ira hacia ${destinoCar.id}).`,
-                `Paquetes listos: ${paquetes.length} de 3.`,
-              ]),
-            ],
-          };
-        } else if (etiqueta === 'CTL') {
-          // COLA-B (medio): múltiplo de 5 entre -50 y 50
-          if (valor % 5 !== 0) {
-            return {
-              bloques: [
-                error('COLA-B rechazo el paquete: no cumple los requisitos de entrada.'),
-                texto(['Pide a Datos que revise la tabla colas_filtro para COLA-B.']),
-              ],
-            };
-          }
-          if (valor < -50 || valor > 50) {
-            return {
-              bloques: [
-                error('COLA-B rechazo el paquete: valor fuera del rango permitido.'),
-                texto(['Pide a Datos que revise el rango en colas_filtro.']),
-              ],
-            };
-          }
-          paquetes.push({ cola: 'COLA-B', etiqueta: 'CTL', nivel: 'medio', valor });
-          return {
-            estado: { ...ctx.estado, paquetes },
-            bloques: [
-              texto([
-                `[OK] Paquete #${paquetes.length} [ CTL ${valor} ] admitido en COLA-B (ira hacia ${destinoCar.id}).`,
-                `Paquetes listos: ${paquetes.length} de 3.`,
-              ]),
-            ],
-          };
-        } else if (etiqueta === 'SEN') {
-          if (tokens.length < 3) {
-            return { bloques: [error('COLA-C exige firma de seguridad: `encolar SEN <valor> <firma>`.')] };
-          }
-          const firma = Number(tokens[2]);
-
-          if (valor % 3 !== 0 || Math.abs(valor % 2) !== 1 || firma !== valor + 7) {
-            return {
-              bloques: [
-                error('COLA-C rechazo el paquete: no cumple las reglas de maxima seguridad.'),
-                texto(['Datos tiene las condiciones exactas en colas_filtro.']),
-              ],
-            };
-          }
-
-          paquetes.push({ cola: 'COLA-C', etiqueta: 'SEN', nivel: 'base', valor, firma });
-          return {
-            estado: { ...ctx.estado, paquetes },
-            bloques: [
-              texto([
-                `[OK] Paquete #${paquetes.length} [ SEN ${valor} (sig:${firma}) ] admitido en COLA-C (ira hacia ${destinoCar.id}).`,
-                `Paquetes listos: ${paquetes.length} de 3.`,
-              ]),
-            ],
-          };
-        } else {
-          return { bloques: [error(`Etiqueta desconocida «${etiqueta}». Usa NUC, CTL o SEN.`)] };
-        }
-      }
-
-      case 'vaciar': {
-        return {
-          estado: { ...ctx.estado, paquetes: [] },
-          bloques: [texto(['Las colas de inspeccion han sido vaciadas (0 de 3 paquetes).'])],
-        };
-      }
-
-      case 'disparar':
-      case 'procesar':
-      case 'desplegar': {
-        if (parte === 1) {
-          return { bloques: [error('En la Parte 1 debes usar `ejecutar`.')] };
-        }
-
-        if (paquetes.length < 3) {
-          return {
-            bloques: [
-              error(`Faltan paquetes en las colas: llevas ${paquetes.length} de 3.`),
-              texto(['Debes encolar 3 paquetes (en orden FIFO para M1, M2 y M3) antes de disparar.']),
-            ],
-          };
-        }
-
-        // Comprobar conocimiento de la Pila en cada cadena según la cola usada
-        for (let i = 0; i < 3; i++) {
-          const c = caracteristicas[i];
-          const p = paquetes[i];
-          if (p.cola === 'COLA-C' && !armadas[c.piezaC]) {
-            return {
-              bloques: [
-                error(`La seguridad de la Pila intercepto el paquete #${i + 1} (${c.id}) en COLA-C.`),
-                texto([`Para entrar por base/ en ${c.id} debes haber armado «${c.piezaC}» primero.`]),
-              ],
-            };
-          }
-          if (p.cola === 'COLA-B' && (!armadas[c.piezaC] || !armadas[c.piezaB])) {
-            return {
-              bloques: [
-                error(`La seguridad de la Pila intercepto el paquete #${i + 1} (${c.id}) en COLA-B.`),
-                texto([`Para entrar por medio/ en ${c.id} debes haber armado «${c.piezaC}» y «${c.piezaB}».`]),
-              ],
-            };
-          }
-          if (p.cola === 'COLA-A' && (!armadas[c.piezaC] || !armadas[c.piezaB] || !armadas[c.piezaA])) {
-            return {
-              bloques: [
-                error(`La seguridad de la Pila intercepto el paquete #${i + 1} (${c.id}) en COLA-A.`),
-                texto([`COLA-A tiene entrada facil pero exige haber armado toda la cadena de ${c.id}: «${c.piezaC}», «${c.piezaB}» y «${c.piezaA}».`]),
-              ],
-            };
-          }
-        }
-
-        // Desencolar en orden FIFO (paquete 0 -> M1, paquete 1 -> M2, paquete 2 -> M3)
-        // Cada nivel evalúa su rama par o impar según el valor que le entra!
-        const resultadosP2 = caracteristicas.map((c, i) => {
-          const p = paquetes[i];
-          const fnC = PIEZAS[c.piezaC];
-          const fnB = PIEZAS[c.piezaB];
-          const fnA = PIEZAS[c.piezaA];
-
-          // 1. Fondo (C)
-          let valC = evalPiezaReal(fnC, c.entrada);
-          if (p.cola === 'COLA-C') valC = p.valor;
-
-          // 2. Medio (B): toma la rama par o impar según valC
-          let valB = evalPiezaReal(fnB, valC);
-          if (p.cola === 'COLA-B') valB += p.valor;
-
-          // 3. Nucleo (A): toma la rama par o impar según valB
-          let valA = evalPiezaReal(fnA, valB);
-          if (p.cola === 'COLA-A') valA += p.valor;
-
-          const imp = evaluarImpacto(c, valA);
-          return { c, p, valC, valB, valA, rota: imp.rota, motivo: imp.motivo };
+        const evaluaciones = subsistemas.map((s) => {
+          const res = ejecutarCadena(s.piezaA, s.entrada, enganos);
+          const imp = evaluarImpactoSubsistema(s, res);
+          return { s, res, rota: imp.rota, estado: imp.estado };
         });
 
-        const rotasCount = resultadosP2.filter((r) => r.rota).length;
+        const rotasCount = evaluaciones.filter((e) => e.rota).length;
 
-        if (rotasCount === 3) {
+        if (rotasCount === subsistemas.length) {
           return {
             resuelto: true,
             bloques: [
               tabla(
-                'Colapso total de las 3 caracteristicas (FIFO -> LIFO)',
-                ['turno', 'caracteristica', 'cola_usada', 'salida_final', 'estado'],
-                resultadosP2.map((r, i) => [
-                  `${i + 1}o`,
-                  r.c.id,
-                  r.p.cola,
-                  `${r.valA} (${esPar(r.valA) ? 'PAR' : 'IMPAR'})`,
-                  r.motivo,
+                'Colapso de los 3 subsistemas del nucleo',
+                ['id', 'subsistema', 'llamada', 'salida_final', 'diagnostico'],
+                evaluaciones.map((e) => [
+                  e.s.id,
+                  e.s.nombre,
+                  `${e.s.piezaA}(${e.s.entrada})`,
+                  String(e.res.salida),
+                  e.estado,
                 ]),
               ),
-              exito('NUCLEO SABOTEADO · El blindaje y los 3 sistemas han colapsado', [
-                'Los 3 paquetes atravesaron las colas de inspeccion en orden FIFO, burlaron',
-                'los reguladores de paridad y entraron exactamente por el hueco antes del fusible.',
+              exito('NUCLEO SABOTEADO · Los 3 subsistemas del robot han colapsado', [
+                'Habeis explotado las malas practicas de programacion en las funciones dependientes:',
+                '  · En M1: `presion` comprobaba a `carga`, pero `reactor` no comprobaba a `presion`.',
+                '  · En M2: `escudo` vigilaba a `valvula`, pero `valvula` validaba antes de llamar a `pulso` y no comprobaba su retorno.',
+                '  · En M3: `latido` verificaba a `flujo` llamando a la misma dependencia `freno` sin comprobar su tope maximo.',
                 '',
-                'Traccion, hidraulica y enfriamiento quedaron fuera de combate sin que',
-                'el filtro ni los fusibles de emergencia pudieran detener la infiltracion.',
-                '',
-                'Habeis dominado las Funciones con Ramas, la Pila de Llamadas y las Colas de Filtrado.',
+                'Una funcion es tan segura como las comprobaciones que hace sobre lo que le devuelven sus dependencias.',
               ]),
             ],
           };
         }
 
+        const detalleFallo = rechazo(
+          ctx,
+          `Solo ${rotasCount} de los 3 subsistemas colapsaron. Revisa en Pantalla si una validacion interna bloqueo el cambio y verifica con Datos los limites aguanta_max y fusible_corte.`,
+          { armadas, enganos },
+        );
+
         return {
-          ...rechazo(
-            ctx,
-            `Solo ${rotasCount} de las 3 caracteristicas entraron por su hueco vulnerable. Las colas fueron purgadas.`,
-            { armadas, paquetes: [] },
-          ),
+          ...detalleFallo,
           bloques: [
             tabla(
-              'Resultado del disparo en las 3 caracteristicas',
-              ['turno', 'caracteristica', 'cola_usada', 'salida_final', 'diagnostico'],
-              resultadosP2.map((r, i) => [
-                `${i + 1}o`,
-                r.c.id,
-                r.p.cola,
-                `${r.valA} (${esPar(r.valA) ? 'PAR' : 'IMPAR'})`,
-                r.rota ? 'HUECO VULNERADO (ROTA)' : 'BLOQUEADO / FUERA DE HUECO',
+              'Resultado de la ejecucion en el nucleo',
+              ['id', 'llamada', 'salida', 'diagnostico'],
+              evaluaciones.map((e) => [
+                e.s.id,
+                `${e.s.piezaA}(${e.s.entrada})`,
+                e.res.bloqueado ? 'BLOQUEADO' : String(e.res.salida),
+                e.estado,
               ]),
             ),
-            ...rechazo(
-              ctx,
-              `Solo ${rotasCount} de las 3 caracteristicas entraron por su hueco vulnerable. Las colas fueron purgadas.`,
-              { armadas, paquetes: [] },
-            ).bloques,
+            ...detalleFallo.bloques,
           ],
         };
       }
@@ -1499,27 +1322,18 @@ export const nucleo: ModuloFase = {
         const cuarentenaHasta = ctx.estado.cuarentenaHasta;
         const semilla = numero(ctx.estado, 'semilla');
 
-        if (parte === 1) {
-          return {
-            estado: { parte: 1, semilla, armadas, enganos: {}, abierta: null, fallos, cuarentenaHasta },
-            bloques: [
-              texto([
-                'Sabotajes limpiados. Las piezas que ya habiais armado se conservan.',
-                'Los despliegues fallidos y la cuarentena no se borran.',
-              ], 'Reinicio de Parte 1'),
-            ],
-          };
-        } else {
-          return {
-            estado: { parte: 2, semilla, armadas, enganos: {}, paquetes: [], abierta: null, fallos, cuarentenaHasta },
-            bloques: [
-              texto([
-                'Colas de inspeccion vaciadas. Las piezas armadas se conservan.',
-                'Los fallos y la cuarentena siguen vigentes.',
-              ], 'Reinicio de Parte 2'),
-            ],
-          };
-        }
+        return {
+          estado: { semilla, armadas, enganos: {}, abierta: null, fallos, cuarentenaHasta },
+          bloques: [
+            texto(
+              [
+                'Sabotajes limpiados. Las funciones que ya habiais armado se conservan.',
+                'Los intentos fallidos y la cuarentena siguen vigentes.',
+              ],
+              'Reinicio de sabotajes',
+            ),
+          ],
+        };
       }
 
       case 'estado':
@@ -1527,12 +1341,12 @@ export const nucleo: ModuloFase = {
         const armadasLista = Object.keys(armadas).filter((k) => armadas[k]);
         return {
           bloques: [
-            lista('Estado', [
-              { clave: 'Etapa', valor: `Parte ${parte} (${parte === 1 ? 'Sabotaje en la Pila' : 'Blindaje de Colas'})` },
+            lista('Estado del nucleo', [
               { clave: 'Piezas armadas', valor: `${armadasLista.length} de 9 (${armadasLista.join(', ') || 'ninguna'})` },
-              ...(parte === 1
-                ? [{ clave: 'Sabotajes activos', valor: Object.keys(enganos).map((k) => `${k} -> ${enganos[k]}`).join(', ') || 'ninguno' }]
-                : [{ clave: 'Paquetes en cola (FIFO)', valor: `${paquetes.length} de 3` }]),
+              {
+                clave: 'Sabotajes activos',
+                valor: Object.keys(enganos).map((k) => `${k} -> ${enganos[k]}`).join(', ') || 'ninguno',
+              },
             ]),
           ],
         };
