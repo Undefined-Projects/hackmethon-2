@@ -1,87 +1,99 @@
-# Fase 5 — La Memoria del Robot (SQL)
+# Fase 5 — La Memoria del Robot (Pseudo-SQL en Español)
 
 > Ya vulneramos su sistema, pero estamos dentro de lo que **él creó**, no dentro de **él**.
 > Para llegar a su conciencia hace falta la llave con la que lo construyeron. El robot la partió en
 > tres y la escondió en su memoria. Después, para destruirlo, hay que vaciar esa memoria… y tiene copias.
 
 Código: [`boveda.ts`](hackmethon-servidor/server/src/phases/boveda.ts) (fase) y
-[`sqlmini.ts`](hackmethon-servidor/server/src/phases/sqlmini.ts) (mini-motor SQL propio). Clave: `fase-5-boveda`.
+[`sqlmini.ts`](hackmethon-servidor/server/src/phases/sqlmini.ts) (mini-motor tolerante de Pseudo-SQL en español). Clave: `fase-5-boveda`.
 
 ## Misma terminal, dos partes
 
-La Terminal habla **SQL real acotado** en las dos partes. La Parte 2 añade `DELETE` y los comandos de triggers.
+La Terminal usa **Pseudo-SQL natural en español** (con palabras clave en MAYÚSCULAS, sin asteriscos crípticos ni necesidad de comillas en palabras sueltas, y tolerante con las palabras de unión).
 
 | | Parte 1 · Encontrar las tres llaves | Parte 2 · Borrar la memoria |
 |---|---|---|
-| **Datos** | 4 tablas, columnas (con **2 errores**), encargo y formato de llave | Mapa nuevo: respaldos, bitácora, catálogo de triggers |
+| **Datos** | 4 tablas, columnas (con **2 errores**), encargo y formato de llave | Mapa nuevo: respaldos, bitácora, catálogo de reglas (`sistema_triggers`) |
 | **Pantalla** | Resultados + cámaras `ARCHIVO` (embudo) y `LLAVERO` (3 ranuras) | Resultados + cámaras `MEMORIA` (filas que quedan) y `RESPALDOS` (lo que se restaura solo) |
-| **Terminal** | `SELECT`, `CREATE VIEW`, `DROP VIEW`, `vistas`, `probar` | `SELECT`, `DELETE`, `DROP TRIGGER`, `DISABLE TRIGGER`, `reiniciar` |
-| **Victoria** | Las 3 llaves confirmadas con `probar` → pasa a la Parte 2 | **Ninguna fila** en ninguna de las 8 tablas de datos |
+| **Terminal** | `CONTAR`, `MOSTRAR TODO`, `MOSTRAR DISTINTOS`, `GUARDAR` (3 formas), `PROBAR`, `consultas` | `MOSTRAR TODO`, `CONTAR`, `BORRAR TODO DE` / `VACIAR`, `APAGAR REGLA` / `BORRAR REGLA`, `reiniciar` |
+| **Victoria** | Las 3 llaves confirmadas con `PROBAR` → pasa a la Parte 2 | **Ninguna fila** en ninguna de las 8 tablas de datos |
 
 Cada parte tiene **2400 entradas** (1800+120+180+300 en la Parte 1; 1300+100+120+120+450+100+120+90 en la Parte 2).
 
-## Parte 1 — la maraña
+---
 
-**Tablas:** `fragmentos` (1800: `id, codigo, modulo_id, propietario_id, etiqueta_id, referencia_id, estado, nivel, tamano`),
-`modulos` (120), `propietarios` (180), `etiquetas` (300).
+## Sintaxis del Pseudo-SQL en Español (`consultas`)
 
-**Las tres llaves** son una sola fila cada una y **todas** cumplen el formato (`codigo LIKE 'LLV-____-K7'` y `tamano = 64`).
-Cada una se distingue por rasgos que viven en **otras** tablas, así que hay que unir:
+Al escribir `ayuda`, la terminal muestra los comandos básicos y destaca el comando **`consultas`**, que despliega un manual amplio dividido en 4 bloques:
 
-| Llave | Rasgos | Une con |
-|---|---|---|
-| 1 | `estado = activo` · propietario es un **subsistema** · módulo del sistema `nucleo` | `modulos`, `propietarios` |
-| 2 | `nivel` **más alto de toda la memoria** · etiqueta de categoría `seguridad` · módulo con enlace `externo` | `modulos`, `etiquetas` |
-| 3 | `estado = archivado` · **apunta** (`referencia_id`) a un fragmento con etiqueta `llave_maestra` | `fragmentos` (auto-JOIN), `etiquetas` |
+### 1. Consultas (cómo pedir y cruzar datos)
+- **`CONTAR <tabla> [JUNTO CON ...] [DONDE ...]`**
+  Cuenta cuántas filas cumplen la condición sin traerlas.
+  - Ejemplo: `CONTAR fragmentos DONDE estado ES activo`
+- **`MOSTRAR TODO DE <tabla> [JUNTO CON ...] [DONDE ...]`**
+  Trae todas las columnas de las filas que cumplan (máximo 12 filas en pantalla). También se pueden pedir columnas específicas: `MOSTRAR id, codigo, nivel DE fragmentos`.
+- **`MOSTRAR DISTINTOS <columna> DE <tabla>`**
+  Muestra todos los valores diferentes que existen realmente en esa columna (ideal para verificar si el diccionario de Datos omitió algún valor).
+  - Ejemplo: `MOSTRAR DISTINTOS tipo DE propietarios`
+- **`... JUNTO CON <otra_tabla> [, <otra_tabla_2>]`** (también acepta `UNIR CON`)
+  Une tablas relacionadas automáticamente sin obligar al jugador a escribir llaves foráneas (`ON a.id = b.id`). Si un fragmento apunta a otro (`referencia_id`), se puede unir con `referencia`.
+- **`... ORDENADO POR <columna> DESCENDENTE [LIMITE <n>]`**
+  Ordena de mayor a menor (`DESCENDENTE`) o de menor a mayor (`ASCENDENTE`) y limita cuántas filas se muestran.
 
-**Señuelos** (≈ 40 + 45 de relleno que imita): cada uno es la llave con **un único rasgo cambiado**:
-prefijo `LLU`, sufijo `K9`, tres cifras, `k7` en minúscula, tamaño 63/65, estado distinto, propietario `robot`,
-nivel 8 ó 5, etiquetas con nombre parecido (`llave-maestra`, `llave_maestro`, `Llave_maestra`…), referencias a esas etiquetas, etc.
-La construcción **ejecuta las consultas de solución** y descarta cualquier intruso: cada llave es única por construcción,
-no por suerte de la semilla.
+### 2. Filtros después de `DONDE` (cómo comparar valores)
+- **`columna ES valor`** / **`columna NO ES valor`**
+- **`columna MAYOR QUE n`** / **`columna MENOR QUE n`** (también `MAYOR O IGUAL A`, `MENOR O IGUAL A`)
+- **`columna TIENE FORMATO LLV-####-K7`** (`#` exige un número del 0 al 9 y `?` cualquier carácter; respeta mayúsculas y minúsculas)
+- **`columna EMPIEZA CON texto`** / **`columna TERMINA CON texto`** / **`columna CONTIENE texto`**
+- **`columna ESTA VACIO`** / **`columna NO ESTA VACIO`**
 
-**«No sabemos si lo que descubrimos está bien»:** el diccionario de Datos tiene una columna `confianza` y **dos errores**
-que solo se descubren preguntando:
+### 3. Operaciones lógicas
+- **`Y`** — Exige que se cumplan todas las condiciones a la vez.
+- **`O`** — Acepta registros que cumplan cualquiera de las condiciones.
+- **`NO`** — Invierte un filtro (`NO ES`, `NO CONTIENE`, `NO TIENE FORMATO`, `NO ESTA VACIO`).
 
-1. `propietarios.tipo` figura como `robot · humano`, pero también existe **`subsistema`** (y la llave 1 es de uno).
-2. `fragmentos.nivel` figura como `1 a 5`, pero llega a **9** (y la llave 2 es nivel 9).
+### 4. Las 3 formas de `GUARDAR` y `PROBAR` (Parte 1)
+1. **Forma 1 (Guardar tu última consulta):**
+   Después de lanzar `MOSTRAR TODO DE fragmentos ...` y ver que devuelve 1 fila:
+   ```text
+   GUARDAR llave1
+   PROBAR llave1
+   ```
+2. **Forma 2 (Guardar escribiendo la consulta con un solo verbo):**
+   ```text
+   GUARDAR llave1 DE fragmentos JUNTO CON modulos, propietarios DONDE ...
+   PROBAR llave1
+   ```
+3. **Forma 3 (Guardar el código o ID que salió en Pantalla):**
+   ```text
+   GUARDAR LLV-4829-K7
+   PROBAR LLV-4829-K7
+   ```
 
-`SELECT tipo, COUNT(*) FROM propietarios GROUP BY tipo` y `SELECT nivel … ORDER BY nivel DESC LIMIT 5` los destapan.
+---
 
-**Guardar y probar:** `CREATE VIEW miLlave AS SELECT …` y `probar miLlave`.
+## Parte 1 — Las 3 llaves y los señuelos
 
-- 0 ó 2+ filas → «todavía no», **sin penalización** (es una ayuda, no un arma).
-- Exactamente una fila que **no** es llave (un señuelo) → **cuarentena creciente** (20 s → 45 s → 90 s). Mismo mensaje para cualquier fallo.
-- Una llave ya confirmada → no penaliza ni suma. La tercera confirmación **no termina la fase**: pasa a la Parte 2.
+Las 3 consultas de solución en Pseudo-SQL son:
+```text
+-- Llave 1:
+MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y estado ES activo Y tipo ES subsistema Y sistema ES nucleo
 
-## Parte 2 — borrar lo que se restaura solo
+-- Llave 2:
+MOSTRAR TODO DE fragmentos JUNTO CON modulos, etiquetas DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y nivel ES 9 Y categoria ES seguridad Y enlace ES externo
 
-**Tablas de datos (8):** `fragmentos` 1300, `modulos` 100, `propietarios` 120, `etiquetas` 120,
-`respaldo_fragmentos` 450 *(copia parcial)*, `respaldo_modulos` 100, `respaldo_propietarios` 120, `bitacora` 90.
-Más el catálogo `sistema_triggers` (10 reglas, solo lectura, **no cuenta**).
+-- Llave 3:
+MOSTRAR TODO DE fragmentos JUNTO CON referencia, etiquetas DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y estado ES archivado Y etiquetas.nombre ES llave_maestra
+```
 
-**Triggers** (el estado de cada uno se lee en `sistema_triggers.accion` / `.activo`):
+**«No sabemos si lo que descubrimos está bien»:** el diccionario de Datos tiene una columna `confianza` y **dos errores** que se descubren consultando:
+1. `propietarios.tipo` figura como `robot · humano`, pero `MOSTRAR DISTINTOS tipo DE propietarios` revela **`subsistema`**.
+2. `fragmentos.nivel` figura como `1 a 5`, pero `MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 5` revela que llega a **9**.
 
-| Trigger | Qué hace | ¿Hay que quitarlo? |
-|---|---|---|
-| `trg_restaurar_frag` | al borrar `fragmentos`, repone lo que tenga copia | uno de los dos del ping-pong |
-| `trg_replicar_respaldo` | al borrar `respaldo_fragmentos`, repone lo que siga en `fragmentos` | …el otro |
-| `trg_restaurar_mod` / `trg_restaurar_prop` | idem con módulos / propietarios | o vaciar antes el respaldo |
-| `trg_latido` | al borrar `bitacora`, añade una fila a `bitacora` | **obligatorio**: si no, nunca queda vacía |
-| `trg_auditoria_etq` | al borrar `etiquetas`, añade una fila a `bitacora` | solo importa el orden |
-| `trg_restaurar_frag_v0` | copia antigua, **desactivada** | no hace nada |
-| `trg_sello_fecha`, `trg_validar_nivel`, `trg_cuenta_prop` | **funcionamiento normal** del robot | **no tocar**: penaliza |
+---
 
-Lo interesante es que **el orden importa**: borrar `fragmentos` repone 450 desde el respaldo; borrar el respaldo repone 450 desde `fragmentos`.
-Hay varias soluciones válidas (quitar triggers, o vaciar primero la copia que no tiene regla propia). Quitar un trigger «inocuo»
-es acusar en falso: cuarentena, como en el resto de fases.
+## Parte 2 — Borrar lo que se restaura solo
 
-**Implementación:** el estado guarda el **log de sentencias aceptadas** y se **reconstruye** cada vez (determinista y pequeño:
-nada de serializar 2400 filas). `reiniciar` vacía el log.
-
-## Qué enseña
-- Una consulta es un **embudo**; `COUNT(*)` antes de pedir filas.
-- `JOIN` (incluido el auto-JOIN) y que un dato puede no estar en la tabla que miras.
-- **Desconfiar del diccionario**: verificar con `GROUP BY` / `ORDER BY` en vez de creerse la documentación.
-- Guardar una consulta como **vista** y reutilizarla.
-- Los **triggers** hacen cosas que no se ven en la consulta, y borrar no siempre borra.
+- **`MOSTRAR TODO DE sistema_triggers`** — Muestra las 10 reglas automáticas del robot.
+- **`APAGAR REGLA <nombre>`** o **`BORRAR REGLA <nombre>`** — Desactiva o elimina un trigger que restaura memoria. Tocar una regla inocua de funcionamiento del robot (`INSERT`/`UPDATE`) activa la cuarentena.
+- **`BORRAR TODO DE <tabla>`** o **`VACIAR <tabla>`** — Vacía una tabla. Cuando las 8 tablas de datos quedan en **0 filas**, se gana la fase.

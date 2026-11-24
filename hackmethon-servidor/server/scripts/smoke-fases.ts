@@ -517,7 +517,7 @@ console.log('\n4) Nucleo Modular · FUNCIONES DEPENDIENTES');
   check((rReset.estado.armadas as any)?.pulso === true, 'pero conserva las piezas armadas');
 }
 
-console.log('\n5) Memoria del Robot · BASES DE DATOS (SQL, dos partes)');
+console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, dos partes)');
 {
   const MW = bovedaPrueba;
   // El reloj avanza entre comandos: las cuarentenas no deben tapar la prueba.
@@ -542,7 +542,12 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (SQL, dos partes)');
   const a = dice(j('ayuda'));
   check(!a.includes('llv-') && !a.includes('k7') && !a.includes('subsistema') && !a.includes('llave_maestra'),
     'la ayuda no lleva ni el formato de la llave ni el encargo: eso es cosa de Datos');
-  check(a.includes('select') && a.includes('create view') && a.includes('probar'), 'la ayuda explica SQL, vistas y probar');
+  check(a.includes('consultas') && a.includes('mostrar todo') && a.includes('guardar') && a.includes('probar'),
+    'la ayuda presenta los comandos en español natural y destaca `consultas`');
+
+  const man = dice(j('consultas'));
+  check(man.includes('1. consultas') && man.includes('2. filtros') && man.includes('3. operaciones logicas') && man.includes('forma 1') && man.includes('forma 2') && man.includes('forma 3'),
+    '`consultas` abre el manual completo con consultas, filtros, logica y las 3 formas de guardar');
 
   // --- el mundo
   const filasP1 = [...MW.MUNDO1.bd.tablas.values()].reduce((n, t) => n + t.filas.length, 0);
@@ -560,110 +565,119 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (SQL, dos partes)');
 
   // --- el embudo, los señuelos y las dos cosas que el diccionario no sabe
   const cuenta = (q: string) => Number(JSON.parse(JSON.stringify(j(q).bloques[0])).filas[0][0]);
-  const conFormato = cuenta("SELECT COUNT(*) FROM fragmentos WHERE codigo LIKE 'LLV-____-K7'");
-  const conTamano = cuenta("SELECT COUNT(*) FROM fragmentos WHERE codigo LIKE 'LLV-____-K7' AND tamano = 64");
+  const conFormato = cuenta('CONTAR fragmentos DONDE codigo TIENE FORMATO LLV-####-K7');
+  const conTamano = cuenta('CONTAR fragmentos DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64');
   check(conFormato > 40 && conTamano < conFormato && conTamano > 3,
     `hay señuelos con formato de llave y el tamano los estrecha (${conFormato} -> ${conTamano})`);
-  const minusc = cuenta("SELECT COUNT(*) FROM fragmentos WHERE codigo LIKE 'LLV-____-k7'");
+  const minusc = cuenta('CONTAR fragmentos DONDE codigo TIENE FORMATO LLV-####-k7');
   check(minusc > 0, `las mayusculas importan: hay ${minusc} señuelo(s) en minuscula`);
+  const empiezaTermina = cuenta('CONTAR fragmentos DONDE codigo EMPIEZA CON LLV- Y codigo TERMINA CON -K7 Y tamano ES 64');
+  check(empiezaTermina >= conTamano, 'EMPIEZA CON y TERMINA CON funcionan sin comillas');
 
-  const tipos = dice(j('SELECT tipo, COUNT(*) FROM propietarios GROUP BY tipo'));
-  check(tipos.includes('subsistema'), 'GROUP BY revela el tercer tipo de propietario...');
+  const tipos = dice(j('MOSTRAR DISTINTOS tipo DE propietarios'));
+  check(tipos.includes('subsistema'), 'MOSTRAR DISTINTOS revela el tercer tipo de propietario...');
   const dic = dice(verPantalla({}));
   check(dic.includes('robot · humano') && !dic.includes('robot · humano · subsistema'),
     '...que el diccionario de Datos no lista (error 1 del diccionario)');
-  check(dice(j('SELECT nivel FROM fragmentos ORDER BY nivel DESC LIMIT 1')).includes('9'),
-    'el nivel maximo real es 9...');
+  check(dice(j('MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 1')).includes('9'),
+    'el nivel maximo real es 9 (ORDENADO POR nivel DESCENDENTE LIMITE 1)...');
   check(dic.includes('"1 a 5"'), '...y el diccionario dice 1 a 5 (error 2 del diccionario)');
 
   // --- errores que enseñan
-  check(dice(j('SELECT * FROM fragmentos f JOIN modulos m ON f.modulo_id = m.id WHERE id = 1')).includes('ambigua'),
+  check(dice(j('MOSTRAR TODO DE fragmentos JUNTO CON modulos, etiquetas DONDE nombre ES algo')).includes('varias tablas'),
     'una columna ambigua se explica');
-  check(dice(j("SELECT * FROM fragmentos WHERE sistema = 'nucleo'")).includes('join'),
-    'pedir una columna de otra tabla sin unirla explica que hay que unir');
-  check(dice(j('SELECT * FROM fragmentos')).includes('demasiadas'), 'pedir todo manda a estrechar, no vuelca la memoria');
-  check(dice(j('buscar en credenciales')).includes('sql'), 'la sintaxis vieja se redirige a SQL');
-  check(dice(j('DELETE FROM fragmentos')).includes('solo lectura'), 'en la Parte 1 la memoria es de solo lectura');
-  check(j('SELECT * FROM fantasma').fallo !== true, 'un error de sintaxis no penaliza');
+  check(dice(j('MOSTRAR TODO DE fragmentos DONDE sistema ES nucleo')).includes('junto con'),
+    'pedir una columna de otra tabla sin unirla explica que hay que usar JUNTO CON');
+  check(dice(j('MOSTRAR TODO DE fragmentos')).includes('demasiadas'), 'pedir todo manda a estrechar, no vuelca la memoria');
+  check(dice(j('BORRAR TODO DE fragmentos')).includes('solo lectura'), 'en la Parte 1 la memoria es de solo lectura');
+  check(j('MOSTRAR TODO DE fantasma').fallo !== true, 'un error de consulta no penaliza');
 
-  // --- vistas y probar
-  check(dice(j('probar nada')).includes('no hay ninguna vista'), 'probar una vista inexistente se explica');
-  j("CREATE VIEW muchas AS SELECT * FROM fragmentos WHERE codigo LIKE 'LLV-%'");
+  // --- las 3 formas de GUARDAR y PROBAR
+  check(dice(j('probar nada')).includes('no hay nada guardado'), 'probar algo inexistente se explica');
+  j('GUARDAR muchas DE fragmentos DONDE codigo EMPIEZA CON LLV-');
   const pm = j('probar muchas');
-  check(pm.fallo !== true && dice(pm).includes('exactamente una'), 'una vista con mas de una fila no se prueba ni penaliza');
+  check(pm.fallo !== true && dice(pm).includes('exactamente una'), 'un guardado con mas de una fila no se prueba ni penaliza');
 
-  const decoy = filaDe(SOLUCIONES[0].replace("p.tipo = 'subsistema'", "p.tipo = 'robot'")).base[0]!;
-  j(`CREATE VIEW senuelo AS SELECT * FROM fragmentos WHERE id = '${decoy.id}'`);
+  const decoy = filaDe(SOLUCIONES[0].replace('tipo ES subsistema', 'tipo ES robot')).base[0]!;
+  j(`GUARDAR senuelo ${decoy.id}`);
   const rd = j('probar senuelo');
   check(rd.fallo === true, 'probar un señuelo (la llave con un rasgo cambiado) penaliza');
   check(dice(rd).includes('cuarentena'), '...y manda a cuarentena');
 
-  // --- confirmar las tres y pasar a la Parte 2
-  SOLUCIONES.forEach((sql, k) => { j(`CREATE VIEW llave${k + 1} AS ${sql}`); });
-  const r1 = j('probar llave1');
-  check(dice(r1).includes('1 de 3'), 'la primera llave se confirma');
-  check(dice(j('probar llave1')).includes('ya estaba'), 'repetir una confirmada no penaliza ni suma');
-  check(dice(j('probar llave2')).includes('2 de 3'), 'la segunda');
-  const r3 = j('probar llave3');
-  check(r3.resuelto !== true && j.estado().parte === 2, 'la tercera NO termina la fase: pasa a la Parte 2');
+  // --- confirmar las tres usando las 3 formas de GUARDAR y pasar a la Parte 2
+  // Forma 1: hacer la consulta con MOSTRAR y luego `GUARDAR llave1`
+  j(SOLUCIONES[0]);
+  j('GUARDAR llave1');
+  const r1 = j('PROBAR llave1');
+  check(dice(r1).includes('1 de 3'), 'Forma 1 (GUARDAR tras consultar): la primera llave se confirma');
+  check(dice(j('PROBAR llave1')).includes('ya estaba'), 'repetir una confirmada no penaliza ni suma');
+
+  // Forma 2: `GUARDAR llave2 DE fragmentos JUNTO CON ... DONDE ...`
+  j(SOLUCIONES[1].replace(/^MOSTRAR TODO /i, 'GUARDAR llave2 '));
+  check(dice(j('PROBAR llave2')).includes('2 de 3'), 'Forma 2 (GUARDAR llave2 DE fragmentos...): la segunda llave se confirma');
+
+  // Forma 3: `GUARDAR <codigo_o_id>` directamente
+  const frag3 = filaDe(SOLUCIONES[2]).base[0]!;
+  j(`GUARDAR ${frag3.codigo}`);
+  const r3 = j(`PROBAR ${frag3.codigo}`);
+  check(r3.resuelto !== true && j.estado().parte === 2, 'Forma 3 (GUARDAR <codigo>): la tercera llave pasa a la Parte 2');
   check(dice(r3).includes('parte 2'), '...y lo dice');
   const dic2 = dice(verPantalla(j.estado()));
   check(dic2.includes('sistema_triggers') && dic2.includes('respaldo_fragmentos') && dic2.includes('"respaldos"'),
     'el diccionario de Datos cambia: tablas de respaldo y catalogo de triggers');
   check((verPantalla(j.estado()).tablas.length) === 4 && verPantalla(j.estado()).titulo !== verPantalla({}).titulo,
     '...con titulo distinto, para que Datos vuelva al mapa');
-  check(dice(j('probar llave1')).includes('ya no hay vistas'), 'la Parte 2 no tiene vistas ni probar');
+  check(dice(j('probar llave1')).includes('no hay que guardar'), 'la Parte 2 no usa guardar ni probar');
 
-  // --- Parte 2: borrar de verdad
-  check(dice(j('DELETE FROM sistema_triggers')).includes('solo lectura'), 'el catalogo de triggers es de solo lectura');
-  const trg = dice(j('SELECT nombre, activo FROM sistema_triggers'));
+  // --- Parte 2: borrar de verdad con comandos naturales
+  check(dice(j('BORRAR TODO DE sistema_triggers')).includes('solo lectura'), 'el catalogo de reglas es de solo lectura');
+  const trg = dice(j('MOSTRAR nombre, activo DE sistema_triggers'));
   check(trg.includes('trg_latido') && trg.includes('trg_restaurar_frag_v0'), 'el catalogo se puede consultar');
 
-  const b1 = dice(j('DELETE FROM fragmentos'));
-  check(b1.includes('repuso 450'), 'borrar fragmentos sin quitar el trigger: 450 filas vuelven solas');
-  const b2 = dice(j('DELETE FROM respaldo_fragmentos'));
-  check(b2.includes('repuso 450'), 'borrar el respaldo mientras la memoria sigue llena: el respaldo se repone (ping-pong)');
+  const b1 = dice(j('BORRAR TODO DE fragmentos'));
+  check(b1.includes('repuso 450'), 'borrar fragmentos sin apagar la regla: 450 filas vuelven solas');
+  const b2 = dice(j('VACIAR respaldo_fragmentos'));
+  check(b2.includes('repuso 450'), 'vaciar el respaldo mientras la memoria sigue llena: el respaldo se repone (ping-pong)');
   check(j.estado().ultimaRepuestas === 450 && (j.estado().repuestas as number) === 900, 'la camara lleva la cuenta de lo restaurado');
 
-  const rr = j('reiniciar');
+  j('reiniciar');
   check(j.estado().restan === 2400 && (j.estado().log as string[]).length === 0, 'reiniciar devuelve la memoria entera');
 
-  const inoc = j('DROP TRIGGER trg_sello_fecha');
-  check(inoc.fallo === true, 'quitar un trigger que el robot necesita penaliza (acusar en falso)');
-  check(j('DROP TRIGGER no_existe').fallo !== true, 'uno que no existe solo se explica');
-  check(j('DROP TRIGGER trg_restaurar_frag_v0').fallo !== true, 'quitar la copia antigua desactivada no cuesta nada');
+  const inoc = j('APAGAR REGLA trg_sello_fecha');
+  check(inoc.fallo === true, 'apagar una regla que el robot necesita penaliza (acusar en falso)');
+  check(j('APAGAR REGLA no_existe').fallo !== true, 'una que no existe solo se explica');
+  check(j('BORRAR REGLA trg_restaurar_frag_v0').fallo !== true, 'quitar la copia antigua desactivada no cuesta nada');
   j('reiniciar');
 
-  const latido = j('DROP TRIGGER trg_restaurar_frag');
-  check(dice(latido).includes('eliminado'), 'quitar un trigger que restaura se acepta');
-  j('DELETE FROM fragmentos'); j('DELETE FROM respaldo_fragmentos');
-  const rb = j('DELETE FROM bitacora');
+  const latido = j('BORRAR REGLA trg_restaurar_frag');
+  check(dice(latido).includes('eliminada'), 'quitar una regla que restaura se acepta');
+  j('BORRAR TODO DE fragmentos'); j('VACIAR respaldo_fragmentos');
+  const rb = j('BORRAR TODO DE bitacora');
   check(dice(rb).includes('anadio 1'),
     'con trg_latido, vaciar la bitacora deja una fila nueva');
-  j('DELETE FROM bitacora');
-  check(cuenta('SELECT COUNT(*) FROM bitacora') === 1, '...y nunca se vacia mientras el trigger siga');
-  j('DROP TRIGGER trg_latido');
-  j('DELETE FROM bitacora');
+  j('VACIAR bitacora');
+  check(cuenta('CONTAR bitacora') === 1, '...y nunca se vacia mientras la regla siga');
+  j('APAGAR REGLA trg_latido');
+  j('VACIAR bitacora');
   // Orden que funciona sin tocar los triggers de modulos/propietarios:
   // vaciar primero el respaldo (sin trigger propio) y luego la tabla.
-  j('DELETE FROM respaldo_modulos'); j('DELETE FROM modulos');
-  j('DELETE FROM respaldo_propietarios'); j('DELETE FROM propietarios');
-  const rq = j('DELETE FROM etiquetas'); // trg_auditoria_etq escribe en bitacora
-  check(dice(rq).includes('bitacora') && j.estado().restan === 1, 'un trigger de auditoria deja una fila en la bitacora');
-  j('DISABLE TRIGGER trg_auditoria_etq');
-  const fin = j('DELETE FROM bitacora');
-  check(fin.resuelto === true, 'con todo vacio y sin triggers que lo rellenen, la fase se resuelve');
+  j('VACIAR respaldo_modulos'); j('VACIAR modulos');
+  j('VACIAR respaldo_propietarios'); j('VACIAR propietarios');
+  const rq = j('VACIAR etiquetas'); // trg_auditoria_etq escribe en bitacora
+  check(dice(rq).includes('bitacora') && j.estado().restan === 1, 'una regla de auditoria deja una fila en la bitacora');
+  j('APAGAR REGLA trg_auditoria_etq');
+  const fin = j('VACIAR bitacora');
+  check(fin.resuelto === true, 'con todo vacio y sin reglas que lo rellenen, la fase se resuelve');
   check(j.estado().restan === 0, '...y la camara marca cero filas');
 
-  // Camino alternativo: quitar los dos triggers del ping-pong y los de las otras.
+  // Camino alternativo: apagar todas las reglas que restauran y vaciar en cualquier orden.
   const k = juega();
-  for (let i = 0; i < 3; i++) SOLUCIONES.forEach((sql, n) => { k(`CREATE VIEW l${n} AS ${sql}`); });
-  k('probar l0'); k('probar l1'); k('probar l2');
-  for (const c of ['DROP TRIGGER trg_restaurar_frag', 'DROP TRIGGER trg_replicar_respaldo', 'DROP TRIGGER trg_restaurar_mod',
-    'DROP TRIGGER trg_restaurar_prop', 'DROP TRIGGER trg_latido', 'DROP TRIGGER trg_auditoria_etq']) k(c);
+  SOLUCIONES.forEach((sql, n) => { k(`GUARDAR l${n} ${sql}`); k(`PROBAR l${n}`); });
+  for (const c of ['APAGAR REGLA trg_restaurar_frag', 'APAGAR REGLA trg_replicar_respaldo', 'APAGAR REGLA trg_restaurar_mod',
+    'APAGAR REGLA trg_restaurar_prop', 'APAGAR REGLA trg_latido', 'APAGAR REGLA trg_auditoria_etq']) k(c);
   let ult: any = null;
-  for (const t of MW.DATOS2) ult = k(`DELETE FROM ${t}`);
-  check(ult.resuelto === true, 'tambien se resuelve quitando todos los que restauran y borrando en cualquier orden');
+  for (const t of MW.DATOS2) ult = k(`VACIAR ${t}`);
+  check(ult.resuelto === true, 'tambien se resuelve apagando todas las reglas que restauran y vaciando en cualquier orden');
 }
 
 // ============================================================

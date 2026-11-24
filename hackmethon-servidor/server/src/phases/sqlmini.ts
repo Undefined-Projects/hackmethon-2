@@ -1,32 +1,30 @@
 // ============================================================
-//  Mini-motor SQL de la Fase 5.
+//  Mini-motor de consultas de la Fase 5 (Pseudo-SQL en español
+//  natural + compatibilidad con SQL clásico).
 //
-//  No ejecuta SQL de verdad: entiende un subconjunto cerrado, sobre
-//  tablas que viven en memoria, y nada más. Eso es una decisión de
-//  seguridad —un equipo escribiendo en una terminal no debe poder
-//  tocar nada que no sea la bóveda de juguete— y también de diseño: lo
-//  que el motor NO entiende se convierte en un error que se explica.
+//  Entiende tanto el enunciado natural en español (Versión B):
+//    CONTAR fragmentos DONDE estado ES activo
+//    MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios
+//      DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64
+//        Y estado ES activo Y tipo ES subsistema Y sistema ES nucleo
+//    MOSTRAR DISTINTOS tipo DE propietarios
+//    MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 5
+//    BORRAR TODO DE fragmentos   /   VACIAR fragmentos
+//    APAGAR REGLA trg_latido     /   BORRAR REGLA trg_restaurar_frag
 //
-//  LO QUE ENTIENDE
-//    SELECT [DISTINCT] cols FROM t [alias]
-//      [INNER|LEFT JOIN t2 [alias] ON a.x = b.y] ...
-//      [WHERE ...] [GROUP BY ...] [ORDER BY ... [DESC]] [LIMIT n]
-//    · cols: *, alias.*, columna, tabla.columna, COUNT(*), AS nombre
-//    · WHERE: = != <> < > <= >=, LIKE (% y _), IN (...), IS [NOT] NULL,
-//             AND / OR / NOT y paréntesis
-//    CREATE VIEW nombre AS SELECT ...   ·   DROP VIEW nombre
-//    DELETE FROM t [WHERE ...]          (con triggers)
-//    DROP TRIGGER nombre   ·   DISABLE TRIGGER nombre
+//  como variantes tolerantes (con o sin palabras de unión DE, EN, CON,
+//  A, QUE, POR) y SQL clásico (SELECT, JOIN, WHERE, GROUP BY, etc.).
 //
-//  Los identificadores no distinguen mayúsculas; los TEXTOS sí: la
-//  fase se apoya en que 'K7' y 'k7' son cosas distintas.
+//  Los nombres de tablas, columnas y palabras clave no distinguen
+//  mayúsculas; los VALORES comparados sí: la fase se apoya en que 'K7'
+//  y 'k7' son cosas distintas.
 // ============================================================
 
 export type Valor = string | number | null;
 export type Fila = Record<string, Valor>;
 export type Tabla = { nombre: string; columnas: string[]; filas: Fila[] };
 
-// ---------- Triggers ----------
+// ---------- Triggers / Reglas ----------
 
 export type EfectoTrigger =
   /** Al borrar, vuelve a insertar las filas borradas que existan en `desde`. */
@@ -76,12 +74,28 @@ export class ErrorSql extends Error {
   }
 }
 
-// ---------- Tokens ----------
+// ---------- Normalización ligera de acentos en identificadores ----------
 
-type Tok = { t: 'str' | 'num' | 'id' | 'sym' | 'fin'; v: string; pos: number };
+function sinAcentos(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// ---------- Tokens ----------
+//
+// Guardamos tanto `v` (en minúsculas y sin acentos, para comparar palabras
+// clave y columnas) como `raw` (con sus mayúsculas originales, para que un
+// valor sin comillas como `LLV-####-K7` o `Llave_maestra` conserve sus
+// mayúsculas exactas).
+
+type Tok = {
+  t: 'str' | 'num' | 'id' | 'sym' | 'fin';
+  v: string;
+  raw: string;
+  pos: number;
+};
 
 const SIMBOLOS2 = ['<=', '>=', '<>', '!='];
-const SIMBOLOS1 = '=<>(),*.;';
+const SIMBOLOS1 = '=<>(),*.;:';
 
 function tokenizar(sql: string): Tok[] {
   const out: Tok[] = [];
@@ -89,41 +103,47 @@ function tokenizar(sql: string): Tok[] {
   while (i < sql.length) {
     const c = sql[i];
     if (/\s/.test(c)) { i++; continue; }
-    if (c === "'") {
+    if (c === "'" || c === '"') {
+      const q = c;
       let j = i + 1;
       let s = '';
       for (;;) {
-        if (j >= sql.length) throw new ErrorSql('Falta cerrar una comilla simple en un texto.');
-        if (sql[j] === "'") {
-          if (sql[j + 1] === "'") { s += "'"; j += 2; continue; }
+        if (j >= sql.length) throw new ErrorSql('Falta cerrar una comilla en un texto.');
+        if (sql[j] === q) {
+          if (sql[j + 1] === q) { s += q; j += 2; continue; }
           break;
         }
         s += sql[j];
         j++;
       }
-      out.push({ t: 'str', v: s, pos: i });
+      out.push({ t: 'str', v: s, raw: s, pos: i });
       i = j + 1;
       continue;
     }
-    if (c === '"') throw new ErrorSql("Los textos van entre comillas simples ('asi'), no dobles.");
+    // Palabras o patrones sin comillas: letras, números, _, -, #, %, ?
+    // (Si empieza por dígito y es solo número, es 'num'; si tiene letras o guiones como 2024-01, es 'id').
     if (/[0-9]/.test(c)) {
-      const m = /^\d+(\.\d+)?/.exec(sql.slice(i))!;
-      out.push({ t: 'num', v: m[0], pos: i });
-      i += m[0].length;
-      continue;
+      const mTok = /^[0-9]+(?:\.[0-9]+)?(?![A-Za-z_#?-])/.exec(sql.slice(i));
+      if (mTok) {
+        out.push({ t: 'num', v: mTok[0], raw: mTok[0], pos: i });
+        i += mTok[0].length;
+        continue;
+      }
     }
-    if (/[A-Za-z_]/.test(c)) {
-      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(sql.slice(i))!;
-      out.push({ t: 'id', v: m[0].toLowerCase(), pos: i });
-      i += m[0].length;
+    if (/[A-Za-z0-9_\u00C0-\u024F#%?-]/.test(c)) {
+      const m = /^[A-Za-z0-9_\u00C0-\u024F#%?-]+/.exec(sql.slice(i))!;
+      const raw = m[0];
+      const v = sinAcentos(raw).toLowerCase();
+      out.push({ t: 'id', v, raw, pos: i });
+      i += raw.length;
       continue;
     }
     const dos = sql.slice(i, i + 2);
-    if (SIMBOLOS2.includes(dos)) { out.push({ t: 'sym', v: dos, pos: i }); i += 2; continue; }
-    if (SIMBOLOS1.includes(c)) { out.push({ t: 'sym', v: c, pos: i }); i++; continue; }
+    if (SIMBOLOS2.includes(dos)) { out.push({ t: 'sym', v: dos, raw: dos, pos: i }); i += 2; continue; }
+    if (SIMBOLOS1.includes(c)) { out.push({ t: 'sym', v: c, raw: c, pos: i }); i++; continue; }
     throw new ErrorSql(`Caracter no valido en la consulta: «${c}».`);
   }
-  out.push({ t: 'fin', v: '', pos: sql.length });
+  out.push({ t: 'fin', v: '', raw: '', pos: sql.length });
   return out;
 }
 
@@ -134,7 +154,7 @@ export type Operando = { t: 'col'; tabla?: string; col: string } | { t: 'lit'; v
 
 export type Expr =
   | { k: 'cmp'; izq: Operando; op: string; der: Operando }
-  | { k: 'like'; izq: Operando; patron: Operando; neg: boolean }
+  | { k: 'like'; izq: Operando; patron: Operando; neg: boolean; modo: 'sql' | 'formato' | 'empieza' | 'termina' | 'contiene' }
   | { k: 'in'; izq: Operando; lista: Operando[]; neg: boolean }
   | { k: 'null'; izq: Operando; neg: boolean }
   | { k: 'and' | 'or'; a: Expr; b: Expr }
@@ -145,7 +165,15 @@ type ItemSel =
   | { tipo: 'col'; ref: RefCol; alias?: string }
   | { tipo: 'count'; alias?: string };
 
-type Union = { tipo: 'inner' | 'left'; tabla: string; alias: string; on: Expr };
+export type Union = {
+  tipo: 'inner' | 'left';
+  tabla: string;
+  alias: string;
+  /** null cuando el jugador usa `JUNTO CON modulos` y deja que el motor
+   *  resuelva la relación automáticamente. */
+  on: Expr | null;
+};
+
 type Orden = { count: boolean; ref?: RefCol; desc: boolean };
 
 export type Select = {
@@ -168,9 +196,35 @@ export type Sentencia =
   | { tipo: 'disable_trigger'; nombre: string };
 
 const RESERVADAS = new Set([
+  // Español
+  'mostrar', 'traer', 'seleccionar', 'ver', 'buscar',
+  'todo', 'todos', 'todas', 'contar', 'distinto', 'distintos', 'distintas', 'unicos', 'diferentes',
+  'de', 'en', 'desde', 'tabla',
+  'junto', 'con', 'unir', 'unido', 'unida', 'uniendo',
+  'donde', 'cuando', 'si', 'que',
+  'y', 'o', 'no',
+  'es', 'son', 'igual', 'distinto', 'diferente', 'mayor', 'menor',
+  'empieza', 'comienza', 'termina', 'acaba', 'contiene', 'incluye',
+  'tiene', 'formato', 'parece', 'como',
+  'esta', 'estan', 'vacio', 'vacia', 'nulo', 'nula',
+  'agrupar', 'agrupado', 'agrupada', 'por',
+  'ordenar', 'ordenado', 'ordenada', 'descendente', 'ascendente',
+  'limite', 'limitar', 'primeros', 'primeras',
+  'guardar', 'crear', 'vista', 'borrar', 'vaciar', 'eliminar', 'quitar', 'apagar', 'desactivar',
+  'regla', 'trigger',
+  // Inglés (SQL clásico)
   'select', 'from', 'where', 'join', 'inner', 'left', 'outer', 'on', 'group', 'by', 'order',
   'limit', 'and', 'or', 'not', 'like', 'in', 'is', 'null', 'as', 'distinct', 'count', 'desc',
-  'asc', 'create', 'view', 'drop', 'delete', 'trigger', 'disable',
+  'asc', 'create', 'view', 'drop', 'delete', 'disable',
+]);
+
+// Palabras que empiezan una cláusula posterior a la tabla o a una condición
+const FIN_CLAUSULA = new Set([
+  'junto', 'unir', 'unido', 'unida', 'uniendo', 'join', 'inner', 'left',
+  'donde', 'where',
+  'agrupar', 'agrupado', 'agrupada', 'group',
+  'ordenar', 'ordenado', 'ordenada', 'order',
+  'limite', 'limitar', 'primeros', 'primeras', 'limit',
 ]);
 
 // ---------- Analizador ----------
@@ -184,231 +238,529 @@ class Parser {
   peek(n = 0): Tok { return this.toks[Math.min(this.i + n, this.toks.length - 1)]; }
   next(): Tok { const t = this.peek(); if (this.i < this.toks.length - 1) this.i++; return t; }
   esKw(k: string, n = 0): boolean { const t = this.peek(n); return t.t === 'id' && t.v === k; }
-  kw(k: string): boolean { if (this.esKw(k)) { this.next(); return true; } return false; }
+  esAlguno(ks: string[], n = 0): boolean { const t = this.peek(n); return t.t === 'id' && ks.includes(t.v); }
+  kw(...ks: string[]): boolean { if (this.esAlguno(ks)) { this.next(); return true; } return false; }
   esSim(s: string, n = 0): boolean { const t = this.peek(n); return t.t === 'sym' && t.v === s; }
   sim(s: string): boolean { if (this.esSim(s)) { this.next(); return true; } return false; }
 
-  esperaKw(k: string, contexto = '') {
-    if (!this.kw(k)) throw this.inesperado(`Falta «${k.toUpperCase()}»${contexto}.`);
+  /** Consume palabras puente opcionales (`DE`, `EN`, `CON`, `A`, `LA`, `EL`, `LAS`, `LOS`). */
+  puente(...ks: string[]) {
+    while (this.esAlguno(ks)) this.next();
   }
+
   esperaSim(s: string, contexto = '') {
     if (!this.sim(s)) throw this.inesperado(`Falta «${s}»${contexto}.`);
   }
-  inesperado(msg: string): ErrorSql {
+  inesperado(msg: string, pistas: string[] = []): ErrorSql {
     const t = this.peek();
-    const visto = t.t === 'fin' ? '(el final de la consulta)' : `«${t.t === 'str' ? `'${t.v}'` : t.v}»`;
-    return new ErrorSql(`${msg} Aqui hay ${visto}.`);
+    const visto = t.t === 'fin' ? '(el final del comando)' : `«${t.t === 'str' ? `'${t.raw}'` : t.raw}»`;
+    return new ErrorSql(`${msg} Aqui hay ${visto}.`, pistas);
   }
-  ident(que: string): string {
+
+  ident(que: string, permitirReservada = false): string {
     const t = this.peek();
-    if (t.t !== 'id' || RESERVADAS.has(t.v)) throw this.inesperado(`Se esperaba ${que}.`);
+    if (t.t !== 'id' || (!permitirReservada && RESERVADAS.has(t.v))) {
+      throw this.inesperado(`Se esperaba ${que}.`);
+    }
     this.next();
     return t.v;
   }
+
   aliasOpcional(): string | undefined {
-    if (this.kw('as')) return this.ident('un alias');
+    if (this.kw('as', 'como')) return this.ident('un alias');
     const t = this.peek();
-    if (t.t === 'id' && !RESERVADAS.has(t.v)) { this.next(); return t.v; }
+    if (t.t === 'id' && !RESERVADAS.has(t.v) && !FIN_CLAUSULA.has(t.v)) {
+      this.next();
+      return t.v;
+    }
     return undefined;
   }
 
   ref(): RefCol {
     const a = this.ident('una columna');
-    if (this.sim('.')) return { tabla: a, col: this.ident('el nombre de la columna') };
+    if (this.sim('.')) return { tabla: a, col: this.ident('el nombre de la columna', true) };
     return { col: a };
   }
 
-  operando(): Operando {
+  /** Lee un operando en el lado IZQUIERDO de una condición (normalmente una columna). */
+  operandoIzq(): Operando {
     const t = this.peek();
-    if (t.t === 'str') { this.next(); return { t: 'lit', v: t.v }; }
+    if (t.t === 'str') { this.next(); return { t: 'lit', v: t.raw }; }
     if (t.t === 'num') { this.next(); return { t: 'lit', v: Number(t.v) }; }
-    if (this.esKw('null')) { this.next(); return { t: 'lit', v: null }; }
-    const r = this.ref();
-    return { t: 'col', tabla: r.tabla, col: r.col };
+    if (this.esAlguno(['null', 'nulo', 'nula', 'vacio', 'vacia'])) {
+      this.next();
+      return { t: 'lit', v: null };
+    }
+    // Permitimos columnas que coincidan con palabras comunes (como 'estado', 'tipo', 'nombre')
+    const a = this.ident('el nombre de una columna', true);
+    if (this.sim('.')) return { t: 'col', tabla: a, col: this.ident('el nombre de la columna', true) };
+    return { t: 'col', col: a };
+  }
+
+  /**
+   * Lee un operando en el lado DERECHO de una condición.
+   * Si es `tabla.columna`, lo trata como columna (para `ON a.id = b.id`);
+   * si es una palabra suelta sin comillas (`activo`, `subsistema`, `LLV-####-K7`),
+   * la trata como valor literal conservando sus mayúsculas (`t.raw`).
+   */
+  operandoDer(): Operando {
+    const t = this.peek();
+    if (t.t === 'str') { this.next(); return { t: 'lit', v: t.raw }; }
+    if (t.t === 'num') { this.next(); return { t: 'lit', v: Number(t.v) }; }
+    if (this.esAlguno(['null', 'nulo', 'nula', 'vacio', 'vacia'])) {
+      this.next();
+      return { t: 'lit', v: null };
+    }
+    if (t.t === 'id') {
+      if (this.esSim('.', 1)) {
+        const tabla = this.next().v;
+        this.next(); // '.'
+        const col = this.ident('el nombre de la columna', true);
+        return { t: 'col', tabla, col };
+      }
+      this.next();
+      // Si es puramente numérico, lo guardamos como número
+      if (/^-?\d+(\.\d+)?$/.test(t.raw)) return { t: 'lit', v: Number(t.raw) };
+      return { t: 'lit', v: t.raw };
+    }
+    throw this.inesperado('Falta el valor con el que comparar.');
   }
 
   or(): Expr {
     let a = this.and();
-    while (this.kw('or')) a = { k: 'or', a, b: this.and() };
+    while (this.kw('or', 'o')) a = { k: 'or', a, b: this.and() };
     return a;
   }
   and(): Expr {
     let a = this.not();
-    while (this.kw('and')) a = { k: 'and', a, b: this.not() };
+    while (this.kw('and', 'y')) a = { k: 'and', a, b: this.not() };
     return a;
   }
   not(): Expr {
-    if (this.kw('not')) return { k: 'not', e: this.not() };
+    if (this.kw('not') || (this.esKw('no') && !this.esOperadorNo())) {
+      if (this.esKw('no')) this.next();
+      return { k: 'not', e: this.not() };
+    }
     return this.pred();
   }
+
+  /** ¿El `NO` actual forma parte de `NO ES`, `NO CONTIENE`, etc.? (Eso va detrás de la columna, no delante). */
+  esOperadorNo(): boolean {
+    return false;
+  }
+
   pred(): Expr {
     if (this.sim('(')) {
       const e = this.or();
       this.esperaSim(')', ' para cerrar el parentesis');
       return e;
     }
-    const izq = this.operando();
-    if (this.kw('is')) {
-      const neg = this.kw('not');
-      this.esperaKw('null', ' tras IS');
+    const izq = this.operandoIzq();
+
+    // `NO ...` detrás de la columna: `estado NO ES activo`, `codigo NO EMPIEZA CON TMP`, `referencia_id NO ESTA VACIO`
+    const negPrefijo = this.kw('not', 'no');
+
+    // `ESTA VACIO` / `ES NULO` / `IS [NOT] NULL`
+    if (this.kw('is', 'esta', 'estan')) {
+      const neg2 = this.kw('not', 'no');
+      const neg = negPrefijo !== neg2;
+      if (!this.kw('null', 'nulo', 'nula', 'vacio', 'vacia')) {
+        throw this.inesperado('Tras ESTA (o IS) va VACIO o NULO.');
+      }
       return { k: 'null', izq, neg };
     }
-    const neg = this.kw('not');
-    if (this.kw('like')) return { k: 'like', izq, patron: this.operando(), neg };
-    if (this.kw('in')) {
-      this.esperaSim('(', ' tras IN');
-      const lista: Operando[] = [this.operando()];
-      while (this.sim(',')) lista.push(this.operando());
-      this.esperaSim(')', ' para cerrar IN');
-      return { k: 'in', izq, lista, neg };
+    if (this.esAlguno(['vacio', 'vacia', 'nulo', 'nula', 'null'])) {
+      this.next();
+      return { k: 'null', izq, neg: negPrefijo };
     }
-    if (neg) throw this.inesperado('Tras NOT va LIKE o IN.');
+
+    // `ES` / `SON` -> puede ser `ES NULO/VACIO`, `ES MAYOR QUE`, `ES IGUAL A`, `ES DISTINTO DE` o `ES <valor>`
+    if (this.kw('es', 'son')) {
+      const neg2 = this.kw('not', 'no');
+      const neg = negPrefijo !== neg2;
+      if (this.kw('null', 'nulo', 'nula', 'vacio', 'vacia')) {
+        return { k: 'null', izq, neg };
+      }
+      if (this.kw('distinto', 'diferente')) {
+        this.puente('de', 'a', 'que');
+        return { k: 'cmp', izq, op: neg ? '=' : '!=', der: this.operandoDer() };
+      }
+      if (this.kw('mayor', 'menor')) {
+        const esMayor = this.toks[this.i - 1].v === 'mayor';
+        const oIgual = this.kw('o') && this.kw('igual');
+        this.puente('que', 'a', 'de');
+        const opBase = esMayor ? (oIgual ? '>=' : '>') : (oIgual ? '<=' : '<');
+        const e: Expr = { k: 'cmp', izq, op: opBase, der: this.operandoDer() };
+        return neg ? { k: 'not', e } : e;
+      }
+      this.kw('igual');
+      this.puente('a', 'que');
+      return { k: 'cmp', izq, op: neg ? '!=' : '=', der: this.operandoDer() };
+    }
+
+    // `IGUAL [A] <valor>`
+    if (this.kw('igual')) {
+      this.puente('a', 'que');
+      return { k: 'cmp', izq, op: negPrefijo ? '!=' : '=', der: this.operandoDer() };
+    }
+
+    // `DISTINTO [DE] <valor>` / `DIFERENTE [DE] <valor>`
+    if (this.kw('distinto', 'diferente')) {
+      this.puente('de', 'a', 'que');
+      return { k: 'cmp', izq, op: negPrefijo ? '=' : '!=', der: this.operandoDer() };
+    }
+
+    // `MAYOR [O IGUAL] [QUE|A] <n>` / `MENOR [O IGUAL] [QUE|A] <n>`
+    if (this.kw('mayor', 'menor')) {
+      const esMayor = this.toks[this.i - 1].v === 'mayor';
+      const oIgual = this.kw('o') && this.kw('igual');
+      this.puente('que', 'a', 'de');
+      const opBase = esMayor ? (oIgual ? '>=' : '>') : (oIgual ? '<=' : '<');
+      const e: Expr = { k: 'cmp', izq, op: opBase, der: this.operandoDer() };
+      return negPrefijo ? { k: 'not', e } : e;
+    }
+
+    // `EMPIEZA [CON|POR] <texto>`
+    if (this.kw('empieza', 'comienza')) {
+      this.puente('con', 'por');
+      return { k: 'like', izq, patron: this.operandoDer(), neg: negPrefijo, modo: 'empieza' };
+    }
+
+    // `TERMINA [CON|EN] <texto>`
+    if (this.kw('termina', 'acaba')) {
+      this.puente('con', 'en', 'por');
+      return { k: 'like', izq, patron: this.operandoDer(), neg: negPrefijo, modo: 'termina' };
+    }
+
+    // `CONTIENE <texto>` / `INCLUYE <texto>`
+    if (this.kw('contiene', 'incluye')) {
+      return { k: 'like', izq, patron: this.operandoDer(), neg: negPrefijo, modo: 'contiene' };
+    }
+
+    // `TIENE FORMATO <patron>` / `FORMATO <patron>` / `PARECE <patron>`
+    if (this.kw('tiene')) {
+      if (!this.kw('formato', 'estructura', 'forma')) {
+        throw this.inesperado('Tras TIENE va FORMATO (ej. codigo TIENE FORMATO LLV-####-K7).');
+      }
+      return { k: 'like', izq, patron: this.operandoDer(), neg: negPrefijo, modo: 'formato' };
+    }
+    if (this.kw('formato', 'parece')) {
+      this.puente('a', 'como');
+      return { k: 'like', izq, patron: this.operandoDer(), neg: negPrefijo, modo: 'formato' };
+    }
+
+    // `COMO` / `LIKE` (acepta tanto comodines SQL % y _ como # y ?)
+    if (this.kw('like', 'como')) {
+      return { k: 'like', izq, patron: this.operandoDer(), neg: negPrefijo, modo: 'formato' };
+    }
+
+    // `EN (a, b, c)` / `IN (a, b, c)`
+    if (this.kw('in', 'en')) {
+      this.esperaSim('(', ' tras EN / IN');
+      const lista: Operando[] = [this.operandoDer()];
+      while (this.sim(',')) lista.push(this.operandoDer());
+      this.esperaSim(')', ' para cerrar la lista');
+      return { k: 'in', izq, lista, neg: negPrefijo };
+    }
+
+    if (negPrefijo) {
+      throw this.inesperado('Tras NO va ES, CONTIENE, EMPIEZA CON, TERMINA CON, TIENE FORMATO o ESTA VACIO.');
+    }
+
     const t = this.peek();
     if (t.t === 'sym' && ['=', '!=', '<>', '<', '>', '<=', '>='].includes(t.v)) {
       this.next();
-      return { k: 'cmp', izq, op: t.v === '<>' ? '!=' : t.v, der: this.operando() };
+      return { k: 'cmp', izq, op: t.v === '<>' ? '!=' : t.v, der: this.operandoDer() };
     }
-    throw this.inesperado('Cada condicion es columna operador valor (=, !=, <, >, LIKE, IN, IS NULL).');
+
+    throw this.inesperado(
+      'Falta la comparacion despues de la columna (ej. ES, NO ES, MAYOR QUE, EMPIEZA CON, TIENE FORMATO).',
+      ['Escribe `consultas` para ver todos los filtros explicados con ejemplos.'],
+    );
   }
 
+  /**
+   * Analiza una consulta que empieza por:
+   * - `MOSTRAR` / `TRAER` / `SELECCIONAR` / `VER` / `BUSCAR` / `SELECT`
+   * - `CONTAR` (atajo directo para `SELECT COUNT(*) FROM ...`)
+   */
   select(): Select {
-    this.esperaKw('select');
-    const distinct = this.kw('distinct');
+    const empiezaContar = this.kw('contar');
+    let distinct = false;
     const cols: ItemSel[] = [];
-    do {
-      if (this.sim('*')) {
-        cols.push({ tipo: 'estrella' });
-      } else if (this.esKw('count')) {
-        this.next();
-        this.esperaSim('(', ' tras COUNT');
-        this.esperaSim('*', ': solo se entiende COUNT(*)');
-        this.esperaSim(')');
-        cols.push({ tipo: 'count', alias: this.aliasOpcional() });
-      } else if (this.peek().t === 'id' && this.esSim('.', 1) && this.esSim('*', 2)) {
-        const tabla = this.ident('una tabla');
-        this.next(); this.next();
-        cols.push({ tipo: 'estrella', tabla });
-      } else {
-        const ref = this.ref();
-        cols.push({ tipo: 'col', ref, alias: this.aliasOpcional() });
-      }
-    } while (this.sim(','));
 
-    this.esperaKw('from', ' tras la lista de columnas');
+    if (empiezaContar) {
+      // `CONTAR [TODO] [DE|EN] <tabla> ...`
+      this.kw('todo', 'todos', 'todas', 'filas', 'registros');
+      this.sim('*');
+      if (this.sim('(')) { this.sim('*'); this.esperaSim(')'); }
+      cols.push({ tipo: 'count', alias: 'total' });
+      this.puente('de', 'en', 'desde', 'from', 'la', 'tabla');
+    } else {
+      if (!this.kw('select', 'seleccionar', 'mostrar', 'traer', 'ver', 'buscar')) {
+        throw this.inesperado('Una consulta empieza por MOSTRAR, TRAER, SELECCIONAR o CONTAR.');
+      }
+      distinct = this.kw('distinct', 'distinto', 'distintos', 'distintas', 'unicos', 'diferentes');
+
+      // Si escriben directamente `MOSTRAR DE fragmentos ...`, asumimos `TODO`
+      if (this.esAlguno(['de', 'en', 'desde', 'from'])) {
+        cols.push({ tipo: 'estrella' });
+      } else {
+        do {
+          if (this.sim('*') || this.kw('todo', 'todos', 'todas')) {
+            cols.push({ tipo: 'estrella' });
+          } else if (this.esAlguno(['count', 'contar'])) {
+            this.next();
+            if (this.sim('(')) {
+              this.sim('*');
+              this.kw('todo', 'todos');
+              this.esperaSim(')');
+            }
+            cols.push({ tipo: 'count', alias: this.aliasOpcional() ?? 'total' });
+          } else if (this.peek().t === 'id' && this.esSim('.', 1) && (this.esSim('*', 2) || this.esAlguno(['todo', 'todos'], 2))) {
+            const tabla = this.ident('una tabla');
+            this.next(); this.next();
+            cols.push({ tipo: 'estrella', tabla });
+          } else {
+            const ref = this.ref();
+            cols.push({ tipo: 'col', ref, alias: this.aliasOpcional() });
+          }
+        } while (this.sim(','));
+      }
+
+      this.puente('de', 'en', 'desde', 'from', 'la', 'tabla');
+    }
+
     const tabla = this.ident('el nombre de una tabla');
     const alias = this.aliasOpcional() ?? tabla;
 
+    // Uniones:
+    // - `JUNTO [CON] t1 [, t2] [Y t3]`
+    // - `UNIR [CON] t1 [, t2]` / `UNIDO [CON|A] t1`
+    // - `[INNER|LEFT] JOIN t1 [alias] [ON ...]`
     const joins: Union[] = [];
     for (;;) {
-      let tipo: 'inner' | 'left' | null = null;
-      if (this.kw('inner')) tipo = 'inner';
-      else if (this.kw('left')) { tipo = 'left'; this.kw('outer'); }
-      if (tipo === null && !this.esKw('join')) break;
-      this.esperaKw('join');
-      const t2 = this.ident('la tabla que se une');
-      const a2 = this.aliasOpcional() ?? t2;
-      this.esperaKw('on', ' tras la tabla del JOIN');
-      joins.push({ tipo: tipo ?? 'inner', tabla: t2, alias: a2, on: this.or() });
+      let tipo: 'inner' | 'left' = 'inner';
+      let hayUnion = false;
+
+      if (this.kw('junto')) {
+        this.puente('con', 'a');
+        hayUnion = true;
+      } else if (this.kw('unir', 'unido', 'unida', 'uniendo')) {
+        this.puente('con', 'a');
+        hayUnion = true;
+      } else if (this.kw('inner')) {
+        this.kw('join', 'unir');
+        hayUnion = true;
+      } else if (this.kw('left')) {
+        this.kw('outer');
+        this.kw('join', 'unir');
+        tipo = 'left';
+        hayUnion = true;
+      } else if (this.kw('join')) {
+        hayUnion = true;
+      }
+
+      if (!hayUnion) break;
+
+      // Puede venir una lista de tablas tras `JUNTO CON modulos, propietarios` o `JUNTO CON modulos Y propietarios`
+      for (;;) {
+        this.puente('con', 'a', 'tabla');
+        const t2 = this.ident('la tabla que se quiere unir');
+        const a2 = this.aliasOpcional() ?? t2;
+        let on: Expr | null = null;
+        if (this.kw('on', 'en', 'por') && !FIN_CLAUSULA.has(this.peek().v)) {
+          on = this.or();
+        }
+        joins.push({ tipo, tabla: t2, alias: a2, on });
+
+        if (this.sim(',')) continue;
+        // `JUNTO CON modulos Y propietarios` (solo si tras `Y` no viene una condición ni otra cláusula)
+        if (this.esKw('y') && !FIN_CLAUSULA.has(this.peek(1).v)) {
+          this.next();
+          continue;
+        }
+        break;
+      }
     }
 
-    const donde = this.kw('where') ? this.or() : null;
+    // `DONDE` / `WHERE` / `CUANDO`
+    let donde: Expr | null = null;
+    if (this.kw('where', 'donde', 'cuando')) {
+      this.puente('que');
+      donde = this.or();
+    }
 
+    // `AGRUPADO POR` / `AGRUPAR POR` / `GROUP BY`
     const groupBy: RefCol[] = [];
-    if (this.kw('group')) {
-      this.esperaKw('by', ' tras GROUP');
+    if (this.kw('group', 'agrupar', 'agrupado', 'agrupada')) {
+      this.puente('by', 'por');
       do groupBy.push(this.ref()); while (this.sim(','));
     }
 
+    // `ORDENADO POR` / `ORDENAR POR` / `ORDER BY`
     const orderBy: Orden[] = [];
-    if (this.kw('order')) {
-      this.esperaKw('by', ' tras ORDER');
+    if (this.kw('order', 'ordenar', 'ordenado', 'ordenada')) {
+      this.puente('by', 'por');
       do {
         let o: Orden;
-        if (this.esKw('count')) {
+        if (this.esAlguno(['count', 'contar'])) {
           this.next();
-          this.esperaSim('('); this.esperaSim('*'); this.esperaSim(')');
+          if (this.sim('(')) { this.sim('*'); this.esperaSim(')'); }
           o = { count: true, desc: false };
         } else {
           o = { count: false, ref: this.ref(), desc: false };
         }
-        if (this.kw('desc')) o.desc = true;
-        else this.kw('asc');
+        // `DESC` / `DESCENDENTE` / `[DE] MAYOR A MENOR`
+        this.puente('de');
+        if (this.kw('desc', 'descendente', 'descendiente')) {
+          o.desc = true;
+        } else if (this.kw('asc', 'ascendente', 'ascendiente')) {
+          o.desc = false;
+        } else if (this.kw('mayor')) {
+          this.puente('a', 'que');
+          this.kw('menor');
+          o.desc = true;
+        } else if (this.kw('menor')) {
+          this.puente('a', 'que');
+          this.kw('mayor');
+          o.desc = false;
+        }
         orderBy.push(o);
       } while (this.sim(','));
     }
 
+    // `LIMITE n` / `LIMITAR [A] n` / `PRIMEROS n`
     let limite: number | undefined;
-    if (this.kw('limit')) {
+    if (this.kw('limit', 'limite', 'limitar', 'primeros', 'primeras')) {
+      this.puente('a');
       const t = this.next();
       if (t.t !== 'num' || !Number.isInteger(Number(t.v)) || Number(t.v) < 1) {
-        throw new ErrorSql('LIMIT necesita un numero entero mayor que cero.');
+        throw new ErrorSql('LIMITE necesita un numero entero mayor que cero (ej. LIMITE 5).');
       }
       limite = Number(t.v);
     }
+
     return { distinct, cols, from: { tabla, alias }, joins, donde, groupBy, orderBy, limite };
   }
 
   fin() {
     this.sim(';');
-    if (this.peek().t !== 'fin') throw this.inesperado('No entiendo lo que sigue.');
+    if (this.peek().t !== 'fin') throw this.inesperado('No entiendo lo que sigue en el comando.');
   }
 }
 
 export function analizar(sql: string): Sentencia {
   const p = new Parser(tokenizar(sql), sql);
   const primero = p.peek();
-  if (primero.t !== 'id') throw p.inesperado('Una sentencia empieza por SELECT, CREATE VIEW, DELETE...');
+  if (primero.t !== 'id') {
+    throw p.inesperado('Un comando empieza por MOSTRAR, CONTAR, GUARDAR, PROBAR, BORRAR o APAGAR.');
+  }
 
   switch (primero.v) {
-    case 'select': {
+    case 'select':
+    case 'seleccionar':
+    case 'mostrar':
+    case 'traer':
+    case 'ver':
+    case 'buscar':
+    case 'contar': {
       const sel = p.select();
       p.fin();
       return { tipo: 'select', sel };
     }
+
     case 'create': {
       p.next();
-      p.esperaKw('view', ': solo se puede crear una VIEW');
+      if (!p.kw('view', 'vista')) throw p.inesperado('Tras CREATE va VIEW.');
       const nombre = p.ident('el nombre de la vista');
-      p.esperaKw('as', ' tras el nombre de la vista');
+      p.puente('as', 'como');
       const inicio = p.peek().pos;
       const sel = p.select();
       p.fin();
       return { tipo: 'crear_vista', nombre, sel, sql: sql.slice(inicio).trim().replace(/;+\s*$/, '') };
     }
+
     case 'drop': {
       p.next();
-      if (p.kw('view')) {
-        const nombre = p.ident('el nombre de la vista');
+      if (p.kw('view', 'vista')) {
+        const nombre = p.ident('el nombre de la vista', true);
         p.fin();
         return { tipo: 'borrar_vista', nombre };
       }
-      if (p.kw('trigger')) {
-        const nombre = p.ident('el nombre del trigger');
+      if (p.kw('trigger', 'regla')) {
+        const nombre = p.ident('el nombre de la regla o trigger', true);
         p.fin();
         return { tipo: 'drop_trigger', nombre };
       }
       throw p.inesperado('Tras DROP va VIEW o TRIGGER.');
     }
-    case 'disable': {
+
+    case 'disable':
+    case 'desactivar':
+    case 'apagar': {
       p.next();
-      p.esperaKw('trigger', ': solo se pueden desactivar triggers');
-      const nombre = p.ident('el nombre del trigger');
+      p.puente('la', 'el', 'regla', 'trigger');
+      const nombre = p.ident('el nombre de la regla o trigger', true);
       p.fin();
       return { tipo: 'disable_trigger', nombre };
     }
-    case 'delete': {
+
+    case 'eliminar':
+    case 'quitar': {
       p.next();
-      p.esperaKw('from', ' tras DELETE');
+      if (p.kw('vista', 'view', 'guardado')) {
+        const nombre = p.ident('el nombre guardado', true);
+        p.fin();
+        return { tipo: 'borrar_vista', nombre };
+      }
+      p.puente('la', 'el', 'regla', 'trigger');
+      const nombre = p.ident('el nombre de la regla o trigger', true);
+      p.fin();
+      return { tipo: 'drop_trigger', nombre };
+    }
+
+    case 'vaciar': {
+      p.next();
+      p.puente('todo', 'toda', 'de', 'la', 'tabla');
       const tabla = p.ident('el nombre de una tabla');
-      const donde = p.kw('where') ? p.or() : null;
+      const donde = p.kw('where', 'donde', 'cuando') ? p.or() : null;
       p.fin();
       return { tipo: 'delete', tabla, donde };
     }
+
+    case 'delete':
+    case 'borrar': {
+      p.next();
+      if (p.kw('vista', 'view', 'guardado')) {
+        const nombre = p.ident('el nombre guardado', true);
+        p.fin();
+        return { tipo: 'borrar_vista', nombre };
+      }
+      if (p.kw('trigger', 'regla')) {
+        const nombre = p.ident('el nombre de la regla o trigger', true);
+        p.fin();
+        return { tipo: 'drop_trigger', nombre };
+      }
+      p.puente('todo', 'todos', 'todas', 'filas', 'registros', 'from', 'de', 'en', 'la', 'tabla');
+      this_asterisco(p);
+      p.puente('from', 'de', 'en', 'la', 'tabla');
+      const tabla = p.ident('el nombre de una tabla');
+      const donde = p.kw('where', 'donde', 'cuando') ? p.or() : null;
+      p.fin();
+      return { tipo: 'delete', tabla, donde };
+    }
+
     default:
-      throw new ErrorSql(`«${primero.v.toUpperCase()}» no se entiende aqui.`, [
-        'Se entiende: SELECT, CREATE VIEW, DROP VIEW, DELETE FROM, DROP TRIGGER, DISABLE TRIGGER.',
+      throw new ErrorSql(`«${primero.raw}» no se entiende como consulta.`, [
+        'Usa MOSTRAR, CONTAR, GUARDAR, PROBAR, BORRAR o APAGAR REGLA.',
+        'Escribe `consultas` para ver todos los ejemplos.',
       ]);
   }
+}
+
+function this_asterisco(p: Parser) {
+  p.sim('*');
 }
 
 // ---------- Ejecución ----------
@@ -428,6 +780,12 @@ function sistemaTriggers(db: BD): Tabla {
 
 function obtenerTabla(db: BD, nombre: string): Tabla {
   if (nombre === 'sistema_triggers' && db.catalogoTriggers) return sistemaTriggers(db);
+  // `referencia` es un alias natural de `fragmentos` para cuando un fragmento
+  // apunta a otro fragmento mediante `referencia_id`.
+  if (nombre === 'referencia' || nombre === 'referencias') {
+    const f = db.tablas.get('fragmentos');
+    if (f) return f;
+  }
   const t = db.tablas.get(nombre);
   if (!t) {
     throw new ErrorSql(`La tabla «${nombre}» no existe en la memoria.`, [
@@ -437,7 +795,66 @@ function obtenerTabla(db: BD, nombre: string): Tabla {
   return t;
 }
 
-function crearResolver(aliases: Map<string, Tabla>): Res {
+/**
+ * Si el jugador escribió `JUNTO CON modulos` sin `ON`, deduce la relación
+ * entre las tablas que ya están en la consulta y la nueva.
+ */
+function deducirUnion(aliases: Map<string, Tabla>, nuevoAlias: string, nuevaTabla: Tabla): Expr {
+  // Caso especial: `fragmentos JUNTO CON referencia` (o segundo `fragmentos`)
+  if (nuevaTabla.nombre === 'fragmentos') {
+    for (const [al, t] of aliases.entries()) {
+      if (al !== nuevoAlias && t.nombre === 'fragmentos' && t.columnas.includes('referencia_id')) {
+        return {
+          k: 'cmp',
+          izq: { t: 'col', tabla: al, col: 'referencia_id' },
+          op: '=',
+          der: { t: 'col', tabla: nuevoAlias, col: 'id' },
+        };
+      }
+    }
+  }
+
+  // Mapa de llave foránea conocido: modulos -> modulo_id, propietarios -> propietario_id, etiquetas -> etiqueta_id
+  const fkPorTabla: Record<string, string> = {
+    modulos: 'modulo_id',
+    propietarios: 'propietario_id',
+    etiquetas: 'etiqueta_id',
+  };
+  const fk = fkPorTabla[nuevaTabla.nombre];
+  if (fk) {
+    // Recorremos los aliases en orden INVERSO: si acaban de unir `referencia`
+    // y luego unen `etiquetas`, une `etiquetas` con `referencia.etiqueta_id`.
+    const entradas = [...aliases.entries()].filter(([al]) => al !== nuevoAlias).reverse();
+    for (const [al, t] of entradas) {
+      if (t.columnas.includes(fk)) {
+        return {
+          k: 'cmp',
+          izq: { t: 'col', tabla: al, col: fk },
+          op: '=',
+          der: { t: 'col', tabla: nuevoAlias, col: 'id' },
+        };
+      }
+    }
+  }
+
+  // Caso inverso: empezaron en `modulos` y unen `fragmentos`
+  const entradas = [...aliases.entries()].filter(([al]) => al !== nuevoAlias);
+  for (const [al, t] of entradas) {
+    const fkInv = fkPorTabla[t.nombre];
+    if (fkInv && nuevaTabla.columnas.includes(fkInv)) {
+      return {
+        k: 'cmp',
+        izq: { t: 'col', tabla: nuevoAlias, col: fkInv },
+        op: '=',
+        der: { t: 'col', tabla: al, col: 'id' },
+      };
+    }
+  }
+
+  throw new ErrorSql(`No se como unir «${nuevaTabla.nombre}» automaticamente con las tablas de la consulta.`);
+}
+
+function crearResolver(aliases: Map<string, Tabla>, aliasPrincipal: string): Res {
   return (r) => {
     if (r.tabla) {
       const t = aliases.get(r.tabla);
@@ -452,15 +869,24 @@ function crearResolver(aliases: Map<string, Tabla>): Res {
     const hits = [...aliases.entries()].filter(([, t]) => t.columnas.includes(r.col));
     if (hits.length === 0) {
       throw new ErrorSql(`«${r.col}» no es ninguna columna de las tablas de esta consulta.`, [
-        'Si la columna es de otra tabla, hay que unirla con JOIN. Las columnas las tiene Datos.',
+        'Si esa columna pertenece a otra tabla, unela con `JUNTO CON <tabla>`. Las columnas las tiene Datos.',
       ]);
     }
-    if (hits.length > 1) {
-      throw new ErrorSql(`«${r.col}» es ambigua: esta en ${hits.map(([a]) => a).join(' y ')}.`, [
-        'Escribe alias.columna (o tabla.columna) para decir de cual hablas.',
-      ]);
+    if (hits.length === 1) return { alias: hits[0][0], col: r.col };
+
+    // Si hay varias tablas con la misma columna (por ejemplo `id` o `nombre` o `estado`
+    // al usar `JUNTO CON`), aplicamos una regla natural para no frustrar al jugador:
+    // - Si es `nombre` y solo una de las tablas NO es `fragmentos` o es la última unida (como `etiquetas`),
+    //   y `fragmentos` ni siquiera tiene `nombre`, ya habría 1 hit. Si unieron `modulos` y `etiquetas`...
+    // - Si la tabla principal (`FROM`) tiene esa columna (como `estado`, `tamano`, `codigo`, `nivel`),
+    //   preferimos la tabla principal cuando el jugador no especificó prefijo.
+    const enPrincipal = hits.find(([a]) => a === aliasPrincipal);
+    if (enPrincipal && r.col !== 'nombre') {
+      return { alias: enPrincipal[0], col: r.col };
     }
-    return { alias: hits[0][0], col: r.col };
+    throw new ErrorSql(`«${r.col}» esta en varias tablas a la vez (${hits.map(([a]) => a).join(' y ')}).`, [
+      `Escribe tabla.${r.col} (por ejemplo ${hits[0][0]}.${r.col}) para indicar a cual te refieres.`,
+    ]);
   };
 }
 
@@ -485,14 +911,34 @@ function comparar(a: Valor, b: Valor, op: string): boolean {
 }
 
 const cacheRegex = new Map<string, RegExp>();
-function regexDeLike(patron: string): RegExp {
-  let r = cacheRegex.get(patron);
+function regexDePatron(patron: string, modo: 'sql' | 'formato' | 'empieza' | 'termina' | 'contiene'): RegExp {
+  const key = `${modo}:${patron}`;
+  let r = cacheRegex.get(key);
   if (!r) {
-    r = new RegExp(
-      '^' + patron.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$',
-      's',
-    );
-    cacheRegex.set(patron, r);
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let cuerpo: string;
+    if (modo === 'empieza') {
+      cuerpo = '^' + esc(patron);
+    } else if (modo === 'termina') {
+      cuerpo = esc(patron) + '$';
+    } else if (modo === 'contiene') {
+      cuerpo = esc(patron);
+    } else {
+      // 'formato' y 'sql':
+      //   # -> un dígito [0-9]
+      //   _ o ? -> un carácter cualquiera .
+      //   % o * -> cualquier secuencia .*
+      let s = '';
+      for (const ch of patron) {
+        if (ch === '#') s += '[0-9]';
+        else if (ch === '_' || ch === '?') s += '.';
+        else if (ch === '%' || ch === '*') s += '.*';
+        else s += esc(ch);
+      }
+      cuerpo = '^' + s + '$';
+    }
+    r = new RegExp(cuerpo, 's');
+    cacheRegex.set(key, r);
   }
   return r;
 }
@@ -521,7 +967,7 @@ function compilarExpr(e: Expr, res: Res): (c: Contexto) => boolean {
         const v = o(c);
         const pat = p(c);
         if (v === null || pat === null) return false;
-        return regexDeLike(String(pat)).test(String(v)) !== e.neg;
+        return regexDePatron(String(pat), e.modo).test(String(v)) !== e.neg;
       };
     }
     case 'in': {
@@ -559,34 +1005,41 @@ const cmpValor = (a: Valor, b: Valor): number => {
 
 export function ejecutarSelect(sel: Select, db: BD): ResultadoSelect {
   const aliases = new Map<string, Tabla>();
-  const anadir = (tabla: string, alias: string) => {
+  const anadir = (tabla: string, aliasPref: string): string => {
+    const t = obtenerTabla(db, tabla);
+    let alias = aliasPref;
+    // Si unen `fragmentos` consigo misma sin poner alias (o ponen `referencia`),
+    // le damos un alias automático para que no choque.
     if (aliases.has(alias)) {
-      throw new ErrorSql(`El alias «${alias}» esta repetido.`, [
-        'Si unes una tabla consigo misma, ponle a cada copia un alias distinto.',
-      ]);
+      if (tabla === 'fragmentos' && !aliases.has('referencia')) {
+        alias = 'referencia';
+      } else {
+        throw new ErrorSql(`La tabla o alias «${alias}» esta repetida en la consulta.`, [
+          'Si unes fragmentos consigo misma para seguir referencia_id, usa `JUNTO CON referencia`.',
+        ]);
+      }
     }
-    aliases.set(alias, obtenerTabla(db, tabla));
+    aliases.set(alias, t);
+    return alias;
   };
 
-  anadir(sel.from.tabla, sel.from.alias);
-  const alFrom = sel.from.alias;
+  const alFrom = anadir(sel.from.tabla, sel.from.alias);
   let ctxs: Contexto[] = aliases.get(alFrom)!.filas.map((f) => ({ [alFrom]: f }));
 
   for (const j of sel.joins) {
-    anadir(j.tabla, j.alias);
-    const res = crearResolver(aliases);
-    const tj = aliases.get(j.alias)!;
-    const on = j.on;
+    const aliasJ = anadir(j.tabla, j.alias);
+    const tj = aliases.get(aliasJ)!;
+    const on = j.on ?? deducirUnion(aliases, aliasJ, tj);
+    const res = crearResolver(aliases, alFrom);
 
-    // Camino rápido: igualdad entre una columna de la tabla nueva y una de
-    // las anteriores. Es el 99 % de los JOIN y evita 2400 x 2400.
+    // Camino rápido por índice hash
     let colDer: string | null = null;
     let izq: { alias: string; col: string } | null = null;
     if (on.k === 'cmp' && on.op === '=' && on.izq.t === 'col' && on.der.t === 'col') {
       const a = res(on.izq);
       const b = res(on.der);
-      if (a.alias === j.alias && b.alias !== j.alias) { colDer = a.col; izq = b; }
-      else if (b.alias === j.alias && a.alias !== j.alias) { colDer = b.col; izq = a; }
+      if (a.alias === aliasJ && b.alias !== aliasJ) { colDer = a.col; izq = b; }
+      else if (b.alias === aliasJ && a.alias !== aliasJ) { colDer = b.col; izq = a; }
     }
 
     const nuevos: Contexto[] = [];
@@ -602,43 +1055,58 @@ export function ejecutarSelect(sel: Select, db: BD): ResultadoSelect {
       for (const c of ctxs) {
         const v = c[izq.alias]?.[izq.col] ?? null;
         const hits = v === null ? undefined : idx.get(String(v));
-        if (hits && hits.length) for (const h of hits) nuevos.push({ ...c, [j.alias]: h });
-        else if (j.tipo === 'left') nuevos.push({ ...c, [j.alias]: null });
+        if (hits && hits.length) for (const h of hits) nuevos.push({ ...c, [aliasJ]: h });
+        else if (j.tipo === 'left') nuevos.push({ ...c, [aliasJ]: null });
       }
     } else {
       const f = compilarExpr(on, res);
       for (const c of ctxs) {
         let hubo = false;
         for (const fila of tj.filas) {
-          const cc = { ...c, [j.alias]: fila };
+          const cc = { ...c, [aliasJ]: fila };
           if (f(cc)) { nuevos.push(cc); hubo = true; }
         }
-        if (!hubo && j.tipo === 'left') nuevos.push({ ...c, [j.alias]: null });
+        if (!hubo && j.tipo === 'left') nuevos.push({ ...c, [aliasJ]: null });
       }
     }
     if (nuevos.length > TOPE_UNION) {
-      throw new ErrorSql('El JOIN produce demasiadas filas: casi seguro falta la condicion ON correcta.');
+      throw new ErrorSql('La union produce demasiadas filas.');
     }
     ctxs = nuevos;
   }
 
-  const res = crearResolver(aliases);
+  const res = crearResolver(aliases, alFrom);
   if (sel.donde) ctxs = ctxs.filter(compilarExpr(sel.donde, res));
 
   const multi = aliases.size > 1;
-  type Salida = { nombre: string; leer: (c: Contexto) => Valor; esCount: boolean; clave?: string };
+  type Salida = { nombre: string; leer: (c: Contexto) => Valor; esCount: boolean; clave?: string; ref?: RefCol };
   const salidas: Salida[] = [];
-  const agregada = sel.cols.some((c) => c.tipo === 'count') || sel.groupBy.length > 0;
+  const tieneCount = sel.cols.some((c) => c.tipo === 'count');
+  const tieneCols = sel.cols.some((c) => c.tipo === 'col');
+
+  // Si el jugador escribe `MOSTRAR tipo, CONTAR DE propietarios` sin `AGRUPADO POR`,
+  // agrupamos automáticamente por las columnas pedidas.
+  const groupByEfectivo: RefCol[] = [...sel.groupBy];
+  if (tieneCount && tieneCols && groupByEfectivo.length === 0) {
+    for (const it of sel.cols) {
+      if (it.tipo === 'col') groupByEfectivo.push(it.ref);
+    }
+  }
+  const agregada = tieneCount || groupByEfectivo.length > 0;
 
   for (const it of sel.cols) {
     if (it.tipo === 'estrella') {
-      if (agregada) throw new ErrorSql('No se puede usar * junto con COUNT(*) o GROUP BY.');
+      if (agregada) throw new ErrorSql('No se puede usar TODO (*) junto con CONTAR o AGRUPADO POR.');
       const als = it.tabla ? [it.tabla] : [...aliases.keys()];
       for (const a of als) {
         const t = aliases.get(a);
         if (!t) throw new ErrorSql(`«${a}» no es ninguna tabla ni alias de esta consulta.`);
         for (const col of t.columnas) {
-          salidas.push({ nombre: multi ? `${a}.${col}` : col, leer: (c) => c[a]?.[col] ?? null, esCount: false });
+          salidas.push({
+            nombre: multi && a !== alFrom ? `${a}.${col}` : col,
+            leer: (c) => c[a]?.[col] ?? null,
+            esCount: false,
+          });
         }
       }
     } else if (it.tipo === 'count') {
@@ -650,19 +1118,20 @@ export function ejecutarSelect(sel: Select, db: BD): ResultadoSelect {
         leer: (c) => c[r.alias]?.[r.col] ?? null,
         esCount: false,
         clave: `${r.alias}.${r.col}`,
+        ref: it.ref,
       });
     }
   }
 
   let filasOut: { out: Valor[]; ctx: Contexto }[];
-  const clavesGrupo = sel.groupBy.map((g) => { const r = res(g); return `${r.alias}.${r.col}`; });
+  const clavesGrupo = groupByEfectivo.map((g) => { const r = res(g); return `${r.alias}.${r.col}`; });
   if (agregada) {
     for (const s of salidas) {
       if (!s.esCount && !clavesGrupo.includes(s.clave!)) {
-        throw new ErrorSql(`«${s.nombre}» tiene que estar en GROUP BY, o ir dentro de COUNT(*).`);
+        throw new ErrorSql(`«${s.nombre}» tiene que estar en AGRUPADO POR, o ir con CONTAR.`);
       }
     }
-    const lect = sel.groupBy.map((g) => {
+    const lect = groupByEfectivo.map((g) => {
       const r = res(g);
       return (c: Contexto) => c[r.alias]?.[r.col] ?? null;
     });
@@ -672,7 +1141,7 @@ export function ejecutarSelect(sel: Select, db: BD): ResultadoSelect {
       const g = grupos.get(k);
       if (g) g.n++; else grupos.set(k, { ctx: c, n: 1 });
     }
-    if (sel.groupBy.length === 0 && grupos.size === 0) grupos.set('', { ctx: {}, n: 0 });
+    if (groupByEfectivo.length === 0 && grupos.size === 0) grupos.set('', { ctx: {}, n: 0 });
     filasOut = [...grupos.values()].map((g) => ({
       out: salidas.map((s) => (s.esCount ? g.n : s.leer(g.ctx))),
       ctx: g.ctx,
@@ -695,7 +1164,7 @@ export function ejecutarSelect(sel: Select, db: BD): ResultadoSelect {
     const claves = sel.orderBy.map((o) => {
       if (o.count) {
         const i = salidas.findIndex((s) => s.esCount);
-        if (i < 0) throw new ErrorSql('ORDER BY COUNT(*) pide que COUNT(*) este en la lista de columnas.');
+        if (i < 0) throw new ErrorSql('Para ordenar por CONTAR, incluye CONTAR en las columnas mostradas.');
         return { leer: (r: { out: Valor[]; ctx: Contexto }) => r.out[i], desc: o.desc };
       }
       const ref = o.ref!;
@@ -705,7 +1174,7 @@ export function ejecutarSelect(sel: Select, db: BD): ResultadoSelect {
       }
       const rr = res(ref);
       if (agregada && !clavesGrupo.includes(`${rr.alias}.${rr.col}`)) {
-        throw new ErrorSql(`No se puede ordenar por «${ref.col}»: no esta en GROUP BY.`);
+        throw new ErrorSql(`No se puede ordenar por «${ref.col}»: no esta en las columnas agrupadas.`);
       }
       return { leer: (r: { out: Valor[]; ctx: Contexto }) => r.ctx[rr.alias]?.[rr.col] ?? null, desc: o.desc };
     });
@@ -736,20 +1205,21 @@ export type EventoTrigger = { trigger: string; texto: string; repuestas: number 
 export type ResultadoMutacion = { borradas: number; eventos: EventoTrigger[]; texto: string };
 
 export function buscarTrigger(db: BD, nombre: string): TriggerDef | undefined {
-  return db.triggers.find((t) => t.nombre === nombre.toLowerCase());
+  const limpio = sinAcentos(nombre).toLowerCase();
+  return db.triggers.find((t) => t.nombre === limpio || t.id.toLowerCase() === limpio);
 }
 
 export function aplicarMutacion(s: Sentencia, db: BD): ResultadoMutacion {
   switch (s.tipo) {
     case 'delete': {
       if (s.tabla === 'sistema_triggers') {
-        throw new ErrorSql('sistema_triggers es de solo lectura: es el catalogo, no se borra de ahi.', [
-          'Un trigger se quita con DROP TRIGGER <nombre>, o se apaga con DISABLE TRIGGER <nombre>.',
+        throw new ErrorSql('sistema_triggers es de solo lectura: es el catalogo de reglas, no se borra con BORRAR DE.', [
+          'Una regla se apaga con `APAGAR REGLA <nombre>` o se quita con `BORRAR REGLA <nombre>`.',
         ]);
       }
       const t = obtenerTabla(db, s.tabla);
       const aliases = new Map<string, Tabla>([[s.tabla, t]]);
-      const f = s.donde ? compilarExpr(s.donde, crearResolver(aliases)) : null;
+      const f = s.donde ? compilarExpr(s.donde, crearResolver(aliases, s.tabla)) : null;
       const quedan: Fila[] = [];
       const fuera: Fila[] = [];
       for (const fila of t.filas) {
@@ -796,15 +1266,15 @@ export function aplicarMutacion(s: Sentencia, db: BD): ResultadoMutacion {
     }
     case 'drop_trigger': {
       const tr = buscarTrigger(db, s.nombre);
-      if (!tr) throw new ErrorSql(`No existe ningun trigger llamado «${s.nombre}».`);
+      if (!tr) throw new ErrorSql(`No existe ninguna regla o trigger llamada «${s.nombre}».`);
       db.triggers = db.triggers.filter((x) => x !== tr);
-      return { borradas: 0, eventos: [], texto: `Trigger ${tr.nombre} eliminado.` };
+      return { borradas: 0, eventos: [], texto: `Regla ${tr.nombre} eliminada.` };
     }
     case 'disable_trigger': {
       const tr = buscarTrigger(db, s.nombre);
-      if (!tr) throw new ErrorSql(`No existe ningun trigger llamado «${s.nombre}».`);
+      if (!tr) throw new ErrorSql(`No existe ninguna regla o trigger llamada «${s.nombre}».`);
       tr.activo = false;
-      return { borradas: 0, eventos: [], texto: `Trigger ${tr.nombre} desactivado.` };
+      return { borradas: 0, eventos: [], texto: `Regla ${tr.nombre} desactivada.` };
     }
     default:
       throw new ErrorSql('Eso no modifica la base de datos.');

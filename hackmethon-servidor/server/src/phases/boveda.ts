@@ -1,5 +1,5 @@
 // ============================================================
-//  FASE 5 — La Memoria del Robot   ·   BASES DE DATOS (SQL)
+//  FASE 5 — La Memoria del Robot   ·   BASES DE DATOS (Pseudo-SQL)
 //
 //  Ya estáis dentro de su sistema, pero no dentro de ÉL. Para llegar a
 //  su conciencia hace falta la llave con la que lo construyeron, y el
@@ -7,22 +7,22 @@
 //  documentos. Después, para destruirlo, hay que vaciar esa memoria
 //  entera... y él tiene copias.
 //
-//  DOS PARTES, MISMA TERMINAL (SQL)
+//  DOS PARTES, MISMA TERMINAL (Pseudo-SQL natural en español)
 //    PARTE 1 · «Encontrar las tres llaves»
 //      Embudo de filtros sobre una memoria desordenada, con señuelos que
 //      imitan las llaves (nombres, etiquetas, formatos casi iguales). Hay
 //      que unir tablas, desconfiar del diccionario (dos datos están
-//      mal), guardar la consulta como VISTA y probarla.
+//      mal), guardar lo encontrado (de cualquiera de las 3 formas) y probarlo.
 //    PARTE 2 · «Borrar la memoria»
 //      Las mismas dos mil cuatrocientas filas, ahora con respaldos y
-//      TRIGGERS que las restauran. Hay que encontrar esas reglas y quitar
-//      las que tocan, sin tocar las que el robot necesita.
+//      REGLAS (triggers) que las restauran. Hay que encontrar esas reglas
+//      y apagar las que restauran, sin tocar las que el robot necesita.
 //
 //  EL REPARTO
 //    PANTALLA  lo que devuelve la memoria y las cámaras. Nada más.
 //    DATOS     el diccionario (con dos errores), el encargo y el formato
 //              de una llave. No ve ni un registro.
-//    TERMINAL  escribe SQL, y no ve nada.
+//    TERMINAL  escribe consultas, y no ve nada.
 // ============================================================
 
 import type { Role } from '../lib/constants.js';
@@ -62,19 +62,19 @@ const nn = (n: number, w: number) => String(n).padStart(w, '0');
 const N_FRAG = 1800;
 const SISTEMAS = ['nucleo', 'red', 'energia', 'sensores', 'memoria'];
 
-/** Las tres consultas que resuelven cada llave. Solo existen en el
- *  servidor: las usa la construcción del mundo (para garantizar que cada
- *  llave es ÚNICA) y las pruebas. */
+/** Las tres consultas en Pseudo-SQL español que resuelven cada llave.
+ *  Las usa la construcción del mundo (para garantizar que cada llave es
+ *  ÚNICA) y las pruebas. */
 export const SOLUCIONES = [
-  "SELECT f.* FROM fragmentos f JOIN modulos m ON f.modulo_id = m.id JOIN propietarios p ON f.propietario_id = p.id "
-  + "WHERE f.codigo LIKE 'LLV-____-K7' AND f.tamano = 64 AND f.estado = 'activo' "
-  + "AND p.tipo = 'subsistema' AND m.sistema = 'nucleo'",
-  "SELECT f.* FROM fragmentos f JOIN modulos m ON f.modulo_id = m.id JOIN etiquetas e ON f.etiqueta_id = e.id "
-  + "WHERE f.codigo LIKE 'LLV-____-K7' AND f.tamano = 64 AND f.nivel = 9 "
-  + "AND e.categoria = 'seguridad' AND m.enlace = 'externo'",
-  "SELECT f.* FROM fragmentos f JOIN fragmentos r ON f.referencia_id = r.id JOIN etiquetas e ON r.etiqueta_id = e.id "
-  + "WHERE f.codigo LIKE 'LLV-____-K7' AND f.tamano = 64 AND f.estado = 'archivado' "
-  + "AND e.nombre = 'llave_maestra'",
+  'MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios '
+  + 'DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y estado ES activo '
+  + 'Y tipo ES subsistema Y sistema ES nucleo',
+  'MOSTRAR TODO DE fragmentos JUNTO CON modulos, etiquetas '
+  + 'DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y nivel ES 9 '
+  + 'Y categoria ES seguridad Y enlace ES externo',
+  'MOSTRAR TODO DE fragmentos JUNTO CON referencia, etiquetas '
+  + 'DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y estado ES archivado '
+  + 'Y etiquetas.nombre ES llave_maestra',
 ];
 
 type Spec = {
@@ -421,9 +421,9 @@ function esquema1() {
       {
         id: 'tablas', nombre: 'tablas', x: 40, y: 30, w: 440,
         descripcion: 'Que hay en la memoria y como se une', clave: 'id',
-        columnas: ['id', 'tabla', 'registros', 'se une con', 'confianza'],
+        columnas: ['id', 'tabla', 'registros', 'se une con (JUNTO CON)', 'confianza'],
         filas: [
-          ['T1', 'fragmentos', String(N_FRAG), 'modulos (modulo_id) · propietarios (propietario_id) · etiquetas (etiqueta_id) · fragmentos (referencia_id)', 'media'],
+          ['T1', 'fragmentos', String(N_FRAG), 'modulos (modulo_id) · propietarios (propietario_id) · etiquetas (etiqueta_id) · referencia (referencia_id)', 'media'],
           ['T2', 'modulos', '120', 'fragmentos, por id', 'alta'],
           ['T3', 'propietarios', '180', 'fragmentos, por id', 'alta'],
           ['T4', 'etiquetas', '300', 'fragmentos, por id', 'alta'],
@@ -459,7 +459,7 @@ function esquema1() {
           ['R2', 'LLAVE 2 · su nivel es el MAS ALTO que exista en toda la memoria · su etiqueta es de la categoria seguridad · su modulo tiene enlace externo'],
           ['R3', 'LLAVE 3 · estado: archivado · apunta (referencia_id) a otro fragmento cuya etiqueta se llama llave_maestra'],
           ['R4', 'Las tres cumplen ademas el formato de llave (ver `formato_llave`)'],
-          ['R5', 'Cada llave es UNA sola fila. Si una consulta devuelve mas, algo sobra. Guardala como vista y probala.'],
+          ['R5', 'Cada llave es UNA sola fila. Si una consulta devuelve mas, algo sobra. Guardala con GUARDAR y compruebala con PROBAR.'],
         ],
       },
       {
@@ -467,7 +467,7 @@ function esquema1() {
         descripcion: 'Como es el codigo de una llave', clave: 'id',
         columnas: ['id', 'rasgo'],
         filas: [
-          ['L1', 'codigo: LLV, un guion, cuatro cifras, un guion y K7. Ejemplo de forma: LLV-0000-K7'],
+          ['L1', 'codigo: LLV, un guion, cuatro cifras, un guion y K7. Patron: LLV-####-K7'],
           ['L2', 'tamano: exactamente 64'],
           ['L3', 'Se escribe asi, tal cual: las mayusculas importan'],
           ['L4', 'Hay copias casi iguales. Un solo rasgo distinto basta para que no sea una llave'],
@@ -523,9 +523,9 @@ function esquema2() {
         filas: [
           ['Q1', 'Objetivo: que NINGUNA de las 8 primeras tablas tenga ni una sola fila (sistema_triggers no cuenta)'],
           ['Q2', 'El robot guarda copias de su memoria en las tablas respaldo_*'],
-          ['Q3', 'Y tiene triggers: reglas que se disparan solas al borrar y vuelven a llenar tablas'],
-          ['Q4', 'Un trigger se puede eliminar (DROP TRIGGER) o desactivar (DISABLE TRIGGER)'],
-          ['Q5', 'Cuidado: no todos los triggers restauran memoria. Quitar uno que el robot necesita para funcionar le avisa, y el robot reacciona'],
+          ['Q3', 'Y tiene reglas automaticas (triggers): se disparan solas al borrar y vuelven a llenar tablas'],
+          ['Q4', 'Una regla se puede apagar (APAGAR REGLA <nombre>) o borrar (BORRAR REGLA <nombre>)'],
+          ['Q5', 'Cuidado: no todas las reglas restauran memoria. Quitar una que el robot necesita para funcionar le avisa, y el robot reacciona'],
         ],
       },
       {
@@ -660,60 +660,45 @@ function vistaDeCamaras(estado: Record<string, unknown>) {
 }
 
 // ============================================================
-//  Ayuda
+//  Ayuda y Manual detallado de Consultas (`consultas`)
 // ============================================================
 
 const TOPE_FILAS = 12;
 const MAX_VISTAS = 8;
 
 function ayuda(parte: 1 | 2): ResultadoComando {
-  const comunes = [
-    texto(
-      [
-        'SELECT [DISTINCT] columnas FROM tabla [alias]',
-        '  [JOIN otra [alias] ON a.col = b.col] [LEFT JOIN ...]',
-        '  [WHERE condiciones] [GROUP BY col] [ORDER BY col [DESC]] [LIMIT n]',
-        '',
-        'columnas: *, alias.*, columna, alias.columna, COUNT(*), ... AS nombre',
-        'condiciones: =  !=  <  >  <=  >=  LIKE (% y _)  IN (...)  IS NULL',
-        '             unidas con AND / OR / NOT y parentesis',
-        'Los textos van entre comillas simples y distinguen mayusculas.',
-        '',
-        '  SELECT COUNT(*) FROM tabla WHERE col = \'valor\'',
-        '  SELECT t.*, o.col FROM tabla t JOIN otra o ON t.o_id = o.id',
-        '  SELECT col, COUNT(*) FROM tabla GROUP BY col',
-      ],
-      'Como se pregunta',
-    ),
-    texto(
-      [
-        'Esta terminal no sabe que tablas hay, ni que columnas, ni que valores',
-        'admiten, ni que se esta buscando. Eso esta en el diccionario de datos,',
-        'en la base de datos. Y no te fies del todo de el: puede estar equivocado.',
-        '',
-        `La memoria devuelve como mucho ${TOPE_FILAS} filas: si salen mas, no las ensena.`,
-        'Eso no es una limitacion, es el ejercicio: cuenta primero, estrecha despues.',
-      ],
-      'Lo que esta terminal NO sabe',
-    ),
-  ];
+  const pie = texto(
+    [
+      '>>> ESCRIBE `consultas` PARA ABRIR EL MANUAL COMPLETO <<<',
+      'En `consultas` tienes explicada cada consulta, cada filtro y cada',
+      'operacion logica con ejemplos listos para usar.',
+      '',
+      'Esta terminal no sabe que tablas hay, ni que columnas, ni que valores',
+      'admiten, ni que se esta buscando. Todo eso lo tiene Datos (y cuidado:',
+      'no todo lo que dice el diccionario es 100% seguro).',
+      `La memoria ensena como maximo ${TOPE_FILAS} filas por consulta.`,
+    ],
+    'Manual detallado y reglas',
+  );
 
   if (parte === 1) {
     return {
       bloques: [
         texto(
           [
-            'SELECT ...                              — preguntar a la memoria',
-            'CREATE VIEW <nombre> AS SELECT ...      — guardar una consulta como vista',
-            'DROP VIEW <nombre>                      — quitar una vista',
-            'vistas                                  — las vistas guardadas',
-            'probar <vista>                          — comprobar si la vista es una llave',
-            'estado                                  — como va',
+            'consultas                               — VER MANUAL de consultas, filtros y logica',
+            'CONTAR <tabla> [DONDE ...]              — cuantas filas cumplen, sin traerlas',
+            'MOSTRAR TODO DE <tabla> [DONDE ...]     — ver las filas que cumplen (max. 12)',
+            'MOSTRAR DISTINTOS <col> DE <tabla>      — ver que valores existen de verdad',
+            'GUARDAR <nombre | codigo | consulta>    — guardar una llave candidata (3 formas)',
+            'PROBAR <nombre | codigo>                — comprobar si lo guardado es una llave',
+            'guardados                               — ver lo que llevas guardado',
+            'estado                                  — cuantas llaves llevas (de 3)',
             ...AYUDA_CAMARAS,
           ],
-          'Comandos disponibles',
+          'Comandos disponibles (Parte 1 · Buscar las 3 llaves)',
         ),
-        ...comunes,
+        pie,
       ],
     };
   }
@@ -721,18 +706,136 @@ function ayuda(parte: 1 | 2): ResultadoComando {
     bloques: [
       texto(
         [
-          'SELECT ...                              — preguntar (tambien al catalogo de triggers)',
-          'DELETE FROM <tabla> [WHERE ...]         — borrar filas',
-          'DROP TRIGGER <nombre>                   — eliminar una regla automatica',
-          'DISABLE TRIGGER <nombre>                — apagar una regla sin quitarla',
-          'reiniciar                               — volver la memoria a como estaba',
-          'estado                                  — como va',
+          'consultas                               — VER MANUAL de consultas, filtros y borrado',
+          'MOSTRAR TODO DE <tabla> [DONDE ...]     — consultar tablas o `sistema_triggers`',
+          'CONTAR <tabla> [DONDE ...]              — cuantas filas quedan en una tabla',
+          'BORRAR TODO DE <tabla> (o VACIAR <t>)   — vaciar todas las filas de una tabla',
+          'BORRAR DE <tabla> DONDE ...             — borrar solo las filas que cumplan',
+          'APAGAR REGLA <nombre>                   — desactivar una regla automatica (trigger)',
+          'BORRAR REGLA <nombre>                   — eliminar una regla automatica (trigger)',
+          'reiniciar                               — devolver la memoria a sus 2400 filas',
+          'estado                                  — cuantas filas quedan por borrar',
           ...AYUDA_CAMARAS,
         ],
-        'Comandos disponibles',
+        'Comandos disponibles (Parte 2 · Borrar la memoria)',
       ),
-      ...comunes,
+      pie,
     ],
+  };
+}
+
+function manualConsultas(parte: 1 | 2): ResultadoComando {
+  const bloqueConsultas = texto(
+    [
+      '1) CONTAR <tabla> [JUNTO CON ...] [DONDE ...]',
+      '   Dice cuantas filas cumplen la condicion sin mostrarlas. Usalo primero para',
+      '   saber si tu filtro deja demasiadas filas o si ya aislaste una sola.',
+      '   Ejemplo: CONTAR fragmentos DONDE estado ES activo',
+      '',
+      '2) MOSTRAR TODO DE <tabla> [JUNTO CON ...] [DONDE ...]',
+      '   Trae todas las columnas de las filas que cumplan (si son 12 o menos).',
+      '   Tambien puedes pedir columnas sueltas: MOSTRAR id, codigo, nivel DE fragmentos',
+      '',
+      '3) MOSTRAR DISTINTOS <columna> DE <tabla>',
+      '   Muestra todos los valores diferentes que existen realmente en esa columna.',
+      '   Ideal para comprobar si el diccionario de Datos se dejo algun valor fuera.',
+      '   Ejemplo: MOSTRAR DISTINTOS tipo DE propietarios',
+      '',
+      '4) ... JUNTO CON <otra_tabla> [, <otra_tabla_2>]',
+      '   Une tablas relacionadas para poder filtrar por columnas que estan en otra tabla.',
+      '   Si un fragmento apunta a otro (referencia_id), puedes unir con `referencia`.',
+      '   Ejemplo: MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE ...',
+      '   Ejemplo: MOSTRAR TODO DE fragmentos JUNTO CON referencia, etiquetas DONDE ...',
+      '',
+      '5) ... ORDENADO POR <columna> DESCENDENTE [LIMITE <n>]',
+      '   Ordena los resultados de mayor a menor (DESCENDENTE) o menor a mayor (ASCENDENTE)',
+      '   y con LIMITE corta cuantas filas quieres ver.',
+      '   Ejemplo: MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 5',
+    ],
+    '1. Consultas (como pedir y cruzar datos)',
+  );
+
+  const bloqueFiltros = texto(
+    [
+      'Van despues de la palabra DONDE. No hace falta poner comillas en palabras sueltas:',
+      '',
+      '· ES / NO ES             Compara si una columna es igual o distinta a un valor.',
+      '                         Ej: estado ES activo   |   estado NO ES corrupto',
+      '',
+      '· MAYOR QUE / MENOR QUE  Compara numeros (tambien MAYOR O IGUAL A, MENOR O IGUAL A).',
+      '                         Ej: tamano ES 64   |   nivel MAYOR QUE 5',
+      '',
+      '· TIENE FORMATO <patron> Comprueba la forma exacta de un codigo:',
+      '                         `#` representa un numero (0-9) y `?` cualquier caracter.',
+      '                         Respeta mayusculas y minusculas.',
+      '                         Ej: codigo TIENE FORMATO LLV-####-K7',
+      '',
+      '· EMPIEZA CON /          Busca textos por su inicio, su final o su contenido.',
+      '  TERMINA CON / CONTIENE Ej: codigo EMPIEZA CON LLV   |   nombre CONTIENE maestra',
+      '',
+      '· ESTA VACIO /           Filtra si un dato no apunta a nada (NULL) o si tiene valor.',
+      '  NO ESTA VACIO          Ej: referencia_id NO ESTA VACIO',
+    ],
+    '2. Filtros despues de DONDE (como comparar)',
+  );
+
+  const bloqueLogica = texto(
+    [
+      'Sirven para encadenar varios filtros dentro del mismo DONDE:',
+      '',
+      '· Y    Exige que se cumplan TODAS las condiciones a la vez (estrecha el embudo).',
+      '       Ej: DONDE estado ES activo Y tamano ES 64 Y sistema ES nucleo',
+      '',
+      '· O    Acepta filas que cumplan CUALQUIERA de las condiciones.',
+      '       Ej: DONDE estado ES activo O estado ES archivado',
+      '',
+      '· NO   Invierte un filtro para descartar lo que no quieres.',
+      '       Ej: DONDE estado NO ES corrupto   |   DONDE codigo NO TIENE FORMATO LLV-####-K7',
+    ],
+    '3. Operaciones logicas (Y, O, NO)',
+  );
+
+  const bloqueAccion = parte === 1
+    ? texto(
+      [
+        'Cuando encuentres una llave (1 sola fila), puedes guardarla de 3 formas:',
+        '',
+        '· Forma 1 (Guardar tu ultima consulta):',
+        '  Primero lanzas tu `MOSTRAR TODO DE fragmentos ...` y cuando veas 1 fila:',
+        '  GUARDAR llave1',
+        '',
+        '· Forma 2 (Guardar escribiendo la consulta directa):',
+        '  GUARDAR llave1 DE fragmentos JUNTO CON modulos DONDE ...',
+        '',
+        '· Forma 3 (Guardar el codigo o ID que salio en Pantalla):',
+        '  GUARDAR LLV-4829-K7    (o `GUARDAR llave1 LLV-4829-K7`, o el id `F-0173`)',
+        '',
+        'Y para verificar si de verdad es una de las 3 llaves del robot:',
+        '  PROBAR llave1          (o `PROBAR LLV-4829-K7`)',
+        '  Nota: Probar un senuelo equivocado activa la cuarentena de seguridad.',
+      ],
+      '4. Como Guardar y Probar las llaves (Parte 1)',
+    )
+    : texto(
+      [
+        'En la Parte 2 hay que dejar las 8 tablas de datos con 0 filas:',
+        '',
+        '· Consultar las reglas automaticas del robot:',
+        '  MOSTRAR TODO DE sistema_triggers',
+        '',
+        '· Desactivar o borrar una regla que restaura memoria:',
+        '  APAGAR REGLA <nombre>     (o `BORRAR REGLA <nombre>`)',
+        '  Cuidado: no apagues reglas que no restauran memoria (las de INSERT o UPDATE).',
+        '',
+        '· Vaciar una tabla entera o borrar con filtro:',
+        '  BORRAR TODO DE <tabla>    (o `VACIAR <tabla>`)',
+        '  BORRAR DE <tabla> DONDE estado ES corrupto',
+      ],
+      '4. Como Apagar Reglas y Borrar la Memoria (Parte 2)',
+    );
+
+  return {
+    bloques: [bloqueConsultas, bloqueFiltros, bloqueLogica, bloqueAccion],
   };
 }
 
@@ -772,7 +875,7 @@ export const boveda: ModuloFase = {
       case 'TERMINAL':
         return {
           camara: numero(ctx.estado, 'camara') || 1,
-          pista: 'Escribe `ayuda` y pregunta a Pantalla que aparecio.',
+          pista: 'Escribe `ayuda` o `consultas` y pregunta a Pantalla que aparecio.',
           cuarentenaHasta: (ctx.estado.cuarentenaHasta as number) ?? null,
         };
     }
@@ -794,49 +897,72 @@ export const boveda: ModuloFase = {
     switch (verbo) {
       case 'ayuda':
       case 'help':
+        if (arg === 'consultas' || arg === 'filtros' || arg === 'sql' || arg === 'manual') {
+          return manualConsultas(parte);
+        }
         return ayuda(parte);
+
+      case 'consultas':
+      case 'filtros':
+      case 'manual':
+        return manualConsultas(parte);
 
       case 'estado':
         return estadoActual(ctx, parte);
 
       case 'vistas':
+      case 'guardados':
+      case 'guardadas':
         return parte === 1 ? listarVistas(ctx) : sinVistas();
 
+      case 'guardar':
+        return parte === 1 ? ejecutarGuardar(bruto, ctx) : sinVistas();
+
       case 'probar':
-        return parte === 1 ? probar(arg, ctx) : sinVistas();
+        return parte === 1 ? probar(bruto.slice(verbo.length).trim(), ctx) : sinVistas();
 
       case 'reiniciar':
         if (parte !== 2) return { bloques: [error('No hay nada que reiniciar todavia.')] };
         return {
           estado: { ...ctx.estado, log: [], restan: TOTAL2, repuestas: 0, ultimaRepuestas: 0 },
-          bloques: [texto([`La memoria vuelve a tener ${TOTAL2} filas y los triggers que tenia.`], 'Reinicio')],
+          bloques: [texto([`La memoria vuelve a tener ${TOTAL2} filas y las reglas que tenia.`], 'Reinicio')],
         };
 
+      case 'mostrar':
+      case 'traer':
+      case 'seleccionar':
+      case 'ver':
+      case 'buscar':
+      case 'contar':
       case 'select':
       case 'create':
       case 'drop':
       case 'delete':
+      case 'borrar':
+      case 'vaciar':
+      case 'eliminar':
+      case 'quitar':
+      case 'apagar':
+      case 'desactivar':
       case 'disable':
         return comandoSql(bruto, ctx, parte);
 
-      case 'buscar':
-      case 'contar':
       case 'extraer':
         return {
           bloques: [
-            error(`«${verbo}» ya no existe: la memoria se pregunta en SQL.`),
-            texto(['Ejemplo: SELECT COUNT(*) FROM tabla WHERE columna = \'valor\'', '`ayuda` lo explica.']),
+            error('Usa `GUARDAR` y luego `PROBAR` para validar cada una de las 3 llaves.'),
+            texto(['Escribe `consultas` para ver las 3 formas de guardar y probar.']),
           ],
         };
 
       default:
-        return { bloques: [error(`Comando no reconocido: «${comandoBruto}». Prueba \`ayuda\`.`)] };
+        return { bloques: [error(`Comando no reconocido: «${comandoBruto}». Prueba \`ayuda\` o \`consultas\`.`)] };
     }
   },
 };
 
 function sinVistas(): ResultadoComando {
-  return { bloques: [error('En esta parte ya no hay vistas ni nada que probar: el objetivo es otro. Mira el encargo con Datos.')] };
+  return { bloques: [error('En esta parte ya no hay que guardar ni probar llaves: el objetivo es vaciar la memoria. Mira el encargo con Datos.')] };
 }
 
 function estadoActual(ctx: ContextoComando, parte: 1 | 2): ResultadoComando {
@@ -845,7 +971,7 @@ function estadoActual(ctx: ContextoComando, parte: 1 | 2): ResultadoComando {
     const v = Object.keys((ctx.estado.vistas as Record<string, string>) ?? {}).length;
     return {
       bloques: [texto(
-        [`Llaves confirmadas: ${n} de 3.`, `Vistas guardadas: ${v}.`, 'Que se busca lo dice el encargo: lo tiene Datos.'],
+        [`Llaves confirmadas: ${n} de 3.`, `Candidatas guardadas: ${v}.`, 'Que se busca lo dice el encargo: lo tiene Datos.'],
         'Estado',
       )],
     };
@@ -863,21 +989,191 @@ function listarVistas(ctx: ContextoComando): ResultadoComando {
   const vistas = (ctx.estado.vistas as Record<string, string>) ?? {};
   const nombres = Object.keys(vistas);
   if (nombres.length === 0) {
-    return { bloques: [texto(['No hay ninguna vista guardada.', 'CREATE VIEW <nombre> AS SELECT ...'], 'Vistas')] };
+    return {
+      bloques: [texto([
+        'No hay ninguna llave candidata guardada todavia.',
+        'Puedes guardar de 3 formas:',
+        '  1) `GUARDAR llave1` (guarda tu ultima consulta)',
+        '  2) `GUARDAR llave1 DE fragmentos DONDE ...`',
+        '  3) `GUARDAR <codigo_o_id>` (ej. `GUARDAR LLV-0000-K7`)',
+      ], 'Guardados')],
+    };
   }
-  return { bloques: [texto(nombres.map((n) => `${n}  =  ${vistas[n]}`), 'Vistas')] };
+  return { bloques: [texto(nombres.map((n) => `${n}  =  ${vistas[n]}`), 'Guardados')] };
 }
 
-function probar(nombre: string, ctx: ContextoComando): ResultadoComando {
-  if (!nombre) return { bloques: [error('Falta la vista. `probar <vista>`.')] };
+/**
+ * Busca si un token corresponde directamente al `id` (ej. `F-0173`) o al
+ * `codigo` (ej. `LLV-4829-K7`) de un fragmento de la memoria.
+ */
+function buscarFragmentoPorCodigoOId(token: string): Fila | null {
+  const limpio = token.trim().replace(/^['"]|['"]$/g, '');
+  if (!limpio) return null;
+  const upper = limpio.toUpperCase();
+  const frags = MUNDO1.bd.tablas.get('fragmentos')!.filas;
+  // 1) Coincidencia exacta de código (respetando mayúsculas, ej. K7 vs k7) o de ID (F-0173)
+  const exacto = frags.find((f) => String(f.id).toUpperCase() === upper || String(f.codigo) === limpio);
+  if (exacto) return exacto;
+  // 2) Si escribió el código en minúsculas pero solo hay uno o quiere probarlo
+  return frags.find((f) => String(f.codigo).toUpperCase() === upper) ?? null;
+}
+
+/**
+ * Implementa las 3 formas de `GUARDAR`:
+ *   1) `GUARDAR <nombre>` -> guarda `ctx.estado.ultimaConsulta`
+ *   2) `GUARDAR <nombre> DE <tabla> ...` o `GUARDAR [EN] <nombre> [COMO] MOSTRAR ...`
+ *   3) `GUARDAR <codigo_o_id>` o `GUARDAR <nombre> <codigo_o_id>`
+ */
+function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando {
+  const cuerpo = bruto.replace(/^\s*guardar\s+/i, '').trim();
+  if (!cuerpo) {
+    return {
+      bloques: [
+        error('Falta indicar que quieres guardar.'),
+        texto([
+          'Formas de usar GUARDAR:',
+          '  1) `GUARDAR llave1` (guarda la ultima consulta que hiciste)',
+          '  2) `GUARDAR llave1 DE fragmentos DONDE ...`',
+          '  3) `GUARDAR <codigo_o_id>` (ej. `GUARDAR F-0173` o `GUARDAR LLV-0000-K7`)',
+        ]),
+      ],
+    };
+  }
+
+  // Quitamos conectores iniciales opcionales: `EN`, `COMO`, `VISTA`
+  const sinPrefijo = cuerpo.replace(/^(?:(?:en|como|vista)\s+)+/i, '').trim();
+  const partes = sinPrefijo.split(/\s+/);
+  const primeroRaw = partes[0].replace(/[:=]$/, '');
+  const primeroNorm = normalizar(primeroRaw);
+  const resto = sinPrefijo.slice(partes[0].length).replace(/^[:=\s]+/, '').trim();
+
+  const vistas = { ...((ctx.estado.vistas as Record<string, string>) ?? {}) };
+
+  const guardarConsultaEn = (nombreRaw: string, sqlGuardar: string): ResultadoComando => {
+    const nombre = normalizar(nombreRaw);
+    if (!/^[a-z0-9_-]{1,35}$/.test(nombre)) {
+      return { bloques: [error('El nombre para guardar debe ser una sola palabra (ej. `llave1`).')] };
+    }
+    if (MUNDO1.bd.tablas.has(nombre)) {
+      return { bloques: [error(`«${nombre}» ya es el nombre de una tabla: elige otro (ej. \`llave1\`).`)] };
+    }
+    if (!(nombre in vistas) && Object.keys(vistas).length >= MAX_VISTAS) {
+      return { bloques: [error(`Ya hay ${MAX_VISTAS} guardados. Borra alguno con \`BORRAR VISTA <nombre>\`.`)] };
+    }
+    let r;
+    try {
+      const s = analizar(sqlGuardar);
+      if (s.tipo !== 'select') return { bloques: [error('Solo se pueden guardar consultas.')] };
+      r = ejecutarSelect(s.sel, MUNDO1.bd);
+    } catch (e) {
+      return fallaSql(e);
+    }
+    vistas[nombre] = sqlGuardar;
+    return {
+      estado: { ...ctx.estado, vistas, ultimoGuardado: nombre },
+      bloques: [texto([
+        `Guardado como «${nombre}». Devuelve ${r.total} fila(s) ahora mismo.`,
+        r.total === 1
+          ? `Escribe \`PROBAR ${nombre}\` para comprobar si es una de las 3 llaves.`
+          : `Cuando devuelva 1 sola fila, podras comprobarla con \`PROBAR ${nombre}\`.`,
+      ], 'Guardado')],
+    };
+  };
+
+  // --- Caso A: Solo 1 palabra (`GUARDAR llave1` o `GUARDAR LLV-4829-K7` o `GUARDAR F-0173`)
+  if (!resto) {
+    const frag = buscarFragmentoPorCodigoOId(primeroRaw);
+    if (frag) {
+      // Forma 3 directa: `GUARDAR LLV-4829-K7` o `GUARDAR F-0173`
+      const sqlFrag = `MOSTRAR TODO DE fragmentos DONDE id ES '${frag.id}'`;
+      return guardarConsultaEn(primeroNorm, sqlFrag);
+    }
+    // Forma 1: `GUARDAR llave1` -> usa la última consulta ejecutada
+    const ultima = typeof ctx.estado.ultimaConsulta === 'string' ? ctx.estado.ultimaConsulta : null;
+    if (!ultima) {
+      return {
+        bloques: [
+          error(`No hay ninguna consulta reciente para guardar en «${primeroRaw}», ni existe ningun fragmento con ese codigo o ID.`),
+          texto([
+            'Primero haz una consulta con `MOSTRAR TODO DE fragmentos ...` y luego escribe `GUARDAR ' + primeroNorm + '`,',
+            'o escribe la consulta entera: `GUARDAR ' + primeroNorm + ' DE fragmentos DONDE ...`',
+          ]),
+        ],
+      };
+    }
+    return guardarConsultaEn(primeroNorm, ultima);
+  }
+
+  // --- Caso B: Hay más palabras detrás del nombre
+  const restoSinComo = resto.replace(/^(?:como|as|es|=)\s+/i, '').trim();
+  const primeraPalabraResto = normalizar(restoSinComo.split(/\s+/)[0]);
+
+  // Subcaso B1: `GUARDAR llave1 MOSTRAR TODO DE ...` / `GUARDAR llave1 SELECT ...`
+  if (['mostrar', 'traer', 'seleccionar', 'ver', 'buscar', 'select', 'contar'].includes(primeraPalabraResto)) {
+    return guardarConsultaEn(primeroNorm, restoSinComo);
+  }
+
+  // Subcaso B2 (Forma 2 limpia): `GUARDAR llave1 DE fragmentos [JUNTO CON ...] [DONDE ...]`
+  if (['de', 'en', 'desde', 'from', 'fragmentos'].includes(primeraPalabraResto)) {
+    const sqlCompleto = primeraPalabraResto === 'fragmentos'
+      ? `MOSTRAR TODO DE ${restoSinComo}`
+      : `MOSTRAR TODO ${restoSinComo}`;
+    return guardarConsultaEn(primeroNorm, sqlCompleto);
+  }
+
+  // Subcaso B3 (Forma 3 con nombre): `GUARDAR llave1 LLV-4829-K7` o `GUARDAR llave1 F-0173`
+  if (restoSinComo.split(/\s+/).length === 1) {
+    const frag = buscarFragmentoPorCodigoOId(restoSinComo);
+    if (frag) {
+      return guardarConsultaEn(primeroNorm, `MOSTRAR TODO DE fragmentos DONDE id ES '${frag.id}'`);
+    }
+  }
+
+  // Si empieza por `DONDE`, asumimos `fragmentos`
+  if (['donde', 'where', 'junto', 'unir'].includes(primeraPalabraResto)) {
+    return guardarConsultaEn(primeroNorm, `MOSTRAR TODO DE fragmentos ${restoSinComo}`);
+  }
+
+  return guardarConsultaEn(primeroNorm, `MOSTRAR TODO ${restoSinComo}`);
+}
+
+function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
   const vistas = (ctx.estado.vistas as Record<string, string>) ?? {};
-  const sql = vistas[nombre];
-  if (!sql) return { bloques: [error(`No hay ninguna vista «${nombre}». \`vistas\` las lista.`)] };
+  const ultimoGuardado = typeof ctx.estado.ultimoGuardado === 'string' ? ctx.estado.ultimoGuardado : '';
+  const objetivoRaw = argBruto.trim() || ultimoGuardado;
+
+  if (!objetivoRaw) {
+    return {
+      bloques: [
+        error('Falta indicar que quieres probar. Ejemplo: `PROBAR llave1` o `PROBAR <codigo>`.'),
+      ],
+    };
+  }
+
+  const clave = normalizar(objetivoRaw);
+  let sql = vistas[clave];
+
+  // Si no está en `vistas` por ese nombre, comprobamos si escribieron directamente el código o ID (`PROBAR LLV-4829-K7`)
+  if (!sql) {
+    const frag = buscarFragmentoPorCodigoOId(objetivoRaw);
+    if (frag) {
+      sql = `MOSTRAR TODO DE fragmentos DONDE id ES '${frag.id}'`;
+    }
+  }
+
+  if (!sql) {
+    return {
+      bloques: [
+        error(`No hay nada guardado como «${objetivoRaw}», ni coincide con ningun codigo o ID de la memoria.`),
+        texto(['Usa `GUARDAR` antes de probar, o escribe `guardados` para ver la lista.']),
+      ],
+    };
+  }
 
   let r;
   try {
     const s = analizar(sql);
-    if (s.tipo !== 'select') return { bloques: [error('La vista no es un SELECT.')] };
+    if (s.tipo !== 'select') return { bloques: [error('Lo guardado no es una consulta.')] };
     r = ejecutarSelect(s.sel, MUNDO1.bd);
   } catch (e) {
     return fallaSql(e);
@@ -886,16 +1182,16 @@ function probar(nombre: string, ctx: ContextoComando): ResultadoComando {
   // Probar no es otra forma de buscar: sin una sola fila no hay nada que
   // comprobar y no se cobra. Lo que cuesta es afirmar una fila que no es.
   if (r.agregada) {
-    return { bloques: [error('Probar necesita filas de fragmentos, no recuentos ni grupos.')] };
+    return { bloques: [error('PROBAR necesita una fila de `fragmentos`, no un recuento.')] };
   }
   if (r.desde !== 'fragmentos') {
-    return { bloques: [error('Una llave es un fragmento: la vista tiene que partir de FROM fragmentos.')] };
+    return { bloques: [error('Una llave es un fragmento: la consulta tiene que ser sobre `fragmentos`.')] };
   }
   if (r.total !== 1) {
     return {
       bloques: [texto(
-        [`«${nombre}» devuelve ${r.total} fila(s). Probar necesita exactamente UNA.`,
-          r.total === 0 ? 'Hay alguna condicion que sobra o un valor que no es.' : 'Quedan candidatas de mas: sigue estrechando.'],
+        [`«${objetivoRaw}» devuelve ${r.total} fila(s). PROBAR necesita exactamente UNA.`,
+          r.total === 0 ? 'Hay alguna condicion que sobra o un valor que no es.' : 'Quedan candidatas de mas: sigue estrechando con mas filtros.'],
         'Todavia no',
       )],
     };
@@ -908,10 +1204,10 @@ function probar(nombre: string, ctx: ContextoComando): ResultadoComando {
   if (idx === -1) {
     // Mismo rechazo para un señuelo y para un fragmento cualquiera: decir
     // cuál de las dos cosas falla sería ir resolviendo a base de probar.
-    return rechazo(ctx, `«${nombre}» devuelve un fragmento que no es ninguna de las tres llaves. La memoria registra el intento.`);
+    return rechazo(ctx, `«${objetivoRaw}» devuelve un fragmento que no es ninguna de las tres llaves. La memoria registra el intento.`);
   }
   if (confirmadas.includes(fila.id as string)) {
-    return { bloques: [texto(['Esa llave ya estaba confirmada. Busca otra.'], 'Repetida')] };
+    return { bloques: [texto(['Esa llave ya estaba confirmada. Busca las que faltan.'], 'Repetida')] };
   }
 
   const nuevas = [...confirmadas, fila.id as string];
@@ -919,7 +1215,7 @@ function probar(nombre: string, ctx: ContextoComando): ResultadoComando {
     return {
       estado: { ...ctx.estado, confirmadas: nuevas },
       bloques: [exito(`Llave confirmada (${nuevas.length} de 3)`, [
-        `«${nombre}» devuelve una llave de verdad.`,
+        `«${objetivoRaw}» (${fila.id} · ${fila.codigo}) es una llave autentica.`,
         'Faltan las otras. El encargo dice como son: lo tiene Datos.',
       ])],
     };
@@ -945,8 +1241,8 @@ function probar(nombre: string, ctx: ContextoComando): ResultadoComando {
         '[!] ALERTA DEL ROBOT: «INTRUSION EN MEMORIA. ACTIVANDO RESTAURACION AUTOMATICA.»',
         '',
         '--- PASO A LA PARTE 2 (BORRAR LA MEMORIA) ---',
-        '1. El diccionario de Datos ha cambiado: hay tablas nuevas y un encargo nuevo.',
-        '2. Misma terminal, ahora tambien con DELETE, DROP TRIGGER y DISABLE TRIGGER.',
+        '1. El diccionario de Datos ha cambiado: hay tablas de respaldo y un catalogo de reglas (`sistema_triggers`).',
+        '2. Misma terminal, ahora con `BORRAR TODO DE <tabla>` (o `VACIAR`) y `APAGAR REGLA <nombre>`.',
         '3. Esta vez no se trata de encontrar, sino de dejarlo todo vacio... y que se quede asi.',
       ]),
     ],
@@ -963,7 +1259,12 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
         const db = parte === 1 ? MUNDO1.bd : reconstruir(listaDe(ctx.estado, 'log'));
         const r = ejecutarSelect(s.sel, db);
         const embudo = parte === 1
-          ? { quedan: r.total, consultas: numero(ctx.estado, 'consultas') + 1 }
+          ? {
+            quedan: r.total,
+            consultas: numero(ctx.estado, 'consultas') + 1,
+            // Si la consulta no es solo un CONTAR, la recordamos para que `GUARDAR llave1` funcione sin repetirla
+            ...(r.agregada ? {} : { ultimaConsulta: bruto }),
+          }
           : {};
         const estado = { ...ctx.estado, ...embudo };
 
@@ -974,8 +1275,8 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
         const limite = s.sel.limite !== undefined ? Math.min(s.sel.limite, TOPE_FILAS) : undefined;
         if (limite === undefined && r.total > TOPE_FILAS) {
           return { estado, bloques: [texto([
-            `${r.total} filas. La memoria solo ensena ${TOPE_FILAS}.`,
-            'Anade otra condicion: cada una tira registros. SELECT COUNT(*) te dice cuantos quedarian.',
+            `${r.total} filas cumplen la consulta. La memoria solo ensena ${TOPE_FILAS} a la vez.`,
+            'Anade otra condicion despues de DONDE para estrechar, o usa CONTAR para ver cuantas quedan.',
           ], 'Demasiadas filas')] };
         }
         const filas = r.filas.slice(0, limite ?? TOPE_FILAS);
@@ -985,7 +1286,7 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
             tabla(`${r.total} fila(s)${filas.length < r.total ? ` · se ensenan ${filas.length}` : ''}`,
               r.columnas, filas.map((f) => f.map(fmt))),
             ...(r.total === 1 && !r.agregada && parte === 1
-              ? [texto(['Una sola fila. Si es lo que buscais: CREATE VIEW <nombre> AS <esta consulta>, y `probar <nombre>`.'])]
+              ? [texto(['Una sola fila. Si es la llave que buscais: `GUARDAR llave1` y luego `PROBAR llave1`.'])]
               : []),
           ],
         };
@@ -994,39 +1295,39 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
       case 'crear_vista': {
         if (parte !== 1) return sinVistas();
         if (!/^[a-z_][a-z0-9_]{0,30}$/.test(s.nombre)) {
-          return { bloques: [error('El nombre de la vista tiene que ser una sola palabra (letras, numeros y _).')] };
+          return { bloques: [error('El nombre tiene que ser una sola palabra (letras, numeros y _).')] };
         }
         if (MUNDO1.bd.tablas.has(s.nombre)) {
           return { bloques: [error(`«${s.nombre}» ya es una tabla: elige otro nombre.`)] };
         }
         const vistas = { ...((ctx.estado.vistas as Record<string, string>) ?? {}) };
         if (!(s.nombre in vistas) && Object.keys(vistas).length >= MAX_VISTAS) {
-          return { bloques: [error(`Ya hay ${MAX_VISTAS} vistas guardadas. Quita alguna con DROP VIEW.`)] };
+          return { bloques: [error(`Ya hay ${MAX_VISTAS} guardados. Quita alguno con BORRAR VISTA.`)] };
         }
-        const r = ejecutarSelect(s.sel, MUNDO1.bd); // valida columnas y tablas
+        const r = ejecutarSelect(s.sel, MUNDO1.bd);
         vistas[s.nombre] = s.sql;
         return {
-          estado: { ...ctx.estado, vistas },
+          estado: { ...ctx.estado, vistas, ultimoGuardado: s.nombre },
           bloques: [texto([
-            `Vista «${s.nombre}» guardada. Devuelve ${r.total} fila(s) ahora mismo.`,
-            r.total === 1 ? '`probar ' + s.nombre + '` dice si es una llave.' : 'Cuando devuelva una sola, `probar ' + s.nombre + '`.',
-          ], 'Vista')],
+            `Guardado como «${s.nombre}». Devuelve ${r.total} fila(s) ahora mismo.`,
+            r.total === 1 ? '`PROBAR ' + s.nombre + '` dice si es una llave.' : 'Cuando devuelva una sola, `PROBAR ' + s.nombre + '`.',
+          ], 'Guardado')],
         };
       }
 
       case 'borrar_vista': {
         if (parte !== 1) return sinVistas();
         const vistas = { ...((ctx.estado.vistas as Record<string, string>) ?? {}) };
-        if (!(s.nombre in vistas)) return { bloques: [error(`No hay ninguna vista «${s.nombre}».`)] };
+        if (!(s.nombre in vistas)) return { bloques: [error(`No hay nada guardado como «${s.nombre}».`)] };
         delete vistas[s.nombre];
-        return { estado: { ...ctx.estado, vistas }, bloques: [texto([`Vista «${s.nombre}» eliminada.`])] };
+        return { estado: { ...ctx.estado, vistas }, bloques: [texto([`Guardado «${s.nombre}» eliminado.`])] };
       }
 
       case 'delete':
       case 'drop_trigger':
       case 'disable_trigger':
         return parte === 1
-          ? { bloques: [error('La memoria es de solo lectura por ahora. Primero, encontrar las llaves.')] }
+          ? { bloques: [error('La memoria es de solo lectura por ahora. Primero, encontrar las 3 llaves.')] }
           : mutar(bruto, s, ctx);
 
       default:
@@ -1044,17 +1345,17 @@ function mutar(bruto: string, s: Sentencia, ctx: ContextoComando): ResultadoComa
   if (s.tipo === 'drop_trigger' || s.tipo === 'disable_trigger') {
     const tr = buscarTrigger(db, s.nombre);
     if (!tr) {
-      return { bloques: [error(`No existe ningun trigger llamado «${s.nombre}».`),
-        texto(['El catalogo esta en `sistema_triggers`. SELECT * FROM sistema_triggers.'])] };
+      return { bloques: [error(`No existe ninguna regla o trigger llamada «${s.nombre}».`),
+        texto(['El catalogo esta en `sistema_triggers`. Usa: `MOSTRAR TODO DE sistema_triggers`.'])] };
     }
     // Un trigger que no restaura nada es de funcionamiento: tocarlo es
     // acusar en falso, y cuesta como en el resto de fases.
     if (tr.efecto.tipo === 'inocuo') {
       return rechazo(ctx,
-        `«${tr.nombre}» no restaura nada: el robot lo necesita para funcionar y nota que lo tocas.`);
+        `«${tr.nombre}» no restaura nada: el robot la necesita para funcionar y nota que la tocas.`);
     }
     if (s.tipo === 'disable_trigger' && !tr.activo) {
-      return { bloques: [texto([`«${tr.nombre}» ya estaba desactivado.`])] };
+      return { bloques: [texto([`«${tr.nombre}» ya estaba desactivada.`])] };
     }
   }
 
@@ -1095,7 +1396,7 @@ function mutar(bruto: string, s: Sentencia, ctx: ContextoComando): ResultadoComa
           ...r.eventos.map((e) => `[!] ${e.texto}`),
           `A la memoria le quedan ${restan} fila(s).`,
         ],
-        s.tipo === 'delete' ? 'Borrado' : 'Trigger',
+        s.tipo === 'delete' ? 'Borrado' : 'Regla',
       ),
     ],
   };
