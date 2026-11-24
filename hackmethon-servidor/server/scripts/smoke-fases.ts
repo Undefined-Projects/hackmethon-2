@@ -7,7 +7,8 @@
 import { acceso } from '../src/phases/acceso.js';
 import { muro } from '../src/phases/muro.js';
 import { nucleo } from '../src/phases/nucleo.js';
-import { boveda } from '../src/phases/boveda.js';
+import { boveda, SOLUCIONES, bovedaPrueba } from '../src/phases/boveda.js';
+import { analizar as analizarSql, ejecutarSelect as ejecutarSelectSql } from '../src/phases/sqlmini.js';
 import { puente } from '../src/phases/puente.js';
 import { rastro } from '../src/phases/rastro.js';
 import { enemigo } from '../src/phases/enemigo.js';
@@ -516,40 +517,153 @@ console.log('\n4) Nucleo Modular · FUNCIONES DEPENDIENTES');
   check((rReset.estado.armadas as any)?.pulso === true, 'pero conserva las piezas armadas');
 }
 
-console.log('\n5) Boveda de Credenciales · BASES DE DATOS');
+console.log('\n5) Memoria del Robot · BASES DE DATOS (SQL, dos partes)');
 {
-  const corre = corredor(boveda);
-  check(!dice(corre('ayuda')).includes('cr-1843'), 'la ayuda no lleva la respuesta dentro');
-  check(!dice(corre('ayuda')).includes('sistemas'), 'ni el encargo, que es cosa de Datos');
+  const MW = bovedaPrueba;
+  // El reloj avanza entre comandos: las cuarentenas no deben tapar la prueba.
+  let reloj = AHORA;
+  const juega = () => {
+    let estado: Record<string, unknown> = {};
+    const f = (c: string): any => {
+      reloj += 120_000;
+      const r: any = boveda.ejecutar(c, { estado, intentos: 0, ahora: reloj, traficoActivo: false });
+      if (r.estado) estado = r.estado;
+      return r;
+    };
+    f.estado = () => estado;
+    return f;
+  };
+  const verPantalla = (estado: Record<string, unknown>) =>
+    boveda.proyectar('DATOS', {
+      estado, intentos: 0, ahora: AHORA, traficoActivo: false, filtroTrafico: null, salidas: [],
+    } as any) as any;
 
-  const todo = dice(corre('contar en credenciales'));
-  check(todo.includes('2400'), 'la boveda tiene 2400 credenciales');
+  const j = juega();
+  const a = dice(j('ayuda'));
+  check(!a.includes('llv-') && !a.includes('k7') && !a.includes('subsistema') && !a.includes('llave_maestra'),
+    'la ayuda no lleva ni el formato de la llave ni el encargo: eso es cosa de Datos');
+  check(a.includes('select') && a.includes('create view') && a.includes('probar'), 'la ayuda explica SQL, vistas y probar');
 
-  // El embudo: cada condicion tira registros.
-  const n = (q: string) => Number(dice(corre(q)).match(/(\d+) registros/)![1]);
-  const c1 = n('contar en credenciales donde tipo = maestra');
-  const c2 = n('contar en credenciales donde tipo = maestra y estado = activa');
-  const c3 = n('contar en credenciales unir usuarios donde tipo = maestra y estado = activa y departamento = sistemas');
-  const c4 = n('contar en credenciales unir usuarios donde tipo = maestra y estado = activa y departamento = sistemas y sede = torre');
-  check(c1 < 2400 && c2 < c1 && c3 < c2, `el embudo estrecha (2400 → ${c1} → ${c2} → ${c3} → ${c4})`);
-  check(c4 === 1, 'y las cuatro condiciones dejan exactamente una');
+  // --- el mundo
+  const filasP1 = [...MW.MUNDO1.bd.tablas.values()].reduce((n, t) => n + t.filas.length, 0);
+  check(filasP1 === 2400, `la memoria de la Parte 1 tiene 2400 entradas (${filasP1})`);
+  check(MW.TOTAL2 === 2400, `y la de la Parte 2, tambien (${MW.TOTAL2})`);
 
-  // El error mas instructivo: la columna existe, pero en la otra tabla.
-  const sinUnir = corre('buscar en credenciales donde departamento = sistemas');
-  check(!sinUnir.fallo && dice(sinUnir).includes('unir'),
-    'filtrar por una columna de la otra tabla explica que hay que unirlas');
+  const filaDe = (sql: string) => {
+    const s: any = analizarSql(sql);
+    return ejecutarSelectSql(s.sel, MW.MUNDO1.bd);
+  };
+  SOLUCIONES.forEach((sql, k) => {
+    const r = filaDe(sql);
+    check(r.total === 1 && r.base[0]!.id === MW.LLAVES[k], `la llave ${k + 1} es unica (${r.total} fila, ${r.base[0]?.id})`);
+  });
 
-  const muchos = corre('buscar en credenciales donde tipo = maestra');
-  check(dice(muchos).includes('demasiados'), 'pedir demasiadas filas manda a estrechar, no vuelca la boveda');
+  // --- el embudo, los señuelos y las dos cosas que el diccionario no sabe
+  const cuenta = (q: string) => Number(JSON.parse(JSON.stringify(j(q).bloques[0])).filas[0][0]);
+  const conFormato = cuenta("SELECT COUNT(*) FROM fragmentos WHERE codigo LIKE 'LLV-____-K7'");
+  const conTamano = cuenta("SELECT COUNT(*) FROM fragmentos WHERE codigo LIKE 'LLV-____-K7' AND tamano = 64");
+  check(conFormato > 40 && conTamano < conFormato && conTamano > 3,
+    `hay señuelos con formato de llave y el tamano los estrecha (${conFormato} -> ${conTamano})`);
+  const minusc = cuenta("SELECT COUNT(*) FROM fragmentos WHERE codigo LIKE 'LLV-____-k7'");
+  check(minusc > 0, `las mayusculas importan: hay ${minusc} señuelo(s) en minuscula`);
 
-  const una = corre('buscar en credenciales unir usuarios donde tipo = maestra y estado = activa y departamento = sistemas y sede = torre');
-  const fila = una.bloques[0].filas[0];
-  check(una.bloques[0].filas.length === 1, 'la consulta completa devuelve una sola fila');
+  const tipos = dice(j('SELECT tipo, COUNT(*) FROM propietarios GROUP BY tipo'));
+  check(tipos.includes('subsistema'), 'GROUP BY revela el tercer tipo de propietario...');
+  const dic = dice(verPantalla({}));
+  check(dic.includes('robot · humano') && !dic.includes('robot · humano · subsistema'),
+    '...que el diccionario de Datos no lista (error 1 del diccionario)');
+  check(dice(j('SELECT nivel FROM fragmentos ORDER BY nivel DESC LIMIT 1')).includes('9'),
+    'el nivel maximo real es 9...');
+  check(dic.includes('"1 a 5"'), '...y el diccionario dice 1 a 5 (error 2 del diccionario)');
 
-  check(corre('extraer CR-0001').fallo === true, 'extraer la credencial equivocada penaliza');
-  check(corre(`extraer ${fila[0]}`).resuelto === true, `y la del encargo (${fila[0]}) resuelve la fase`);
-  check(dice(corre('buscar en credenciales donde color = azul')).includes('no es ninguna columna'),
-    'una columna inventada se explica');
+  // --- errores que enseñan
+  check(dice(j('SELECT * FROM fragmentos f JOIN modulos m ON f.modulo_id = m.id WHERE id = 1')).includes('ambigua'),
+    'una columna ambigua se explica');
+  check(dice(j("SELECT * FROM fragmentos WHERE sistema = 'nucleo'")).includes('join'),
+    'pedir una columna de otra tabla sin unirla explica que hay que unir');
+  check(dice(j('SELECT * FROM fragmentos')).includes('demasiadas'), 'pedir todo manda a estrechar, no vuelca la memoria');
+  check(dice(j('buscar en credenciales')).includes('sql'), 'la sintaxis vieja se redirige a SQL');
+  check(dice(j('DELETE FROM fragmentos')).includes('solo lectura'), 'en la Parte 1 la memoria es de solo lectura');
+  check(j('SELECT * FROM fantasma').fallo !== true, 'un error de sintaxis no penaliza');
+
+  // --- vistas y probar
+  check(dice(j('probar nada')).includes('no hay ninguna vista'), 'probar una vista inexistente se explica');
+  j("CREATE VIEW muchas AS SELECT * FROM fragmentos WHERE codigo LIKE 'LLV-%'");
+  const pm = j('probar muchas');
+  check(pm.fallo !== true && dice(pm).includes('exactamente una'), 'una vista con mas de una fila no se prueba ni penaliza');
+
+  const decoy = filaDe(SOLUCIONES[0].replace("p.tipo = 'subsistema'", "p.tipo = 'robot'")).base[0]!;
+  j(`CREATE VIEW senuelo AS SELECT * FROM fragmentos WHERE id = '${decoy.id}'`);
+  const rd = j('probar senuelo');
+  check(rd.fallo === true, 'probar un señuelo (la llave con un rasgo cambiado) penaliza');
+  check(dice(rd).includes('cuarentena'), '...y manda a cuarentena');
+
+  // --- confirmar las tres y pasar a la Parte 2
+  SOLUCIONES.forEach((sql, k) => { j(`CREATE VIEW llave${k + 1} AS ${sql}`); });
+  const r1 = j('probar llave1');
+  check(dice(r1).includes('1 de 3'), 'la primera llave se confirma');
+  check(dice(j('probar llave1')).includes('ya estaba'), 'repetir una confirmada no penaliza ni suma');
+  check(dice(j('probar llave2')).includes('2 de 3'), 'la segunda');
+  const r3 = j('probar llave3');
+  check(r3.resuelto !== true && j.estado().parte === 2, 'la tercera NO termina la fase: pasa a la Parte 2');
+  check(dice(r3).includes('parte 2'), '...y lo dice');
+  const dic2 = dice(verPantalla(j.estado()));
+  check(dic2.includes('sistema_triggers') && dic2.includes('respaldo_fragmentos') && dic2.includes('"respaldos"'),
+    'el diccionario de Datos cambia: tablas de respaldo y catalogo de triggers');
+  check((verPantalla(j.estado()).tablas.length) === 4 && verPantalla(j.estado()).titulo !== verPantalla({}).titulo,
+    '...con titulo distinto, para que Datos vuelva al mapa');
+  check(dice(j('probar llave1')).includes('ya no hay vistas'), 'la Parte 2 no tiene vistas ni probar');
+
+  // --- Parte 2: borrar de verdad
+  check(dice(j('DELETE FROM sistema_triggers')).includes('solo lectura'), 'el catalogo de triggers es de solo lectura');
+  const trg = dice(j('SELECT nombre, activo FROM sistema_triggers'));
+  check(trg.includes('trg_latido') && trg.includes('trg_restaurar_frag_v0'), 'el catalogo se puede consultar');
+
+  const b1 = dice(j('DELETE FROM fragmentos'));
+  check(b1.includes('repuso 450'), 'borrar fragmentos sin quitar el trigger: 450 filas vuelven solas');
+  const b2 = dice(j('DELETE FROM respaldo_fragmentos'));
+  check(b2.includes('repuso 450'), 'borrar el respaldo mientras la memoria sigue llena: el respaldo se repone (ping-pong)');
+  check(j.estado().ultimaRepuestas === 450 && (j.estado().repuestas as number) === 900, 'la camara lleva la cuenta de lo restaurado');
+
+  const rr = j('reiniciar');
+  check(j.estado().restan === 2400 && (j.estado().log as string[]).length === 0, 'reiniciar devuelve la memoria entera');
+
+  const inoc = j('DROP TRIGGER trg_sello_fecha');
+  check(inoc.fallo === true, 'quitar un trigger que el robot necesita penaliza (acusar en falso)');
+  check(j('DROP TRIGGER no_existe').fallo !== true, 'uno que no existe solo se explica');
+  check(j('DROP TRIGGER trg_restaurar_frag_v0').fallo !== true, 'quitar la copia antigua desactivada no cuesta nada');
+  j('reiniciar');
+
+  const latido = j('DROP TRIGGER trg_restaurar_frag');
+  check(dice(latido).includes('eliminado'), 'quitar un trigger que restaura se acepta');
+  j('DELETE FROM fragmentos'); j('DELETE FROM respaldo_fragmentos');
+  const rb = j('DELETE FROM bitacora');
+  check(dice(rb).includes('anadio 1'),
+    'con trg_latido, vaciar la bitacora deja una fila nueva');
+  j('DELETE FROM bitacora');
+  check(cuenta('SELECT COUNT(*) FROM bitacora') === 1, '...y nunca se vacia mientras el trigger siga');
+  j('DROP TRIGGER trg_latido');
+  j('DELETE FROM bitacora');
+  // Orden que funciona sin tocar los triggers de modulos/propietarios:
+  // vaciar primero el respaldo (sin trigger propio) y luego la tabla.
+  j('DELETE FROM respaldo_modulos'); j('DELETE FROM modulos');
+  j('DELETE FROM respaldo_propietarios'); j('DELETE FROM propietarios');
+  const rq = j('DELETE FROM etiquetas'); // trg_auditoria_etq escribe en bitacora
+  check(dice(rq).includes('bitacora') && j.estado().restan === 1, 'un trigger de auditoria deja una fila en la bitacora');
+  j('DISABLE TRIGGER trg_auditoria_etq');
+  const fin = j('DELETE FROM bitacora');
+  check(fin.resuelto === true, 'con todo vacio y sin triggers que lo rellenen, la fase se resuelve');
+  check(j.estado().restan === 0, '...y la camara marca cero filas');
+
+  // Camino alternativo: quitar los dos triggers del ping-pong y los de las otras.
+  const k = juega();
+  for (let i = 0; i < 3; i++) SOLUCIONES.forEach((sql, n) => { k(`CREATE VIEW l${n} AS ${sql}`); });
+  k('probar l0'); k('probar l1'); k('probar l2');
+  for (const c of ['DROP TRIGGER trg_restaurar_frag', 'DROP TRIGGER trg_replicar_respaldo', 'DROP TRIGGER trg_restaurar_mod',
+    'DROP TRIGGER trg_restaurar_prop', 'DROP TRIGGER trg_latido', 'DROP TRIGGER trg_auditoria_etq']) k(c);
+  let ult: any = null;
+  for (const t of MW.DATOS2) ult = k(`DELETE FROM ${t}`);
+  check(ult.resuelto === true, 'tambien se resuelve quitando todos los que restauran y borrando en cualquier orden');
 }
 
 // ============================================================
@@ -751,7 +865,7 @@ console.log('\n7) Circuito cerrado de todas las fases');
     ['Fase 1 · Control de Acceso', acceso, 2, ['caducada', 'vigente', 'noche', 'almacen']],
     ['Fase 2 · El Enemigo', enemigo, 2, ['svc.backup', 'k.moreno', 'a.duarte', 'j.ortega', 'm.rivas']],
     ['Fase 4 · Nucleo Modular', nucleo, 2, ['v * f', 'n * 2', 'n - 1', '12', '24']],
-    ['Fase 5 · Boveda', boveda, 2, ['cr-1843', 'maestra', 'torre']],
+    ['Fase 5 · Memoria del Robot', boveda, 2, ['llv-', 'k7', 'subsistema', 'llave_maestra', 'trg_']],
     ['Fase 6 · Puente', puente, 6, ['tk-4f19', 'k7qx', '/v2/']],
     ['Fase 7 · El Rastro', rastro, 2, ['9f2ae1', 'pruebas-07', 'nomina-02']],
   ];

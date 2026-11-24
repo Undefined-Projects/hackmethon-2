@@ -48,10 +48,10 @@ const PHASES = [
   {
     key: 'fase-5-boveda',
     order: 5,
-    title: 'Fase 5 — Bóveda de Credenciales',
-    description: 'BASES DE DATOS · Preguntarle bien a una base de datos es más rápido que '
-               + 'buscar con los ojos.',
-    teaser: 'Miles de registros y uno solo sirve.',
+    title: 'Fase 5 — La Memoria del Robot',
+    description: 'BASES DE DATOS (SQL) · Encontrar tres llaves entre miles de registros y, después, '
+               + 'vaciar una memoria que se restaura sola.',
+    teaser: 'Tres llaves escondidas y una memoria que no quiere morir.',
   },
   // La FINAL. Cierra el evento y es la única con reloj propio: la sala
   // tiene un rato contado para abortar el lanzamiento, y ese rato se ve

@@ -50,7 +50,7 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   useEffect(() => {
     setAbierta(null);
     setResaltado(null);
-  }, [datos?.tablas.length]);
+  }, [datos?.titulo, datos?.tablas.length]);
 
   if (!datos) {
     return (
