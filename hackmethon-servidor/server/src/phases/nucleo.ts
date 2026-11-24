@@ -813,7 +813,7 @@ function evaluarImpactoSubsistema(s: SubsistemaInfo, res: ResultadoCadena): {
 const TABLA_PARCHE_PARTE_2 = {
   id: 'parche_emergencia',
   nombre: 'parche_emergencia',
-  x: 560, y: 310, w: 410,
+  x: 590, y: 310, w: 370,
   descripcion: 'Cambios aplicados en caliente por el robot tras el colapso de la Parte 1',
   clave: 'id',
   columnas: ['id', 'tolerancia_id', 'parche_puso', 'mala_practica_del_parche'],
@@ -879,7 +879,7 @@ function esquemaParaDatos(estado: Record<string, unknown>) {
     {
       id: 'tolerancias',
       nombre: 'tolerancias',
-      x: 40, y: 310, w: 480,
+      x: 40, y: 310, w: 360,
       descripcion: 'Limites fisicos en este ciclo: debe superar aguanta_max sin tocar fusible_corte',
       clave: 'id',
       columnas: ['id', 'subsistema', 'funcion_id', 'entrada', 'normal', 'aguanta_max', 'fusible_corte'],
@@ -963,7 +963,7 @@ function escenaNucleo(
     '                                    ',
     tira(
       parte === 1
-        ? `  armadas: ${armadasCount}/9 · ${saboteadasCount > 0 ? 'dependencia alterada' : 'flujo original'}`
+        ? `  armadas: ${armadasCount}/9 · ${saboteadasCount > 0 ? 'sabotaje activo' : 'flujo original'}`
         : `  parche P2 activo · M1 y M3 unidos`,
       ANCHO_CAMARA,
     ),
@@ -1061,7 +1061,7 @@ function vistaDeCodigo(estado: Record<string, unknown>) {
 
   if (!abiertaKey) {
     return {
-      raiz: 'nucleo/',
+      raiz: 'sistema/',
       carpetas,
       abierta: null,
       pila: [],
@@ -1110,9 +1110,9 @@ function vistaDeCodigo(estado: Record<string, unknown>) {
   }
 
   return {
-    raiz: 'nucleo/',
+    raiz: 'sistema/',
     carpetas,
-    abierta: { ruta: `nucleo/${pz.carpeta}/${pz.nombre}.fn`, lineas },
+    abierta: { ruta: `sistema/${pz.carpeta}/${pz.nombre}.fn`, lineas },
     pila: cadena,
   };
 }
@@ -1201,17 +1201,24 @@ export const nucleo: ModuloFase = {
           salidas: ctx.salidas,
           camaras: vistaDeCamaras(ctx.estado),
           codigo: vistaDeCodigo(ctx.estado),
-          nota: 'Tu ves el nucleo por circuito cerrado, el arbol de carpetas y el archivo `.fn` '
+          nota: parte === 1
+            ? 'PARTE 1 · Tu ves el nucleo por circuito cerrado, el arbol de carpetas y el archivo `.fn` '
               + 'abierto. Al armar una funcion se revela su codigo y que comprobaciones hace '
               + '(o cuales olvido hacer). Cuanto aguanta el robot y donde salta el fusible lo '
-              + 'tiene Datos. Quien escribe no ve nada: cantaselo.',
+              + 'tiene Datos. Quien escribe no ve nada: cantaselo.'
+            : 'PARTE 2 (PARCHE DE EMERGENCIA ACTIVO) · El robot modifico las comprobaciones de sus '
+              + 'archivos `.fn` y acoplo `carga` (de M1) dentro de `flujo` (de M3). Abre las piezas '
+              + 'para leer las lineas marcadas con [PARCHE P2] y revisa con Datos la 4a tabla.',
         };
 
       case 'TERMINAL':
         return {
           camara: numero(ctx.estado, 'camara') || 1,
-          pista: 'Escribe `ayuda` y pregunta a Pantalla que aparecio. Tambien mandas tu las '
-               + 'camaras del nucleo, aunque no las veas.',
+          pista: parte === 1
+            ? 'PARTE 1 · Escribe `ayuda` y pregunta a Pantalla que aparecio. Tambien mandas tu las '
+              + 'camaras del nucleo, aunque no las veas.'
+            : 'PARTE 2 (PARCHE DE EMERGENCIA) · El robot aplico un parche, roto las tolerancias y '
+              + 'aparecio una 4a tabla en Datos. Usa los mismos comandos para superar el parche.',
           cuarentenaHasta: (ctx.estado.cuarentenaHasta as number) ?? null,
         };
     }
@@ -1442,9 +1449,23 @@ export const nucleo: ModuloFase = {
         const expr = tokens.slice(1).join(' ');
         if (!expr) return { bloques: [error(`Falta la operacion saboteada para ${piezaNombre}.`)] };
 
+        const tokensExpr = tokenizarExpr(expr);
+        const varRequerida = pieza.carpeta === 'base' ? 'n' : 'x';
+        if (tokensExpr.length !== 3 || !tokensExpr.includes(varRequerida)) {
+          return {
+            bloques: [
+              error(
+                pieza.carpeta === 'base'
+                  ? `La operacion en «${piezaNombre}» (base/) debe operar sobre su entrada «n» con +, -, * o / (ejemplo: \`n * 4\` o \`n + 15\`).`
+                  : `La operacion en «${piezaNombre}» (medio/) debe operar sobre el retorno «x» que recibe de su dependencia con +, -, * o / (ejemplo: \`x + 12\`).`,
+              ),
+            ],
+          };
+        }
+
         const testVal = evaluarExpr(expr, { n: 5, x: 5 });
         if (testVal === null) {
-          return { bloques: [error(`No entiendo la operacion «${expr}». Usa variables (n o x) y operadores (+ - * /).`)] };
+          return { bloques: [error(`No entiendo la operacion «${expr}». Usa la variable (${varRequerida}) y un operador (+ - * /).`)] };
         }
 
         enganos[piezaNombre] = expr;
