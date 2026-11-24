@@ -12,9 +12,20 @@ type Tabla = {
   clave: string;
   columnas: string[];
   filas: string[][];
+  totalFilas?: number;
 };
 
 type Relacion = { desde: string; campo: string; hasta: string };
+
+type ResultadoFiltro = {
+  titulo: string;
+  consulta: string;
+  tablasUnidas: string[];
+  total: number;
+  columnas: string[];
+  filas: string[][];
+  nota?: string;
+};
 
 type Payload = {
   titulo: string;
@@ -22,6 +33,7 @@ type Payload = {
   lienzo: { w: number; h: number };
   tablas: Tabla[];
   relaciones: Relacion[];
+  resultadoFiltro?: ResultadoFiltro | null;
 };
 
 type Arista = { clave: string; d: string; etiqueta: string; lx: number; ly: number };
@@ -89,7 +101,12 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
           alSaltar={abrir}
         />
       ) : (
-        <Mapa datos={datos} alAbrir={(id) => abrir(id)} />
+        <>
+          <Mapa datos={datos} alAbrir={(id) => abrir(id)} />
+          {datos.resultadoFiltro && (
+            <PantallaFiltro resultado={datos.resultadoFiltro} />
+          )}
+        </>
       )}
 
       <footer className="huella">montaje #{mountId}</footer>
@@ -197,7 +214,7 @@ function Mapa({ datos, alAbrir }: { datos: Payload; alAbrir: (id: string) => voi
                 </li>
               ))}
             </ul>
-            <span className="nodo__n">{t.filas.length} filas</span>
+            <span className="nodo__n">{t.totalFilas ?? t.filas.length} filas</span>
           </button>
         ))}
       </div>
@@ -225,6 +242,7 @@ function DetalleTabla({
 
   const q = filtro.trim().toLowerCase();
   const filas = q ? tabla.filas.filter((f) => f.some((c) => c.toLowerCase().includes(q))) : tabla.filas;
+  const visibles = filas.slice(0, 150);
 
   return (
     <>
@@ -262,7 +280,7 @@ function DetalleTabla({
             <tr>{tabla.columnas.map((c) => <th key={c}>{c}</th>)}</tr>
           </thead>
           <tbody>
-            {filas.map((f) => (
+            {visibles.map((f) => (
               <tr key={f[0]} className={resaltado && f[0] === resaltado ? 'resaltada' : ''}>
                 {f.map((celda, j) => {
                   const rel = relaciones.find(
@@ -288,6 +306,86 @@ function DetalleTabla({
         </table>
       </div>
       {filas.length === 0 && <p className="pendiente">Ninguna fila coincide.</p>}
+      {filas.length > visibles.length && (
+        <p className="datos-filtro-pie">
+          Mostrando {visibles.length} de {filas.length} filas. Usa el filtro o ejecuta una consulta desde Terminal.
+        </p>
+      )}
     </>
+  );
+}
+
+/* ── pantalla en vivo del resultado del filtro / join ─────── */
+
+function PantallaFiltro({ resultado }: { resultado: ResultadoFiltro }) {
+  const [busquedaLocal, setBusquedaLocal] = useState('');
+  const q = busquedaLocal.trim().toLowerCase();
+  const filasFiltradas = q
+    ? resultado.filas.filter((f) => f.some((c) => c.toLowerCase().includes(q)))
+    : resultado.filas;
+
+  return (
+    <div className="datos-filtro-panel" data-testid="datos-resultado-filtro">
+      <div className="datos-filtro-cab">
+        <div className="datos-filtro-tit">
+          <span className="datos-filtro-etq">PANTALLA DE FILTRO EN VIVO</span>
+          <strong>{resultado.titulo}</strong>
+        </div>
+        <div className="datos-filtro-meta">
+          <span className="datos-filtro-tablas">
+            TABLAS: {resultado.tablasUnidas.join(' + ')}
+          </span>
+          <span className={`datos-filtro-cuenta${resultado.total === 1 ? ' unica' : resultado.total === 0 ? ' vacia' : ''}`}>
+            {resultado.total} {resultado.total === 1 ? 'REGISTRO RESTANTE' : 'REGISTROS RESTANTES'}
+          </span>
+        </div>
+      </div>
+
+      <div className="datos-filtro-sql">
+        <code>{resultado.consulta}</code>
+      </div>
+
+      {resultado.nota && (
+        <p className="datos-filtro-nota">{resultado.nota}</p>
+      )}
+
+      <input
+        className="filtro"
+        value={busquedaLocal}
+        onChange={(e) => setBusquedaLocal(e.target.value)}
+        placeholder="Buscar dentro de los registros que quedaron en pantalla…"
+      />
+
+      <div className="tabla-scroll datos-filtro-scroll">
+        <table className="tabla-datos">
+          <thead>
+            <tr>
+              {resultado.columnas.map((c) => (
+                <th key={c}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filasFiltradas.map((f, idx) => (
+              <tr key={`${f[0]}-${idx}`} className={resultado.total === 1 ? 'resaltada' : ''}>
+                {f.map((celda, j) => (
+                  <td key={j}>{celda && celda !== 'NULL' ? celda : <span className="vacio">—</span>}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {filasFiltradas.length === 0 && (
+        <p className="pendiente">Ningun registro coincide con el filtro actual.</p>
+      )}
+      {resultado.total > resultado.filas.length && (
+        <p className="datos-filtro-pie">
+          Mostrando los primeros {resultado.filas.length} de {resultado.total} registros que cumplen el filtro.
+          Aplica mas condiciones en Terminal para estrechar la tabla.
+        </p>
+      )}
+    </div>
   );
 }

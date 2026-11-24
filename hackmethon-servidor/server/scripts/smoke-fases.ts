@@ -575,20 +575,30 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(empiezaTermina >= conTamano, 'EMPIEZA CON y TERMINA CON funcionan sin comillas');
 
   const tipos = dice(j('MOSTRAR DISTINTOS tipo DE propietarios'));
-  check(tipos.includes('subsistema'), 'MOSTRAR DISTINTOS revela el tercer tipo de propietario...');
-  const dic = dice(verPantalla({}));
-  check(dic.includes('robot · humano') && !dic.includes('robot · humano · subsistema'),
-    '...que el diccionario de Datos no lista (error 1 del diccionario)');
+  check(tipos.includes('subsistema'), 'MOSTRAR DISTINTOS revela el tercer tipo de propietario (subsistema)...');
+  const datosP1 = verPantalla({});
+  const nombresTablasP1 = datosP1.tablas.map((t: any) => t.id);
+  check(JSON.stringify(nombresTablasP1) === JSON.stringify(['fragmentos', 'modulos', 'propietarios', 'etiquetas']),
+    'en Datos solo estan las 4 tablas reales de la memoria (sin tablas de pistas aparte)');
+  check(datosP1.relaciones.length === 3 && !!datosP1.resultadoFiltro,
+    'Datos incluye las relaciones reales y la pantalla de resultado del filtro en vivo');
   check(dice(j('MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 1')).includes('9'),
-    'el nivel maximo real es 9 (ORDENADO POR nivel DESCENDENTE LIMITE 1)...');
-  check(dic.includes('"1 a 5"'), '...y el diccionario dice 1 a 5 (error 2 del diccionario)');
+    'el nivel maximo real es 9 (ORDENADO POR nivel DESCENDENTE LIMITE 1)');
+
+  // --- la pantalla de filtro en vivo en Datos
+  j('MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64');
+  const datosFiltrados = verPantalla(j.estado());
+  check(datosFiltrados.resultadoFiltro.total === conTamano && datosFiltrados.resultadoFiltro.filas.length === conTamano,
+    `al aplicar un filtro o JOIN, la pantalla de Datos muestra las ${conTamano} filas y columnas que quedaron`);
+  check(datosFiltrados.resultadoFiltro.columnas.includes('modulos.sistema') && datosFiltrados.resultadoFiltro.columnas.includes('propietarios.tipo'),
+    'y el resultado del JOIN en Datos incluye las columnas unidas de las otras tablas');
 
   // --- errores que enseñan
   check(dice(j('MOSTRAR TODO DE fragmentos JUNTO CON modulos, etiquetas DONDE nombre ES algo')).includes('varias tablas'),
     'una columna ambigua se explica');
   check(dice(j('MOSTRAR TODO DE fragmentos DONDE sistema ES nucleo')).includes('junto con'),
     'pedir una columna de otra tabla sin unirla explica que hay que usar JUNTO CON');
-  check(dice(j('MOSTRAR TODO DE fragmentos')).includes('demasiadas'), 'pedir todo manda a estrechar, no vuelca la memoria');
+  check(dice(j('MOSTRAR TODO DE fragmentos')).includes('pantalla de datos'), 'pedir todo actualiza la pantalla de Datos y muestra vista previa');
   check(dice(j('BORRAR TODO DE fragmentos')).includes('solo lectura'), 'en la Parte 1 la memoria es de solo lectura');
   check(j('MOSTRAR TODO DE fantasma').fallo !== true, 'un error de consulta no penaliza');
 
@@ -623,10 +633,10 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(r3.resuelto !== true && j.estado().parte === 2, 'Forma 3 (GUARDAR <codigo>): la tercera llave pasa a la Parte 2');
   check(dice(r3).includes('parte 2'), '...y lo dice');
   const dic2 = dice(verPantalla(j.estado()));
-  check(dic2.includes('sistema_triggers') && dic2.includes('respaldo_fragmentos') && dic2.includes('"respaldos"'),
-    'el diccionario de Datos cambia: tablas de respaldo y catalogo de triggers');
-  check((verPantalla(j.estado()).tablas.length) === 4 && verPantalla(j.estado()).titulo !== verPantalla({}).titulo,
-    '...con titulo distinto, para que Datos vuelva al mapa');
+  check(dic2.includes('sistema_triggers') && dic2.includes('respaldo_fragmentos'),
+    'el mapa de Datos cambia en la Parte 2: muestra las tablas de respaldo y sistema_triggers');
+  check((verPantalla(j.estado()).tablas.length) === 9 && verPantalla(j.estado()).titulo !== verPantalla({}).titulo,
+    '...con las 9 tablas reales de la Parte 2 y titulo distinto, para que Datos vuelva al mapa');
   check(dice(j('probar llave1')).includes('no hay que guardar'), 'la Parte 2 no usa guardar ni probar');
 
   // --- Parte 2: borrar de verdad con comandos naturales

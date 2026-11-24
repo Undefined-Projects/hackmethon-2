@@ -909,6 +909,59 @@ body.fallo .cortinilla > strong{ animation:falloCanales .22s steps(1) infinite; 
 .vacio{ color:rgba(176,85,155,.4); }
 
 .vista > .mapa-scroll, .vista > .detalle-barra, .vista > .saltos{ margin-bottom:12px; }
+
+/* ── Pantalla de resultado del filtro en vivo (DatosView) ── */
+.datos-filtro-panel{
+  margin-top:14px; padding:12px 14px;
+  border:2px solid var(--blue-hi); background:var(--screen-2);
+  display:grid; gap:10px;
+}
+.datos-filtro-cab{
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:8px 16px;
+  padding-bottom:8px; border-bottom:1px solid rgba(79,134,238,.35);
+}
+.datos-filtro-tit{ display:flex; flex-direction:column; gap:2px; }
+.datos-filtro-etq{
+  font-family:var(--f-pixel); font-size:9.5px; letter-spacing:.14em;
+  color:var(--blue-hi);
+}
+.datos-filtro-tit strong{
+  font-family:var(--f-pixel); font-size:12px; letter-spacing:.06em;
+  color:var(--phos-hi); font-weight:normal;
+}
+.datos-filtro-meta{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.datos-filtro-tablas{
+  font-family:var(--f-mono); font-size:11px; color:var(--phos-soft);
+  padding:2px 8px; border:1px solid rgba(79,134,238,.45);
+}
+.datos-filtro-cuenta{
+  font-family:var(--f-pixel); font-size:10.5px; letter-spacing:.08em;
+  padding:3px 9px; border:1px solid var(--phos-dim); color:var(--phos-hi);
+}
+.datos-filtro-cuenta.unica{
+  border-color:var(--clorofila-hi); color:var(--clorofila-hi);
+  background:rgba(61,220,151,.1);
+}
+.datos-filtro-cuenta.vacia{
+  border-color:var(--sangre); color:var(--sangre-hi);
+}
+.datos-filtro-sql{
+  padding:6px 10px; background:var(--screen);
+  border-left:3px solid var(--blue-hi);
+  font-family:var(--f-mono); font-size:11.5px; color:var(--phos-hi);
+  overflow-x:auto;
+}
+.datos-filtro-nota{
+  margin:0; font-size:11.5px; color:var(--phos-dim);
+}
+.datos-filtro-scroll{
+  max-height:320px; overflow:auto;
+  border:1px solid rgba(79,134,238,.28);
+}
+.datos-filtro-pie{
+  margin:0; font-size:11px; color:var(--phos-dim); text-align:right;
+}
 @media (max-width:700px){
   .nodo__desc{ display:none; }
 }
