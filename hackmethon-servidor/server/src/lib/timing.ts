@@ -145,10 +145,19 @@ export function buildLobbyView(
   event: Pick<EventState, 'pausedAt' | 'status' | 'focusPhaseId' | 'libreAcceso'>,
   now = Date.now(),
 ) {
-  const ordered = [...rows].sort((a, b) => a.phase.order - b.phase.order);
+  // Las fases «solo panel» (la vieja bonus): no se ven mientras estén
+  // cerradas, no cuentan como eslabón de la cadena y, abiertas, no exigen
+  // la anterior. Las abre el admin cuando quiere.
+  const soloPanel = (ph: { configJson?: string | null }) => {
+    try { return JSON.parse(ph.configJson || '{}').soloPanel === true; } catch { return false; }
+  };
+  const ordered = [...rows].sort((a, b) => a.phase.order - b.phase.order)
+    .filter((r) => !soloPanel(r.phase) || r.phase.status === 'ACTIVE' || r.status === 'SOLVED');
+  const cadena = ordered.filter((r) => !soloPanel(r.phase));
 
-  return ordered.map(({ phase, ...p }, i) => {
-    const prev = i > 0 ? ordered[i - 1] : null;
+  return ordered.map(({ phase, ...p }) => {
+    const enCadena = cadena.findIndex((r) => r.phase.id === phase.id);
+    const prev = soloPanel(phase) || enCadena <= 0 ? null : cadena[enCadena - 1];
     // Con acceso libre, abrir una fase basta: la cadena deja de exigir que
     // la anterior esté resuelta. Lo que NO cambia es el resto —una fase
     // sigue necesitando que el admin la abra, y una ya resuelta sigue sin

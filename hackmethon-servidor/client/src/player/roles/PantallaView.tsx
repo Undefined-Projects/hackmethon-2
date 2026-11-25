@@ -13,6 +13,7 @@ import { Nucleo3D, type DibujoNucleo } from '../fases/Nucleo3D';
 import { Mano3D, type DibujoMano } from '../fases/Mano3D';
 import { Boveda3D, type DibujoBoveda } from '../fases/Boveda3D';
 import { Mente3D, type DibujoMente } from '../fases/Mente3D';
+import { CorazonCRT, type DibujoCorazon } from '../fases/CorazonCRT';
 import { Dependencias3D, type DibujoDependencias } from '../fases/Dependencias3D';
 import { Marana, type Mundo, type ViajePantalla } from '../fases/Marana';
 
@@ -28,6 +29,7 @@ type Payload = {
   mano?: DibujoMano | null;
   boveda?: DibujoBoveda | null;
   mente?: DibujoMente | null;
+  corazon?: DibujoCorazon | null;
   marana?: { capa: number; resuelta: boolean; titulo?: string; final?: { t: string; sub: string }; mundo: Mundo; viaje: ViajePantalla | null } | null;
 };
 
@@ -628,6 +630,13 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
               ? 'Una cara a la vez: pídanle a Terminal la cámara 1 (frente) o la 2 (reverso). Datos sabe cuál manda en cada dedo.'
               : 'Díganle a Terminal qué intercambiar. Cada intercambio gasta del presupuesto.'}
           </p>
+        </div>
+      )}
+
+      {/* El bonus: el monitor de fósforo verde del corazón. */}
+      {payload?.corazon && (
+        <div className="camaras">
+          <CorazonCRT {...payload.corazon} />
         </div>
       )}
 

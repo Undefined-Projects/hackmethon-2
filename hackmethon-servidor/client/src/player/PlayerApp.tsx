@@ -57,6 +57,12 @@ export function PlayerApp() {
   const [habitacion, setHabitacion] = useState(false);
   const salirHabitacion = useCallback(() => setHabitacion(false), []);
   const animo = (player.workspace?.payload as { animo?: Animo } | null)?.animo ?? null;
+  // El bonus del corazón cambia el estilo entero: una IBM de fósforo verde.
+  const ibm = faseKey === 'fase-bonus-corazon';
+  useEffect(() => {
+    document.body.classList.toggle('modo-ibm', ibm);
+    return () => document.body.classList.remove('modo-ibm');
+  }, [ibm]);
   const capaVista = useRef<{ fase: string | null; capa: number | null }>({ fase: faseKey, capa });
   useEffect(() => {
     const antes = capaVista.current;

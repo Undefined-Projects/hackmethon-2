@@ -74,9 +74,23 @@ const PHASES = [
   // BONUS. La segunda mitad de la vieja Maraña: un seguidor de pared a
   // oscuras, con cuatro brotes. Dificultad media: para los equipos que
   // terminan antes, no cuenta para la meta y se abre solo si sobra tiempo.
+  // BONUS. El corazón: otra computadora, de fósforo verde. La máquina no
+  // era mala, tenía un virus: hay que arrancar su corazón y limpiarlo.
+  {
+    key: 'fase-bonus-corazon',
+    order: 7,
+    title: 'Bonus — El Corazón',
+    description: 'LÍNEA DE COMANDOS Y DEPURAR · Arrancar el corazón desde una terminal vieja y borrar, '
+               + 'línea por línea, el virus que la hizo hacer todo lo malo.',
+    teaser: 'No era yo.',
+    esBonus: true,
+  },
+  // La vieja bonus. Se guarda, pero SOLO la abre el panel: no aparece en
+  // el lobby mientras esté cerrada ni exige haber resuelto la anterior.
   {
     key: 'fase-bonus-espesura',
-    order: 7,
+    order: 8,
+    configJson: JSON.stringify({ soloPanel: true }),
     title: 'Bonus — La Espesura',
     description: 'CICLOS QUE DECIDEN · Un mismo programa tiene que llevar a cuatro brotes al claro, '
                + 'a oscuras y desde cuatro esquinas.',
@@ -112,6 +126,7 @@ async function main() {
       update: {
         title: p.title, description: p.description, teaser: p.teaser, order: p.order,
         esFinal: p.esFinal ?? false, esBonus: p.esBonus ?? false, limiteMs: p.limiteMs ?? null,
+        configJson: p.configJson ?? '{}',
       },
       create: { ...p, status: 'LOCKED' },
     });

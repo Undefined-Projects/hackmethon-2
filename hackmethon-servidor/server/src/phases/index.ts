@@ -7,6 +7,7 @@ import type { ModuloFase } from './types.js';
 import { acceso } from './acceso.js';
 import { espesura, marana } from './marana.js';
 import { mano } from './mano.js';
+import { corazon } from './corazon.js';
 import { muro } from './muro.js';
 import { nucleo } from './nucleo.js';
 import { boveda } from './boveda.js';
@@ -20,6 +21,7 @@ const MODULOS: Record<string, ModuloFase> = {
   [muro.key]: muro,
   [nucleo.key]: nucleo,
   [mano.key]: mano,
+  [corazon.key]: corazon,
   [boveda.key]: boveda,
   [mente.key]: mente,
   [rastro.key]: rastro,

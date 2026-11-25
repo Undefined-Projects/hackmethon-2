@@ -4882,3 +4882,68 @@ body[data-deterioro="8"] .titulo-fase, body[data-deterioro="9"] .titulo-fase{ an
 .habitacion__final.escapa p:first-child{ margin:0; font-family:var(--f-pixel); font-size:clamp(20px, 3.4vw, 34px); letter-spacing:.3em; color:var(--clorofila-hi); }
 @keyframes habitacion-aparece{ from{ opacity:0; } to{ opacity:1; } }
 @media (prefers-reduced-motion: reduce){ .habitacion__dicho, .habitacion__final{ animation:none; } }
+
+/* ============================================================
+   MODO IBM · el bonus del corazón (body.modo-ibm)
+   Toda la página se vuelve una IBM de fósforo verde: los colores del
+   tema pasan a verdes, la letra a monoespaciada, y un filtro monocromo
+   atrapa los colores escritos a mano. Encima, el barrido del tubo.
+   ============================================================ */
+body.modo-ibm{
+  --screen:#000; --screen-2:#010a03; --screen-3:#031406;
+  --phos:#33ff66; --phos-hi:#c8ffd2; --phos-soft:#8cf0a4; --phos-dim:#1f8a3c;
+  --magenta:#33ff66; --violet:#1f8a3c; --uv:#33ff66;
+  --blue:#0d3b18; --blue-hi:#33ff66; --blue-dim:#1a6b2e;
+  --clorofila:#33ff66; --clorofila-hi:#c8ffd2; --clorofila-dim:#1f8a3c;
+  --sangre:#ccff66; --sangre-hi:#efffc8;
+  --rule:rgba(51,255,102,.32); --rule-blue:rgba(51,255,102,.22);
+  --bloom:0 0 6px rgba(51,255,102,.6); --bloom-2:0 0 4px rgba(51,255,102,.5), 0 0 20px rgba(51,255,102,.2);
+  --fringe:0 0 3px rgba(51,255,102,.6);
+  --f-pixel:"IBM Plex Mono", ui-monospace, monospace; --f-sans:"IBM Plex Mono", ui-monospace, monospace;
+  background:#000;
+}
+body.modo-ibm .espacio-fase{
+  filter:grayscale(1) sepia(1) hue-rotate(68deg) saturate(3.2) brightness(1.05);
+  text-shadow:0 0 4px rgba(51,255,102,.45);
+  animation:none !important;
+}
+/* Lo que en esta fase no existe: el jardín, el archivo 3D, el nervio, la máquina de la barra. */
+body.modo-ibm .jardin-escena, body.modo-ibm .nervio3d, body.modo-ibm .barra-maquina,
+body.modo-ibm .deterioro, body.modo-ibm .crt__tear, body.modo-ibm .crt__sweep{ display:none !important; }
+/* El barrido del tubo y su curvatura. */
+body.modo-ibm::after{
+  content:''; position:fixed; inset:0; z-index:57; pointer-events:none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0,0,0,.28) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.65) 100%);
+}
+body.modo-ibm .entrada-cmd .prompt::before{ content:'C:\\'; }
+body.modo-ibm .entrada-cmd input{ caret-color:#33ff66; text-transform:uppercase; }
+body.modo-ibm .linea-cmd{ text-transform:uppercase; }
+
+/* El monitor del corazón. */
+.corazon-crt{ position:relative; width:100%; max-width:min(100%, calc(min(60vh, 640px) * 1.6)); margin:0 auto; aspect-ratio:16 / 10;
+  background:#000; border:2px solid #1f8a3c; border-radius:18px / 14px; overflow:hidden;
+  box-shadow:inset 0 0 40px rgba(51,255,102,.12), 0 0 0 6px #0b0f0b, 0 0 0 7px #1f8a3c; }
+.corazon-crt canvas{ display:block; width:100%; height:100%; image-rendering:pixelated; }
+.corazon-crt__rostro{ position:absolute; left:76%; bottom:4%; transform:translateX(-50%); margin:0; font-family:var(--f-mono);
+  font-size:clamp(9px, 1.4vw, 13px); line-height:1.15; color:#c8ffd2; text-shadow:0 0 8px rgba(51,255,102,.8); animation:habitacion-aparece 2s ease-in both; }
+
+/* El manual de Datos, impreso. */
+.manual-ibm{ margin-inline:clamp(12px,2.2vw,20px); margin-bottom:12px; padding:14px 18px; font-family:var(--f-mono); font-size:13px;
+  color:#8cf0a4; border:1px dashed rgba(51,255,102,.4);
+  background:repeating-linear-gradient(to bottom, rgba(51,255,102,.04) 0 22px, transparent 22px 44px); }
+.manual-ibm__capitulo + .manual-ibm__capitulo{ margin-top:18px; }
+.manual-ibm h3{ margin:0 0 8px; font-size:13px; font-weight:400; letter-spacing:.12em; color:#c8ffd2; }
+.manual-ibm table{ width:100%; border-collapse:collapse; }
+.manual-ibm th{ text-align:left; font-weight:400; color:#33ff66; border-bottom:1px solid rgba(51,255,102,.4); padding:2px 10px 2px 0; }
+.manual-ibm td{ padding:3px 10px 3px 0; vertical-align:top; white-space:pre-wrap; }
+.manual-ibm td:first-child{ color:#c8ffd2; white-space:nowrap; }
+.manual-ibm__pie{ margin:16px 0 0; text-align:center; letter-spacing:.3em; color:rgba(51,255,102,.5); }
+/* La introducción del corazón: una pantalla de fósforo dentro del SVG. */
+.ico-pantalla{ fill:#000; stroke:#1f8a3c; stroke-width:3; }
+.ico-linea{ font-family:var(--f-mono); font-size:22px; fill:#33ff66; }
+.ico-salida{ font-family:var(--f-mono); font-size:22px; fill:#8cf0a4; }
+.ico-marca{ fill:rgba(204,255,102,.16); stroke:#ccff66; stroke-width:1.5; }
+/* El mueble y el fondo de la página, también en fósforo. */
+body.modo-ibm .gabinete, body.modo-ibm .crt__bloom{ filter:grayscale(1) sepia(1) hue-rotate(68deg) saturate(3.2); }

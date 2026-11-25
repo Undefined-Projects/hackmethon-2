@@ -33,6 +33,8 @@ type Payload = {
   flujo?: { filtros: string[]; max: number; marchitos: string[]; capa: number; pierna?: boolean[] };
   /** El programa del brote (Fase 2): lo que escribe Terminal, vivo. */
   programa?: Parameters<typeof ProgramaDatos>[0]['programa'];
+  /** El bonus del corazón: el manual se imprime, sin archivo 3D. */
+  ibm?: boolean;
 };
 
 /**
@@ -130,6 +132,8 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
       {datos.programa && <ProgramaDatos programa={datos.programa} />}
       </div>
 
+      {datos.ibm ? <ManualIBM tablas={datos.tablas} /> : <>
+
       {/* El archivo: las tablas como torres y las relaciones como cables.
           Siempre a la vista; la tabla abierta se lee abajo, en la hoja. */}
       <Archivo3D
@@ -158,9 +162,31 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
         <p className="archivo-pista">Toca una torre para abrir su tabla y consultarla.</p>
       )}
       </div>
+      </>}
 
       <footer className="huella">montaje #{mountId}</footer>
     </section>
+  );
+}
+
+/* ── el manual impreso (bonus del corazón) ───────────────────
+   Papel de impresora de los ochenta: cada tabla, un capítulo, en
+   monoespaciada y con sus columnas alineadas. Todo a la vista: aquí no
+   hay consultas, hay un manual que leer. */
+function ManualIBM({ tablas }: { tablas: Tabla[] }) {
+  return (
+    <div className="manual-ibm">
+      {tablas.map((t, i) => (
+        <section key={t.id} className="manual-ibm__capitulo">
+          <h3>{`${i + 1}. ${t.descripcion.toUpperCase()}`}</h3>
+          <table>
+            <thead><tr>{t.columnas.map((c) => <th key={c}>{c.toUpperCase()}</th>)}</tr></thead>
+            <tbody>{t.filas.map((f, k) => <tr key={k}>{f.map((v, j) => <td key={j}>{v}</td>)}</tr>)}</tbody>
+          </table>
+        </section>
+      ))}
+      <p className="manual-ibm__pie">- FIN DEL MANUAL -</p>
+    </div>
   );
 }
 

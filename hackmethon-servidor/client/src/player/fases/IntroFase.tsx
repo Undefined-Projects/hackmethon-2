@@ -6,6 +6,7 @@ import { INTRO_ESPESURA, INTRO_MARANA, INTRO_SETO } from './IntroMarana';
 import { INTRO_MANO, INTRO_TENDONES } from './IntroMano';
 import { INTRO_BOVEDA, INTRO_COMPARTIDO } from './IntroBoveda';
 import { INTRO_MENTE, INTRO_VOLUNTAD } from './IntroMente';
+import { INTRO_CORAZON, INTRO_VIRUS } from './IntroCorazon';
 
 // ============================================================
 //  LA INTRODUCCIÓN DE UNA FASE
@@ -88,6 +89,18 @@ export const INTROS: Record<string, Intro> = {
     nombre: 'El Último Pensamiento',
     cierre: 'ENTENDIDO · A LA VOLUNTAD',
     escenas: INTRO_VOLUNTAD,
+  },
+  'fase-bonus-corazon': {
+    lamina: 'BONUS · EL CORAZÓN',
+    nombre: 'Arranque en frío',
+    cierre: 'ENTENDIDO · C:\\>',
+    escenas: INTRO_CORAZON,
+  },
+  'fase-bonus-corazon:capa-2': {
+    lamina: 'BONUS · EL CORAZÓN · CAPA 2',
+    nombre: 'El Virus',
+    cierre: 'ENTENDIDO · A DEPURAR',
+    escenas: INTRO_VIRUS,
   },
   'fase-bonus-espesura': {
     lamina: 'BONUS · EL CORAZÓN',

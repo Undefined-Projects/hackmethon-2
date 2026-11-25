@@ -220,6 +220,45 @@ const CONSEJOS: Record<string, FaseConsejos> = {
       },
     ],
   },
+  'fase-bonus-corazon': {
+    capas: [
+      {
+        nombre: 'REINICIAR',
+        consejos: {
+          TERMINAL: [
+            'Empieza con DIR y TYPE AUTOEXEC.BAT: dice qué necesita el arranque.',
+            'CD .. sube una carpeta; CD \\ vuelve a la raíz.',
+            'No ARRANQUES hasta haber copiado el respaldo correcto: fallar cuesta cuarentena.',
+          ],
+          PANTALLA: [
+            'Dicta las rutas completas, con sus barras: C:\\RESPALDO\\1991.',
+            'Lee la SUMA de cada respaldo en voz alta para que Datos la compare.',
+          ],
+          DATOS: [
+            'Tu manual dice la suma de un marcapasos sano: solo un respaldo la tiene.',
+            'El marcapasos va en C:\\CORAZON. COPY origen destino.',
+          ],
+        },
+      },
+      {
+        nombre: 'EL VIRUS',
+        consejos: {
+          TERMINAL: [
+            'Antes de borrar, que Pantalla lea el programa completo: TYPE RITMO.BAS.',
+            'BORRAR lleva archivo y número de línea. Una sola línea cada vez.',
+          ],
+          PANTALLA: [
+            'Lee cada línea con su número. No te saltes las que parecen inocentes.',
+            'El medidor de VIRUS dice cuántas líneas quedan.',
+          ],
+          DATOS: [
+            'Compara cada línea con las firmas. Un GOTO que no va a 666 es sano; un 180 que calma, también.',
+            'TERMINAR el proceso no sirve: vuelve. La cura está en el código.',
+          ],
+        },
+      },
+    ],
+  },
   'fase-bonus-espesura': {
     capas: [
       {

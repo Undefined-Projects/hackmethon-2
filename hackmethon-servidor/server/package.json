@@ -38,7 +38,8 @@
     "luces:sin-placa": "python3 ../Luces/servidor/servidor.py --sin-arduino",
     "solucion:f1": "tsx scripts/solucion-f1.ts",
     "solucion:f2": "tsx scripts/solucion-f2.ts",
-    "solucion:mano": "tsx scripts/solucion-mano.ts"
+    "solucion:mano": "tsx scripts/solucion-mano.ts",
+    "smoke:corazon": "tsx scripts/smoke-corazon.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
