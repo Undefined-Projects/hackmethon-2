@@ -11,12 +11,12 @@ const TEAMS = [
   'FOXTROT', 'GOLF', 'HOTEL', 'INDIA', 'JULIETT',
 ];
 
-// El recorrido del evento: cuatro fases en unas cuatro horas útiles, y un
-// bonus para quien le sobre tiempo. La Maraña abre porque es la más
-// amable con quien nunca ha programado —una flecha que avanza y gira, como
-// Karel— y El Reflejo va detrás, cuando ya saben cómo se hablan los tres
-// puestos. Muro de Repetición, Bóveda de Credenciales y El Rastro siguen
-// en el código, pero fuera del recorrido: este seed las borra de la base.
+// El recorrido del evento: seis fases, una por parte del cuerpo de la
+// máquina —piernas, brazos, torso y cabeza—, y el corazón como bonus. Las
+// dos primeras son para cualquiera (La Maraña, una flecha como Karel; El
+// Reflejo, condicionales); desde la tercera empieza el filtro. Muro de
+// Repetición y El Rastro siguen en el código, pero fuera del recorrido:
+// este seed las borra de la base.
 const PHASES = [
   {
     key: 'fase-2-enemigo',
@@ -38,8 +38,24 @@ const PHASES = [
     key: 'fase-4-nucleo',
     order: 3,
     title: 'Fase 3 — Núcleo Modular',
-    description: 'FUNCIONES · Encontrar la pieza rota, arreglarla una vez y que sirva en todas.',
-    teaser: 'El código del enemigo está partido en piezas que se llaman entre sí.',
+    description: 'FUNCIONES · Funciones que dependen de otras, y lo que pasa cuando no comprueban lo que reciben.',
+    teaser: 'El brazo izquierdo se protege: cada pieza confía en la de abajo.',
+  },
+  {
+    key: 'fase-mano-listas',
+    order: 4,
+    title: 'Fase 4 — La Mano',
+    description: 'LISTAS · La mano guarda todo en listas. Dos capas: las falanges, una lista de listas, '
+               + 'y los tendones, que hay que ordenar con dos criterios y pocos movimientos.',
+    teaser: 'Con esta mano les ofrezco lo que quieran.',
+  },
+  {
+    key: 'fase-5-boveda',
+    order: 5,
+    title: 'Fase 5 — La Bóveda de los Recuerdos',
+    description: 'BASES DE DATOS · El torso guarda mil recuerdos. Dos capas: el embudo, una consulta '
+               + 'con condiciones, y el recuerdo compartido, dos tablas que hay que unir y agrupar.',
+    teaser: 'No me hagan recordar.',
   },
   // La FINAL. Cierra el evento y es la única con reloj propio: la sala
   // tiene un rato contado para abortar el lanzamiento, y ese rato se ve
@@ -47,10 +63,11 @@ const PHASES = [
   // cambia desde el panel.
   {
     key: 'fase-6-puente',
-    order: 4,
-    title: 'Fase 4 — Puente de Lanzamiento',
-    description: 'APIS · Mandarle el mensaje correcto y el ataque se cancela. El equivocado lo adelanta.',
-    teaser: 'La última capa habla con el exterior.',
+    order: 6,
+    title: 'Fase 6 — El Asalto a la Mente',
+    description: 'APIS · La final. Dentro de la mente, a peticiones: destruir sus facultades y apagar su '
+               + 'voluntad mientras contraataca.',
+    teaser: 'Por favor, todavía no.',
     esFinal: true,
     limiteMs: 30 * 60_000,
   },
@@ -59,7 +76,7 @@ const PHASES = [
   // terminan antes, no cuenta para la meta y se abre solo si sobra tiempo.
   {
     key: 'fase-bonus-espesura',
-    order: 5,
+    order: 7,
     title: 'Bonus — La Espesura',
     description: 'CICLOS QUE DECIDEN · Un mismo programa tiene que llevar a cuatro brotes al claro, '
                + 'a oscuras y desde cuatro esquinas.',

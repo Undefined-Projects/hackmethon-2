@@ -659,23 +659,53 @@ DATABASE_URL="file:./test.db" SMOKE_URL=http://localhost:4200 npm run smoke:fase
 
 ## El recorrido
 
-Cuatro fases en unas cuatro horas útiles, y un bonus. Cada una enseña una idea de
-programación, y la ficción es el envoltorio, no el relleno: lo que se aprende
-resolviendo es lo que dice la columna de la derecha.
+Seis fases, una por parte del cuerpo de la máquina, y el corazón como bonus. Las
+dos primeras son para cualquiera; desde la tercera empieza el filtro. Cada fase
+enseña una idea de programación, y la ficción es el envoltorio, no el relleno.
 
-| # | fase | enseña |
-|---|---|---|
-| 1 | La Maraña | **secuencias** y **ciclos** contados |
-| 2 | El Reflejo | **condicionales** |
-| 3 | Núcleo Modular | **funciones** |
-| 4 | Puente de Lanzamiento | **APIs** — y es la FINAL: cierra el evento |
-| bonus | La Espesura | *ciclos que deciden (seguidor de pared); fuera del recorrido* |
+| # | parte | fase | enseña |
+|---|---|---|---|
+| 1 | pierna izq. | La Maraña | **secuencias** y **ciclos** contados |
+| 2 | pierna der. | El Reflejo | **condicionales** |
+| 3 | brazo izq. | Núcleo Modular | **funciones** dependientes y validaciones |
+| 4 | brazo der. | La Mano | **listas**, **tipos de datos** y **ordenar** |
+| 5 | torso | Bóveda de Credenciales | **bases de datos** (versión anterior, por rediseñar) |
+| 6 | cabeza | Puente de Lanzamiento | **APIs** — y es la FINAL: cierra el evento |
+| ♥ | corazón | La Espesura | *ciclos que deciden (seguidor de pared); bonus* |
 
-La Maraña abre porque es la más amable para quien nunca ha programado. Muro de
-Repetición, Bóveda de Credenciales y El Rastro siguen en el código (y sus secciones,
-abajo), pero el seed ya no las siembra: las borra de la base.
+Muro de Repetición y El Rastro siguen en el código, pero fuera del recorrido: el
+seed las borra de la base. Abajo, en la barra de cada fase, el **rostro de la
+máquina** enseña su miedo, que crece fase a fase (`RostroMaquina.tsx`).
 
-Las dos últimas filas no son adorno, y el servidor las conoce: la Fase 4 lleva
+## Fase 4 — La Mano · listas
+
+Lámina IV, el brazo derecho, la mano con la que la máquina ofrece cosas. Unos 30–35
+minutos (`server/src/phases/mano.ts`, clave `fase-mano-listas`). Pruebas:
+`npm run smoke:mano`; solución de una mesa: `npm run solucion:mano -- EQUIPO`.
+
+- **Capa 1 · Las falanges.** La mano es una **lista de listas**: 5 dedos × 3
+  falanges, `mano[dedo][falange]`. Cada falange lleva **dos datos**: un número en
+  el **frente** y un texto en el **reverso** («100», «25», «3»). Cada dedo hay que
+  **ordenarlo** de la base (0) a la punta (2), y cómo depende de su **tipo de
+  dato**, que solo tiene Datos: `numero` se ordena por el frente, como número
+  (2 < 9 < 10); `texto`, por el reverso, como texto («10» < «2» < «9»). Pantalla ve
+  **una cara a la vez** —cámara 1, el frente; cámara 2, el reverso, **en espejo**,
+  con el pulgar a la derecha— y Terminal cambia la cámara y mueve con
+  `intercambiar <dedo> <i> <j>`. Cada mesa garantiza que la cara o la comparación
+  equivocadas den otro orden. `probar` es gratis; `apretar` mal, cuarentena.
+- **Capa 2 · Los tendones.** Doce tendones revueltos que hay que ordenar **por dos
+  criterios** —primero por dedo y, dentro de cada dedo, por tensión— con un
+  **presupuesto** de intercambios: el mínimo posible (8 a 10 según la mesa) más 2.
+  Pantalla ve las letras en su orden; Datos, el dedo y la tensión de cada letra;
+  Terminal, `intercambiar i j`. Al acabarse el presupuesto no deja mover más:
+  `reiniciar` devuelve el revoltijo y los intercambios. La estrategia que cabe es
+  el **ordenamiento por selección**, y la fase lo nombra al cruzarla.
+
+Una versión por mesa: otra mano, otro contrato, otros tendones y otro revoltijo.
+Pantalla la ve en 3D (`Mano3D.tsx`) y tiene su intro (`IntroMano.tsx`), una al
+entrar y otra al llegar a los tendones.
+
+Las dos últimas filas no son adorno, y el servidor las conoce: la Fase 6 lleva
 `esFinal` y el bonus `esBonus` en el seed. De ahí salen tres cosas: el cohete y la
 cuenta atrás de la proyección, que la meta de la carrera esté en la sexta y no
 en la séptima, y que el bonus no estire la escala de averías del proyector.
@@ -814,6 +844,11 @@ casilla se pinta como barrera mientras dura el martilleo y cae en el último
 fotograma.
 
 ## Fase 4 — Núcleo Modular · funciones
+
+> **Rediseñada.** La versión vigente es la de `FASE_4_NUCLEO_MODULAR.md`
+> (funciones dependientes, validaciones y el parche de la Parte 2); en el
+> recorrido nuevo es la **Fase 3**. Pantalla ve sus dos cámaras en 3D
+> (`Nucleo3D.tsx` y `Dependencias3D.tsx`). Lo que sigue describe la versión anterior.
 
 > El código del enemigo está partido en piezas que se llaman entre sí.
 

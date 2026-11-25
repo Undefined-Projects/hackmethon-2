@@ -6,6 +6,7 @@ import { JardinEscena } from '../../admin/JardinEscena';
 import { call } from '../../lib/socket';
 import { sonar } from '../../lib/sonido';
 import { useMountId } from './mount';
+import { Nervio3D } from './Nervio3D';
 
 type Payload = {
   pista: string;
@@ -96,7 +97,7 @@ type Navegador = {
   movimientos: string[];
 };
 
-type Eco = { texto: string; estado: 'enviando' | 'entregado' | 'rechazado'; motivo?: string };
+type Eco = { id: number; texto: string; estado: 'enviando' | 'entregado' | 'rechazado'; motivo?: string };
 
 const MOTIVOS: Record<string, string> = {
   NO_ERES_TERMINAL: 'Ya no eres el Operador de Terminal.',
@@ -104,6 +105,7 @@ const MOTIVOS: Record<string, string> = {
   FASE_CERRADA: 'El administrador cerró la fase.',
   EVENTO_EN_PAUSA: 'Evento en pausa.',
   COMANDO_VACIO: 'Escribe algo.',
+  NO_EJECUTADO: 'El sistema no lo pudo ejecutar.',
   SIN_CONEXION: 'Sin conexión con el servidor.',
 };
 
@@ -126,6 +128,8 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
   const [historial, setHistorial] = useState<string[]>([]);
   const [cursor, setCursor] = useState(-1);
   const [sinPegar, setSinPegar] = useState(0);
+  // Sube con cada tecla: el nervio echa chispas.
+  const [tecleo, setTecleo] = useState(0);
   const finRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -152,7 +156,7 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
     if (!cmd || !socket) return;
 
     const indice = ecos.length;
-    setEcos((h) => [...h, { texto: cmd, estado: 'enviando' }]);
+    setEcos((h) => [...h, { id: indice + 1, texto: cmd, estado: 'enviando' }]);
     setHistorial((h) => [...h, cmd]);
     setCursor(-1);
     setTexto('');
@@ -161,14 +165,18 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
     // sistema. Por eso aquí solo suena la salida y, si acaso, el rechazo:
     // el veredicto lo canta la Pantalla, que es quien lo ve.
     sonar('enviar');
-    const r = await call<{ aceptado: boolean }>(socket, 'terminal:command', { texto: cmd });
-    if (!r.ok) sonar('error');
+    const r = await call<{ aceptado: boolean; valido?: boolean }>(socket, 'terminal:command', { texto: cmd });
+    // Rebota lo que el sistema no dejó pasar y lo que el juego no pudo
+    // ejecutar (no existe, mal escrito, imposible ahora). Lo que se ejecutó
+    // llega aunque haya salido mal: ese resultado es de Pantalla.
+    const noEjecutado = r.ok && r.data?.valido === false;
+    if (!r.ok || noEjecutado) sonar('error');
     setEcos((h) =>
       h.map((eco, i) =>
         i === indice
-          ? r.ok
+          ? r.ok && !noEjecutado
             ? { ...eco, estado: 'entregado' }
-            : { ...eco, estado: 'rechazado', motivo: MOTIVOS[r.error ?? ''] ?? r.error }
+            : { ...eco, estado: 'rechazado', motivo: noEjecutado ? MOTIVOS.NO_EJECUTADO : MOTIVOS[r.error ?? ''] ?? r.error }
           : eco,
       ),
     );
@@ -213,18 +221,11 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
         <span className="rol rol-TERMINAL">Operador de Terminal</span>
       </header>
 
-      {/* El nervio: cada comando sale de aquí como un impulso y se va
-          hacia la pantalla de tu compañero. Lo que vuelve no pasa por
-          aquí, y el dibujo no finge lo contrario. */}
-      <svg className="nervio-consola" viewBox="0 0 600 22" preserveAspectRatio="none" aria-hidden="true">
-        <path className="nervio-fibra" d="M4 11 C60 3 110 19 170 11 S280 3 340 11 S450 19 510 11 S570 6 596 11" />
-        {ecos.length > 0 && (
-          <path key={ecos.length} className="nervio-impulso" pathLength={1}
-                d="M4 11 C60 3 110 19 170 11 S280 3 340 11 S450 19 510 11 S570 6 596 11" />
-        )}
-        <circle className="nervio-soma" cx="6" cy="11" r="4" />
-        <text className="nervio-destino" x="592" y="8" textAnchor="end">PANTALLA</text>
-      </svg>
+      {/* El nervio, en 3D: cada comando sale como un impulso hacia el fondo.
+          Llega si el juego lo ejecutó; rebota en rojo si no. Lo que el
+          juego respondió no pasa por aquí: es de Pantalla. */}
+      <Nervio3D impulsos={ecos} tecleo={tecleo}
+                cuarentenaHasta={payload?.cuarentenaHasta ?? null} averia={averia?.tipo === 'TERMINAL'} />
 
       {averia?.tipo === 'TERMINAL' && (
         <div className="banda err fija">EL ROBOT TIENE TU TECLADO</div>
@@ -314,7 +315,7 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
       <div className="consola">
         {ecos.length === 0 && <div className="pendiente">Sin comandos enviados.</div>}
         {ecos.map((eco, i) => (
-          <div key={i} className={`linea-cmd ${eco.estado}`}>
+          <div key={eco.id ?? i} className={`linea-cmd ${eco.estado}`}>
             <span className="prompt">&gt;</span> {eco.texto}
             <span className="marca">
               {eco.estado === 'enviando' ? '…' : eco.estado === 'entregado' ? '✓' : `✕ ${eco.motivo ?? ''}`}
@@ -334,7 +335,7 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
         <input
           ref={inputRef}
           value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          onChange={(e) => { setTexto(e.target.value); setTecleo((n) => n + 1); }}
           onKeyDown={(e) => { sonar('tecla'); teclas(e); }}
           onPaste={noPegar}
           onDrop={noPegar}

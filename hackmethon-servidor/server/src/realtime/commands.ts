@@ -28,11 +28,12 @@ import { moduloDeFase, semillaDe } from '../phases/index.js';
 import type { SalidaComando } from '../lib/events.js';
 import { ROLES, TICKETS_FASE, TICKETS_FASE_RESTO, type Role } from '../lib/constants.js';
 import { sumarTickets } from './tickets.js';
-import { roleRoom, teamRoom } from './rooms.js';
+import { roleRoom, teamRoom, userRoom } from './rooms.js';
 import { getIO, pushLobby } from './server.js';
 import { pushAdminState } from './admin.js';
 import { detenerFlujo, filtrarFlujo, flujoActivo, iniciarFlujo } from './trafico.js';
 import { registrarComando, registrarResuelta } from './vigilancia.js';
+import { DURACION_AVERIA, registrarAveria } from '../lib/averias.js';
 
 const MAX_LONGITUD = 200;
 
@@ -41,7 +42,7 @@ export class ErrorComando extends Error {}
 export async function procesarComando(
   { userId, teamId, role }: { userId: string; teamId: string; role: Role },
   textoBruto: string,
-): Promise<{ aceptado: boolean }> {
+): Promise<{ aceptado: boolean; valido: boolean }> {
   // --- 1. Rol ---
   if (role !== 'TERMINAL') throw new ErrorComando('NO_ERES_TERMINAL');
 
@@ -123,9 +124,29 @@ export async function procesarComando(
   // tirado.
   if (resultado.estado) await repartirWorkspace(teamId, progreso.phase);
 
+  // La máquina contraataca: a cada puesto nombrado, su avería, firmada.
+  if (resultado.contraataque) {
+    const gente = await prisma.user.findMany({ where: { teamId, role: { in: resultado.contraataque.roles } } });
+    for (const m of gente) {
+      if (m.isAdmin) continue;
+      const tipo = m.role as Role;
+      const averia = registrarAveria(m.id, tipo, 'LA MÁQUINA', resultado.contraataque.duracionMs ?? DURACION_AVERIA[tipo]);
+      if (averia) io.to(userRoom(m.id)).emit('player:averia', averia);
+    }
+  }
+
   if (resultado.resuelto) await marcarResuelta(teamId, progreso.id, resultado.esperaVictoriaMs ?? 0);
 
-  return { aceptado: true };
+  // ¿Lo pudo ejecutar el juego? Para el impulso de la consola de Terminal:
+  // rebota en rojo lo que el juego NO ejecutó —un comando que no existe,
+  // mal escrito, fuera de rango o imposible ahora (cuarentena, el brote
+  // anterior aún anda)—: respondió con un error y no cambió nada. Lo que SÍ
+  // se ejecutó llega normal aunque haya salido mal (un despliegue fallido
+  // es `fallo` y cambia el estado): si rebotara, Terminal sabría si acertó,
+  // y el resultado es de Pantalla.
+  const conError = resultado.bloques.some((b) => b.tipo === 'error');
+  const valido = !(conError && !resultado.fallo && !resultado.estado && !resultado.resuelto);
+  return { aceptado: true, valido };
 }
 
 /** Reproyecta la fase para los tres puestos y le manda a cada uno la suya.

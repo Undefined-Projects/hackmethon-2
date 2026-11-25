@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { MinijuegoView } from '../../shared/events';
 import type { AppSocket } from '../../lib/socket';
 import { sonar } from '../../lib/sonido';
@@ -231,12 +231,14 @@ export function Plaga({
         <div className="plaga__reloj" aria-hidden="true">
           <span style={{ transform: `scaleX(${restante / DURACION})` }} />
         </div>
-        <div className="plaga__tablero">
+        <div className="plaga__tablero p3d">
+          <Invernadero celdas={celdas} />
           {celdas.map((c, i) => (
             <button
               key={i}
               ref={(el) => { macetas.current[i] = el; }}
               type="button"
+              style={cajaDe(i)}
               className={`maceta ${c.tipo ? `maceta--${c.tipo}` : ''} ${c.sale ? 'maceta--sale' : ''} ${c.golpe ? (c.golpe.valor < 0 ? 'maceta--mal' : 'maceta--ok') : ''}`}
               onPointerDown={(e) => { e.preventDefault(); golpear(i); }}
               aria-label={c.tipo === 'flor' ? 'Flor: no la toques' : c.tipo ? 'Gusano: golpéalo' : 'Maceta vacía'}
@@ -278,6 +280,92 @@ export function Plaga({
       )}
     </Marco>
   );
+}
+
+/* ── el invernadero en 3D ──────────────────────────────────
+   Las nueve macetas en tres filas, a distinta profundidad, vistas desde
+   arriba y adelante. El lienzo pinta la sala y las macetas; los botones
+   van encima de cada una, escalados por su distancia: los bichos asoman
+   de la tierra igual que antes. */
+
+const LW = 320, LH = 200;
+const F3 = 200, OJO = 2;
+/** Profundidad de cada fila (la de arriba, al fondo) y separación entre columnas. */
+const FILAS_Z = [5.2, 3.6, 2.4], SEP = 1.05, RADIO = 0.34, ALTO_MACETA = 0.32;
+const pr = (x: number, z: number, h: number) => ({ x: LW / 2 + (F3 * x) / z, y: (F3 * (OJO - h)) / z });
+const maceta3d = (i: number) => {
+  const z = FILAS_Z[Math.floor(i / 3)], x = ((i % 3) - 1) * SEP;
+  const tapa = pr(x, z, ALTO_MACETA), pie = pr(x, z, 0);
+  return { z, x, tapa, pie, r: (F3 * RADIO) / z };
+};
+/** La caja del botón: sobre la tapa de la maceta, del tamaño de su distancia. */
+function cajaDe(i: number): CSSProperties {
+  const m = maceta3d(i);
+  const w = m.r * 2.3, h = m.r * 1.9;
+  return {
+    position: 'absolute', left: `${((m.tapa.x - w / 2) / LW) * 100}%`, top: `${((m.tapa.y + m.r * 0.18 - h) / LH) * 100}%`,
+    width: `${(w / LW) * 100}%`, height: `${(h / LH) * 100}%`, zIndex: 10 + Math.floor(i / 3),
+  };
+}
+
+function Invernadero({ celdas }: { celdas: { tipo: Tipo | null; golpe: { valor: number } | null }[] }) {
+  const cv = useRef<HTMLCanvasElement>(null);
+  useLayoutEffect(() => {
+    const ctx = cv.current?.getContext('2d');
+    if (!ctx) return;
+    // La sala: pared del fondo, piso con cuadrícula en perspectiva y una lámpara.
+    const g = ctx.createLinearGradient(0, 0, 0, LH);
+    g.addColorStop(0, '#1a0820'); g.addColorStop(0.3, '#120a1c'); g.addColorStop(1, '#1d1636');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, LW, LH);
+    const horizonte = pr(0, 12, 0).y;
+    ctx.fillStyle = '#0d0815'; ctx.fillRect(0, 0, LW, horizonte);
+    for (let k = 0; k < 16; k++) {
+      const x0 = (Math.sin(k * 91.7) * 0.5 + 0.5) * LW, y0 = (Math.sin(k * 37.3) * 0.5 + 0.5) * horizonte * 0.85;
+      ctx.strokeStyle = `rgba(${k % 3 ? '250,57,186' : '61,220,151'},.22)`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + 10, y0); ctx.lineTo(x0 + 15, y0 + 5); ctx.lineTo(x0 + 15, y0 + 12); ctx.stroke();
+    }
+    const luz = ctx.createRadialGradient(LW / 2, horizonte * 0.4, 2, LW / 2, horizonte * 0.4, LW * 0.6);
+    luz.addColorStop(0, 'rgba(250,57,186,.4)'); luz.addColorStop(1, 'rgba(250,57,186,0)');
+    ctx.fillStyle = luz; ctx.fillRect(0, 0, LW, LH);
+    ctx.strokeStyle = 'rgba(79,134,238,.22)'; ctx.lineWidth = 1;
+    for (let x = -6; x <= 6; x++) { const a = pr(x * 0.55, 12, 0), b = pr(x * 0.55, 1.6, 0); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    for (const z of [1.8, 2.1, 2.5, 3, 3.6, 4.4, 5.4, 6.8, 9]) { const a = pr(-6, z, 0), b = pr(6, z, 0); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    // Las macetas, del fondo hacia delante.
+    for (let i = 0; i < CELDAS; i++) {
+      const m = maceta3d(i), c = celdas[i];
+      const ry = m.r * 0.42 * (OJO / (m.z * 0.6));
+      // La sombra y la luz que echa el bicho que asoma.
+      ctx.fillStyle = 'rgba(0,0,0,.5)';
+      ctx.beginPath(); ctx.ellipse(m.pie.x + 3, m.pie.y, m.r * 1.15, ry * 0.9, 0, 0, Math.PI * 2); ctx.fill();
+      if (c?.tipo || c?.golpe) {
+        const tono = c.golpe ? (c.golpe.valor < 0 ? '255,51,85' : '61,220,151') : c.tipo === 'flor' ? '61,220,151' : c.tipo === 'mutado' ? '79,134,238' : '250,57,186';
+        const h = ctx.createRadialGradient(m.tapa.x, m.tapa.y, 0, m.tapa.x, m.tapa.y, m.r * 2.4);
+        h.addColorStop(0, `rgba(${tono},.45)`); h.addColorStop(1, `rgba(${tono},0)`);
+        ctx.fillStyle = h; ctx.fillRect(m.tapa.x - m.r * 2.4, m.tapa.y - m.r * 2.4, m.r * 4.8, m.r * 4.8);
+      }
+      // El cuerpo: un cilindro con su sombreado de lado a lado.
+      const cuerpo = ctx.createLinearGradient(m.tapa.x - m.r, 0, m.tapa.x + m.r, 0);
+      cuerpo.addColorStop(0, '#2a1838'); cuerpo.addColorStop(0.35, '#5a2f6e'); cuerpo.addColorStop(1, '#1a0f24');
+      ctx.fillStyle = cuerpo;
+      ctx.beginPath();
+      ctx.moveTo(m.tapa.x - m.r, m.tapa.y);
+      ctx.lineTo(m.pie.x - m.r * 0.82, m.pie.y);
+      ctx.ellipse(m.pie.x, m.pie.y, m.r * 0.82, ry * 0.82, 0, Math.PI, 0, true);
+      ctx.lineTo(m.tapa.x + m.r, m.tapa.y);
+      ctx.closePath(); ctx.fill();
+      // Una banda de circuito alrededor.
+      ctx.strokeStyle = 'rgba(79,134,238,.6)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(m.tapa.x, (m.tapa.y + m.pie.y) / 2, m.r * 0.92, ry * 0.9, 0, 0, Math.PI); ctx.stroke();
+      // La boca: el borde iluminado y la tierra de circuito.
+      ctx.fillStyle = '#3a2048'; ctx.beginPath(); ctx.ellipse(m.tapa.x, m.tapa.y, m.r, ry, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.ellipse(m.tapa.x, m.tapa.y + 0.5, m.r * 0.84, ry * 0.78, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(61,220,151,.55)';
+      ctx.beginPath(); ctx.moveTo(m.tapa.x - m.r * 0.5, m.tapa.y); ctx.lineTo(m.tapa.x - m.r * 0.1, m.tapa.y); ctx.lineTo(m.tapa.x, m.tapa.y + ry * 0.4); ctx.stroke();
+      ctx.strokeStyle = 'rgba(250,57,186,.85)';
+      ctx.beginPath(); ctx.ellipse(m.tapa.x, m.tapa.y, m.r, ry, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    }
+  }, [celdas]);
+  return <canvas ref={cv} width={LW} height={LH} className="plaga__sala" aria-hidden="true" />;
 }
 
 /* ── sprites ───────────────────────────────────────────────

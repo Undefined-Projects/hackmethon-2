@@ -915,6 +915,58 @@ function esquemaParaDatos(estado: Record<string, unknown>) {
   };
 }
 
+// ---------- La corrida, para la sala del núcleo en 3D ----------
+//
+// Cada `probar` y cada `ejecutar` se guardan como la ÚLTIMA CORRIDA, para
+// que la cámara de Pantalla la anime: el pulso sube por cada torre con el
+// valor de cada función. No lleva nada que la salida de texto de ese
+// mismo comando no le enseñe ya a Pantalla: los valores del recorrido y,
+// solo al ejecutar, si cada subsistema aguantó, colapsó o quemó el fusible.
+// Las ventanas (`aguanta_max`, `fusible_corte`) NO viajan: son de Datos.
+
+type ResultadoTorre = 'aguanta' | 'sobrecarga' | 'fusible' | 'bloqueado';
+type CorridaNucleo = {
+  n: number;
+  tipo: 'probar' | 'ejecutar';
+  acoplado: boolean;
+  torres: {
+    id: string;
+    pasos: { pieza: string; nivel: string; salida: number | null; enganada: boolean; bloqueado: boolean }[];
+    salida: number | null;
+    bloqueado: boolean;
+    resultado: ResultadoTorre | null;
+  }[];
+};
+
+function armarCorrida(
+  subsistemas: SubsistemaInfo[], enganos: Record<string, string>, parte: number,
+  tipo: CorridaNucleo['tipo'], n: number,
+): CorridaNucleo {
+  return {
+    n, tipo, acoplado: parte === 2,
+    torres: subsistemas.map((s) => {
+      const res = ejecutarCadena(s.piezaA, s.entrada, enganos, parte);
+      let resultado: ResultadoTorre | null = null;
+      if (tipo === 'ejecutar') {
+        const imp = evaluarImpactoSubsistema(s, res);
+        resultado = res.bloqueado ? 'bloqueado' : imp.rota ? 'sobrecarga'
+          : res.salida >= s.fusibleCorte ? 'fusible' : 'aguanta';
+      }
+      return {
+        id: s.id,
+        pasos: res.traza.map((p) => ({
+          pieza: p.pieza, nivel: p.nivel,
+          salida: Number.isFinite(p.salida) ? p.salida : null,
+          enganada: !!p.esEnganada, bloqueado: !!p.bloqueado,
+        })),
+        salida: res.bloqueado || !Number.isFinite(res.salida) ? null : res.salida,
+        bloqueado: res.bloqueado,
+        resultado,
+      };
+    }),
+  };
+}
+
 // ---------- Circuito cerrado de cámaras (Animaciones ASCII 15×36) ----------
 
 const CAMARAS: CamaraDef[] = [
@@ -1035,10 +1087,29 @@ function vistaDeCamaras(estado: Record<string, unknown>) {
       { texto: parte === 1 ? 'PARTE 1 · INICIAL' : 'PARTE 2 · PARCHE', tono: parte === 1 ? 'neutro' : 'alerta' },
       { texto: `ARMADAS ${armadasCount}/9`, tono: armadasCount === 9 ? 'ok' : 'neutro' },
     ];
+    const corrida = (estado.ultimaCorrida as CorridaNucleo | undefined) ?? null;
     return {
       escena,
       rotulos,
-      clave: `${cam.n}:${parte}:${armadasCount}:${saboteadasCount}:${abierta ?? '-'}`,
+      clave: `${cam.n}:${parte}:${armadasCount}:${saboteadasCount}:${abierta ?? '-'}:${corrida?.n ?? 0}`,
+      // La sala en 3D: las torres, qué piezas están armadas o saboteadas, la
+      // abierta y la última corrida. Lo mismo que ya enseñan el árbol, el
+      // visor de código y la salida de `probar` / `ejecutar`.
+      // Las dos cámaras llevan lo mismo; cambia cómo se dibuja: la sala con
+      // sus torres (cámara 1) o el corredor de dependencias (cámara 2).
+      ...({
+        extra: {
+          dibujo: {
+            tipo: cam.id === 'nucleo' ? 'nucleo' : 'dependencias',
+            parte,
+            abierta,
+            armadas: Object.keys(armadas).filter((k) => armadas[k]),
+            enganadas: Object.keys(enganos),
+            torres: subsistemasDe(estado).map((s) => ({ id: s.id, nombre: s.nombre, piezas: [s.piezaC, s.piezaB, s.piezaA] })),
+            corrida,
+          },
+        },
+      }),
     };
   });
 }
@@ -1496,8 +1567,14 @@ export const nucleo: ModuloFase = {
             : 'PASO LIMPIO (sin bloqueo interno)';
           return [s.id, `${s.piezaA}(${s.entrada})`, pasos, salidaTxt, estadoInterno];
         });
+        const nCorrida = numero(ctx.estado, 'corridaN') + 1;
 
         return {
+          estado: {
+            ...ctx.estado,
+            corridaN: nCorrida,
+            ultimaCorrida: armarCorrida(subsistemas, enganos, parte, 'probar', nCorrida),
+          },
           bloques: [
             tabla(
               `Simulacion en los 3 subsistemas (Parte ${parte})`,
@@ -1535,6 +1612,8 @@ export const nucleo: ModuloFase = {
         });
 
         const rotasCount = evaluaciones.filter((e) => e.rota).length;
+        const nCorrida = numero(ctx.estado, 'corridaN') + 1;
+        const corridaEj = armarCorrida(subsistemas, enganos, parte, 'ejecutar', nCorrida);
 
         if (rotasCount === subsistemas.length) {
           if (parte === 1) {
@@ -1548,6 +1627,8 @@ export const nucleo: ModuloFase = {
                 semilla: nuevaSemilla,
                 enganos: {},
                 abierta: null,
+                corridaN: nCorrida,
+                ultimaCorrida: corridaEj,
               },
               bloques: [
                 tabla(
@@ -1580,6 +1661,9 @@ export const nucleo: ModuloFase = {
 
           return {
             resuelto: true,
+            estado: { ...ctx.estado, corridaN: nCorrida, ultimaCorrida: corridaEj },
+            // Que la cortinilla no tape el colapso de las tres torres.
+            esperaVictoriaMs: 3600,
             bloques: [
               tabla(
                 'Colapso definitivo de los 3 subsistemas (Parte 2 superada)',
@@ -1608,7 +1692,7 @@ export const nucleo: ModuloFase = {
         const detalleFallo = rechazo(
           ctx,
           `Solo ${rotasCount} de los 3 subsistemas colapsaron en la Parte ${parte}. Revisa en Pantalla si una validacion interna bloqueo el cambio y verifica con Datos los limites aguanta_max y fusible_corte.`,
-          { parte, armadas, enganos },
+          { parte, armadas, enganos, corridaN: nCorrida, ultimaCorrida: corridaEj },
         );
 
         return {

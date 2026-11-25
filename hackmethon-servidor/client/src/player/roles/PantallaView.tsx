@@ -9,6 +9,11 @@ import { Salida } from '../Bloques';
 import { useMountId } from './mount';
 import { Interior, type Cuidador } from '../fases/Membrana';
 import { Reflejo3D } from '../fases/Reflejo3D';
+import { Nucleo3D, type DibujoNucleo } from '../fases/Nucleo3D';
+import { Mano3D, type DibujoMano } from '../fases/Mano3D';
+import { Boveda3D, type DibujoBoveda } from '../fases/Boveda3D';
+import { Mente3D, type DibujoMente } from '../fases/Mente3D';
+import { Dependencias3D, type DibujoDependencias } from '../fases/Dependencias3D';
 import { Marana, type Mundo, type ViajePantalla } from '../fases/Marana';
 
 type Payload = {
@@ -20,6 +25,9 @@ type Payload = {
   laberinto?: VistaLaberinto | null;
   camaras?: VistaCamaras | null;
   /** La maraña de la Fase 2: el laberinto y el último brote. */
+  mano?: DibujoMano | null;
+  boveda?: DibujoBoveda | null;
+  mente?: DibujoMente | null;
   marana?: { capa: number; resuelta: boolean; titulo?: string; final?: { t: string; sub: string }; mundo: Mundo; viaje: ViajePantalla | null } | null;
 };
 
@@ -93,7 +101,9 @@ type VistaCamaras = {
 
 type DibujoCamara =
   | { tipo: 'membrana'; capa: number; resuelta: boolean; muda: number; corrida?: number; cola: Cuidador[] }
-  | { tipo: 'interior'; capa: number; resuelta: boolean; dentro: string[] };
+  | { tipo: 'interior'; capa: number; resuelta: boolean; dentro: string[] }
+  | DibujoNucleo
+  | DibujoDependencias;
 
 /** Medio segundo por embestida y dos segundos por casilla: el ritmo lo
  *  marca la sala, no el reloj del servidor. */
@@ -449,6 +459,10 @@ function MonitorCamaras({ camaras }: { camaras: VistaCamaras }) {
         {vista.dibujo?.tipo === 'membrana' ? (
           <Reflejo3D cola={vista.dibujo.cola} capa={vista.dibujo.capa}
                      resuelta={vista.dibujo.resuelta} muda={vista.dibujo.muda} corrida={vista.dibujo.corrida} />
+        ) : vista.dibujo?.tipo === 'nucleo' ? (
+          <Nucleo3D {...vista.dibujo} />
+        ) : vista.dibujo?.tipo === 'dependencias' ? (
+          <Dependencias3D {...vista.dibujo} />
         ) : vista.dibujo?.tipo === 'interior' ? (
           <Interior dentro={vista.dibujo.dentro} resuelta={vista.dibujo.resuelta} />
         ) : (
@@ -605,6 +619,42 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
 
       {/* La maraña: el laberinto que la pierna hace crecer y el brote que
           lo cruza. Va arriba del todo: es lo que hay que mirar. */}
+      {/* La mano derecha: las falanges o los tendones. */}
+      {payload?.mano && (
+        <div className="camaras">
+          <Mano3D {...payload.mano} />
+          <p className="cam-pie">
+            {payload.mano.capa === 1
+              ? 'Una cara a la vez: pídanle a Terminal la cámara 1 (frente) o la 2 (reverso). Datos sabe cuál manda en cada dedo.'
+              : 'Díganle a Terminal qué intercambiar. Cada intercambio gasta del presupuesto.'}
+          </p>
+        </div>
+      )}
+
+      {/* La final: la mente, y cómo se destruye. */}
+      {payload?.mente && (
+        <div className="camaras">
+          <Mente3D {...payload.mente} />
+          <p className="cam-pie">
+            {payload.mente.capa === 1
+              ? 'Cada petición es un disparo. Dicten tokens e ids letra por letra, y canten el código de cada respuesta.'
+              : 'Canten el reto en cuanto salga y avisen cuando baje el escudo: hay 25 s para golpear.'}
+          </p>
+        </div>
+      )}
+
+      {/* El torso: la bóveda de los recuerdos y su embudo. */}
+      {payload?.boveda && (
+        <div className="camaras">
+          <Boveda3D {...payload.boveda} />
+          <p className="cam-pie">
+            {payload.boveda.capa === 1
+              ? 'Cada consulta apaga los cajones que no cumplen. Canten el número: cuando quede uno, Terminal lo abre.'
+              : 'Al unir, los recuerdos se conectan con sus personas; al agrupar, cada grupo se levanta como una columna.'}
+          </p>
+        </div>
+      )}
+
       {payload?.marana && (
         <div className="camaras marana-monitor">
           <Marana mundo={payload.marana.mundo} viaje={payload.marana.viaje}

@@ -6,10 +6,11 @@
 import type { ModuloFase } from './types.js';
 import { acceso } from './acceso.js';
 import { espesura, marana } from './marana.js';
+import { mano } from './mano.js';
 import { muro } from './muro.js';
 import { nucleo } from './nucleo.js';
 import { boveda } from './boveda.js';
-import { puente } from './puente.js';
+import { mente } from './mente.js';
 import { rastro } from './rastro.js';
 
 const MODULOS: Record<string, ModuloFase> = {
@@ -18,8 +19,9 @@ const MODULOS: Record<string, ModuloFase> = {
   [espesura.key]: espesura,
   [muro.key]: muro,
   [nucleo.key]: nucleo,
+  [mano.key]: mano,
   [boveda.key]: boveda,
-  [puente.key]: puente,
+  [mente.key]: mente,
   [rastro.key]: rastro,
 };
 

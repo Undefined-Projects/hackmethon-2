@@ -26,7 +26,7 @@ import { PARTES } from '../lib/anatomia';
 // ============================================================
 
 /** Un id utilizable dentro de `url(#…)`: sin los dos puntos de React. */
-const useIdSvg = () => `ra${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+export const useIdSvg = () => `ra${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
 /** Lo que dura la despedida: el reinicio y la huida. El CSS la reparte
  *  en esos mismos milisegundos (ver `robot-reinicia` y compañía). */
@@ -57,7 +57,7 @@ export function useSalida(activa: boolean): FaseRobot {
 }
 
 /** Las dos pieles del robot, recortadas por la mitad del cuerpo (x=280). */
-function Pieles({ id }: { id: string }) {
+export function Pieles({ id }: { id: string }) {
   return (
     <defs>
       <pattern id={`${id}-marmol`} width="46" height="46" patternUnits="userSpaceOnUse">
@@ -76,7 +76,7 @@ function Pieles({ id }: { id: string }) {
 }
 
 /** Una silueta del robot con su base, sus dos pieles y su borde. */
-function Silueta({ id, d }: { id: string; d: string }) {
+export function Silueta({ id, d }: { id: string; d: string }) {
   return (
     <>
       <path d={d} className="parte__base" />

@@ -11,6 +11,7 @@ const APP = process.env.APP ?? 'http://localhost:5173';
 const VISTAS = [
   { nombre: 'La Maraña 3D', modulo: '/src/player/fases/Marana3D.tsx', fn: 'medirRendimiento3D' },
   ...(process.env.REFLEJO === '0' ? [] : [{ nombre: 'El Reflejo 3D', modulo: '/src/player/fases/Reflejo3D.tsx', fn: 'medirRendimientoReflejo' }]),
+  { nombre: 'Núcleo 3D', modulo: '/src/player/fases/Nucleo3D.tsx', fn: 'medirRendimientoNucleo' },
 ];
 const fmt = (r) => `media ${r.media.toFixed(2)} ms · p95 ${r.p95.toFixed(2)} ms · peor ${r.max.toFixed(2)} ms`;
 

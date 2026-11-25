@@ -20,8 +20,24 @@ import { color, enLienzo, useCuentaAtras, useMotorFx } from './efectos';
  * puntaje final de cada intento, y él se queda con el mejor.
  */
 
-const COLS = 24, ROWS = 16, CELDA = 24;
-const W = COLS * CELDA, H = ROWS * CELDA;
+const COLS = 24, ROWS = 16;
+/** El lienzo: bajo y pixelado, como las vistas 3D de las fases. */
+const W = 384, H = 256;
+
+// ── la proyección del tablero ───────────────────────────────
+// El tablero es un piso visto desde arriba y atrás: la fila 0 al fondo,
+// la última cerca. Un objeto a altura `h` (en celdas) sube f·h/z.
+const Z0 = ROWS * 1.5;                      // la distancia a la fila de cerca
+const F = (W * 0.46 * Z0) / (COLS / 2);
+const CAMH = ((H * 0.93 - H * 0.2) / F) / (1 / Z0 - 1 / (Z0 + ROWS));
+const HOR = H * 0.93 - (F * CAMH) / Z0;
+/** De una posición del tablero (x de 0 a COLS, y de 0 a ROWS) y una altura, al lienzo. */
+function proy(x: number, y: number, h = 0) {
+  const z = Z0 + (ROWS - y);
+  return { x: W / 2 + (F * (x - COLS / 2)) / z, y: HOR + (F * (CAMH - h)) / z, z };
+}
+/** El centro de una celda, un poco levantado: de ahí salen los efectos. */
+const centro = (c: Celda) => proy(c.x + 0.5, c.y + 0.5, 0.5);
 const PUNTOS_SEMILLA = 10;
 const PASO_INICIAL = 150, PASO_MIN = 65, ACELERA = 4;
 
@@ -100,89 +116,80 @@ export function Snake({
   const estadoRef = useRef<Estado>('listo');
 
   /* ── pintar ─────────────────────────────────────────────── */
+  const fondo3d = useRef<HTMLCanvasElement | null>(null);
   const pinta = useCallback((t: number, marchita: boolean) => {
     const ctx = lienzo.current?.getContext('2d');
     if (!ctx) return;
-    const { P, sangre, sangreHi, fondo } = colores();
+    const { P, sangre, sangreHi } = colores();
     const g = juego.current;
+    if (!fondo3d.current) fondo3d.current = hacerFondo();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(fondo3d.current, 0, 0);
 
-    ctx.fillStyle = fondo;
-    ctx.fillRect(0, 0, W, H);
-    // Papel de electrocardiograma, como el monitor de la portada.
-    ctx.strokeStyle = 'rgba(79,134,238,.10)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = 0; x <= COLS; x++) { ctx.moveTo(x * CELDA + 0.5, 0); ctx.lineTo(x * CELDA + 0.5, H); }
-    for (let y = 0; y <= ROWS; y++) { ctx.moveTo(0, y * CELDA + 0.5); ctx.lineTo(W, y * CELDA + 0.5); }
-    ctx.stroke();
+    // Lo que se dibuja, del fondo hacia delante: la semilla y los tramos.
+    type Pieza = { y: number; x: number; dibuja: () => void };
+    const piezas: Pieza[] = [];
 
-    // La semilla en flor: cuatro pétalos y el centro, latiendo.
-    const s = g.semilla, late = 1 + 0.18 * Math.sin(t / 160);
+    // La semilla en flor: un cristal que flota, gira y late sobre su sombra.
+    const s = g.semilla;
     const entra = Math.min(1, (t - g.semillaEn) / 260);
-    const cx = s.x * CELDA + CELDA / 2, cy = s.y * CELDA + CELDA / 2, p = 5 * late * (entra < 1 ? 1.6 - 0.6 * entra : 1) * entra;
-    // Un halo que respira alrededor de la semilla: se ve desde lejos.
-    ctx.globalAlpha = 0.18 + 0.12 * Math.sin(t / 160);
-    ctx.fillStyle = P.petalo[0];
-    ctx.fillRect(cx - 11, cy - 11, 22, 22);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = P.petalo[0];
-    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]])
-      ctx.fillRect(cx + dx * p - p / 2, cy + dy * p - p / 2, p, p);
-    ctx.fillStyle = P.centro;
-    ctx.fillRect(cx - p / 2, cy - p / 2, p, p);
+    piezas.push({ y: s.y, x: s.x, dibuja: () => {
+      const sombra = proy(s.x + 0.5, s.y + 0.5, 0);
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.beginPath(); ctx.ellipse(sombra.x, sombra.y, (F * 0.32) / sombra.z, (F * 0.12) / sombra.z, 0, 0, Math.PI * 2); ctx.fill();
+      const alto = 0.75 + 0.12 * Math.sin(t / 220);
+      const c = proy(s.x + 0.5, s.y + 0.5, alto);
+      const r = ((F * 0.36) / c.z) * entra * (1 + 0.12 * Math.sin(t / 160));
+      const giro = Math.cos(t / 300);
+      // El halo, para verla de lejos.
+      const halo = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r * 3);
+      halo.addColorStop(0, 'rgba(255,122,209,.45)'); halo.addColorStop(1, 'rgba(255,122,209,0)');
+      ctx.fillStyle = halo; ctx.fillRect(c.x - r * 3, c.y - r * 3, r * 6, r * 6);
+      // El cristal: dos mitades, con su cara clara y su cara oscura.
+      ctx.fillStyle = P.petalo[0];
+      ctx.beginPath(); ctx.moveTo(c.x, c.y - r * 1.3); ctx.lineTo(c.x + r * giro, c.y); ctx.lineTo(c.x, c.y + r * 1.3); ctx.lineTo(c.x - r * 0.15, c.y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = P.centro;
+      ctx.beginPath(); ctx.moveTo(c.x, c.y - r * 1.3); ctx.lineTo(c.x - r * Math.abs(1 - giro * 0.3), c.y); ctx.lineTo(c.x, c.y + r * 1.3); ctx.lineTo(c.x - r * 0.15, c.y); ctx.closePath(); ctx.fill();
+    } });
 
-    // El tallo: de la cola a la cabeza, para que la cabeza quede encima.
+    // El tallo: un cubo por tramo, más alto y vivo cerca de la cabeza.
     const n = g.cuerpo.length;
-    ctx.lineCap = 'square';
-    // El marchitarse corre de la cabeza a la cola, un tramo cada 28 ms.
     const seca = (i: number) => marchita && t - g.muerte > i * 28;
-    for (let i = n - 1; i >= 1; i--) {
-      const a = g.cuerpo[i], b = g.cuerpo[i - 1];
-      const ax = a.x * CELDA + CELDA / 2, ay = a.y * CELDA + CELDA / 2;
-      const bx = b.x * CELDA + CELDA / 2, by = b.y * CELDA + CELDA / 2;
-      // Del tronco a las puntas: grueso y vivo cerca de la cabeza, fino
-      // y en circuito azul hacia la cola, como las ramas del jardín.
-      const k = Math.min(3, Math.floor((i / n) * 4));
-      ctx.strokeStyle = seca(i) ? sangre : P.tallo[k];
-      ctx.lineWidth = [8, 7, 6, 4][k];
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-
-      // Una hoja cada dos tramos, alternando de lado.
-      if (i % 2 === 0 && !seca(i)) {
-        const lado = i % 4 === 0 ? 1 : -1;
-        const vx = bx - ax, vy = by - ay, L = Math.hypot(vx, vy) || 1;
-        const px = (-vy / L) * lado, py = (vx / L) * lado;
-        // La hoja brota: crece de nada a su tamaño, con un pequeño rebote.
+    g.cuerpo.forEach((q, i) => {
+      piezas.push({ y: q.y, x: q.x, dibuja: () => {
+        const k = Math.min(3, Math.floor((i / n) * 4));
+        const cabeza = i === 0;
+        // La hoja que brota: el tramo nuevo crece desde el piso.
         const edad = (t - (g.brotes[i] ?? 0)) / 320;
         const brote = edad >= 1 ? 1 : edad <= 0 ? 0 : 1 + Math.sin(edad * Math.PI) * 0.35 * (1 - edad) - (1 - edad) ** 2;
-        const mx = (ax + bx) / 2, my = (ay + by) / 2, tam = 9 * Math.max(0, brote);
-        ctx.fillStyle = P.hoja[i % 3];
-        ctx.beginPath();
-        ctx.moveTo(mx, my);
-        ctx.lineTo(mx + px * tam * 0.6 + (vx / L) * tam * 0.4, my + py * tam * 0.6 + (vy / L) * tam * 0.4);
-        ctx.lineTo(mx + px * tam, my + py * tam);
-        ctx.lineTo(mx + px * tam * 0.5 - (vx / L) * tam * 0.2, my + py * tam * 0.5 - (vy / L) * tam * 0.2);
-        ctx.fill();
-      }
-    }
-    // La raíz, al final de la cola: una vía de soldadura.
-    const raiz = g.cuerpo[n - 1];
-    ctx.fillStyle = seca(n - 1) ? sangre : P.punta;
-    ctx.beginPath(); ctx.arc(raiz.x * CELDA + CELDA / 2, raiz.y * CELDA + CELDA / 2, 3, 0, Math.PI * 2); ctx.fill();
+        const alto = (cabeza ? 0.95 : [0.75, 0.65, 0.55, 0.42][k]) * Math.max(0.15, brote);
+        const base = cabeza ? (marchita ? sangre : P.raiz) : seca(i) ? sangre : P.tallo[k];
+        const m = cabeza ? 0.06 : 0.14;
+        cubo(ctx, q.x + m, q.y + m, q.x + 1 - m, q.y + 1 - m, alto, base);
+        if (cabeza) {
+          // El ojo mira hacia donde va, sobre la tapa.
+          const o = proy(q.x + 0.5 + DX[g.dir] * 0.25, q.y + 0.5 + DY[g.dir] * 0.25, alto);
+          ctx.fillStyle = marchita ? sangreHi : '#0a070c';
+          ctx.fillRect(o.x - 2, o.y - 2, 4, 4);
+          if (!marchita) {
+            // La punta de crecimiento brilla.
+            const c = proy(q.x + 0.5, q.y + 0.5, alto);
+            const h = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 22);
+            h.addColorStop(0, 'rgba(255,122,209,.35)'); h.addColorStop(1, 'rgba(255,122,209,0)');
+            ctx.fillStyle = h; ctx.fillRect(c.x - 22, c.y - 22, 44, 44);
+          }
+        } else if (i % 2 === 0 && !seca(i)) {
+          // Una hoja sobre la tapa, cada dos tramos.
+          const c = proy(q.x + 0.5, q.y + 0.5, alto);
+          ctx.fillStyle = P.hoja[i % 3];
+          ctx.fillRect(c.x - 2, c.y - 3, 4, 3);
+        }
+      } });
+    });
 
-    // La cabeza: el punto de soldadura que va abriendo pista.
-    const c = g.cuerpo[0];
-    const hx = c.x * CELDA + CELDA / 2, hy = c.y * CELDA + CELDA / 2;
-    ctx.fillStyle = marchita ? sangre : P.raiz;
-    // La cabeza brilla: es la punta de crecimiento, lo único que avanza.
-    ctx.shadowColor = marchita ? sangre : P.raiz; ctx.shadowBlur = marchita ? 4 : 14;
-    ctx.beginPath(); ctx.arc(hx, hy, 8, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = marchita ? sangreHi : P.raizBorde;
-    ctx.lineWidth = 2; ctx.stroke();
-    // El ojo mira hacia donde va.
-    ctx.fillStyle = fondo;
-    ctx.fillRect(hx + DX[g.dir] * 3 - 2, hy + DY[g.dir] * 3 - 2, 4, 4);
+    // Del fondo hacia delante; en la misma fila, de los costados al centro.
+    piezas.sort((a, b) => a.y - b.y || Math.abs(b.x + 0.5 - COLS / 2) - Math.abs(a.x + 0.5 - COLS / 2));
+    for (const p of piezas) p.dibuja();
   }, []);
 
   /* ── el reloj del juego ─────────────────────────────────── */
@@ -198,7 +205,8 @@ export function Snake({
     g.cuerpo.forEach((q, i) => {
       if (i % 2) return;
       setTimeout(() => {
-        const c = enLienzo(lienzo.current, q.x * CELDA + CELDA / 2, q.y * CELDA + CELDA / 2);
+        const p = centro(q);
+        const c = enLienzo(lienzo.current, p.x, p.y);
         fx.estallido(c.x, c.y, {
           n: 2, formas: ['hoja'], colores: [color('verdeDim'), '#5a1626'],
           fuerza: 0.08, angulo: Math.PI / 2, apertura: 2, dura: 1400, tam: 5,
@@ -234,7 +242,8 @@ export function Snake({
           if (come) {
             g.puntos += PUNTOS_SEMILLA;
             g.paso = Math.max(PASO_MIN, g.paso - ACELERA);
-            const c = enLienzo(lienzo.current, g.semilla.x * CELDA + CELDA / 2, g.semilla.y * CELDA + CELDA / 2);
+            const ps = centro(g.semilla);
+            const c = enLienzo(lienzo.current, ps.x, ps.y);
             // La semilla revienta en pétalos y hojas.
             fx.estallido(c.x, c.y, {
               n: 22, formas: ['petalo', 'hoja', 'pixel'],
@@ -378,4 +387,86 @@ export function Snake({
       )}
     </Marco>
   );
+}
+
+// ---------- el dibujo en 3D ----------
+
+const sombrea = (hex: string, k: number) => {
+  const v = hex.replace('#', '');
+  const n = v.length === 3 ? v.split('').map((c) => parseInt(c + c, 16)) : [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16));
+  return `rgb(${n.map((c) => Math.min(255, Math.round(c * k))).join(',')})`;
+};
+
+/** Un cubo sobre el tablero: la cara de delante, el costado que mira a la
+ *  cámara y la tapa. */
+function cubo(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, alto: number, color: string) {
+  const pol = (pts: { x: number; y: number }[], c: string) => {
+    ctx.fillStyle = c; ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); ctx.fill();
+  };
+  const col = color.startsWith('#') ? color : '#3ddc97';
+  // El costado: el de la izquierda si el cubo está a la derecha del centro, y al revés.
+  const cx = (x0 + x1) / 2;
+  if (cx > COLS / 2 + 0.01) pol([proy(x0, y1, 0), proy(x0, y0, 0), proy(x0, y0, alto), proy(x0, y1, alto)], sombrea(col, 0.5));
+  else if (cx < COLS / 2 - 0.01) pol([proy(x1, y1, 0), proy(x1, y0, 0), proy(x1, y0, alto), proy(x1, y1, alto)], sombrea(col, 0.5));
+  // La cara de delante.
+  pol([proy(x0, y1, 0), proy(x1, y1, 0), proy(x1, y1, alto), proy(x0, y1, alto)], sombrea(col, 0.72));
+  // La tapa, iluminada.
+  pol([proy(x0, y1, alto), proy(x1, y1, alto), proy(x1, y0, alto), proy(x0, y0, alto)], sombrea(col, 1.08));
+  const a = proy(x0, y0, alto), b = proy(x1, y0, alto);
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(a.x, a.y, b.x - a.x, 1);
+}
+
+/** El piso del tablero, con su papel de electrocardiograma en perspectiva,
+ *  y los muros de circuito alrededor. Se pinta una sola vez. */
+function hacerFondo(): HTMLCanvasElement {
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d')!;
+  const cielo = ctx.createLinearGradient(0, 0, 0, H);
+  cielo.addColorStop(0, '#1a0820'); cielo.addColorStop(0.35, '#0d0612'); cielo.addColorStop(1, '#05030a');
+  ctx.fillStyle = cielo; ctx.fillRect(0, 0, W, H);
+  // Un resplandor al fondo, como en las fases.
+  const luz = ctx.createRadialGradient(W / 2, H * 0.12, 4, W / 2, H * 0.12, W * 0.55);
+  luz.addColorStop(0, 'rgba(250,57,186,.35)'); luz.addColorStop(1, 'rgba(250,57,186,0)');
+  ctx.fillStyle = luz; ctx.fillRect(0, 0, W, H);
+  // Dendritas en la pared del fondo.
+  for (let k = 0; k < 14; k++) {
+    const x0 = (Math.sin(k * 91.7) * 0.5 + 0.5) * W, y0 = H * (0.02 + (Math.sin(k * 37.3) * 0.5 + 0.5) * 0.16);
+    ctx.strokeStyle = `rgba(${k % 3 ? '250,57,186' : '79,134,238'},.25)`; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + 12, y0); ctx.lineTo(x0 + 18, y0 + 6); ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(x0 + 17, y0 + 5, 2, 2);
+  }
+  // El piso.
+  const pol = (pts: { x: number; y: number }[], c: string | CanvasGradient) => {
+    ctx.fillStyle = c; ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); ctx.fill();
+  };
+  const piso = ctx.createLinearGradient(0, proy(0, 0).y, 0, proy(0, ROWS).y);
+  piso.addColorStop(0, '#120e26'); piso.addColorStop(1, '#231a40');
+  pol([proy(0, 0), proy(COLS, 0), proy(COLS, ROWS), proy(0, ROWS)], piso);
+  // La cuadrícula, cada vez más tenue al fondo.
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) {
+    const a = proy(x, 0), b = proy(x, ROWS);
+    ctx.strokeStyle = x % 4 ? 'rgba(79,134,238,.24)' : 'rgba(79,134,238,.45)';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    const a = proy(0, y), b = proy(COLS, y);
+    ctx.strokeStyle = `rgba(79,134,238,${(y % 4 ? 0.16 : 0.36) + (y / ROWS) * 0.12})`;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  // Los muros: el del fondo y los de los costados, bajos, con una pista de luz.
+  const MURO = 0.6;
+  pol([proy(0, 0, 0), proy(COLS, 0, 0), proy(COLS, 0, MURO), proy(0, 0, MURO)], '#2a1838');
+  pol([proy(0, 0, 0), proy(0, ROWS, 0), proy(0, ROWS, MURO), proy(0, 0, MURO)], '#1f1430');
+  pol([proy(COLS, 0, 0), proy(COLS, ROWS, 0), proy(COLS, ROWS, MURO), proy(COLS, 0, MURO)], '#1f1430');
+  ctx.strokeStyle = 'rgba(250,57,186,.85)'; ctx.lineWidth = 1;
+  for (const [a, b] of [[proy(0, 0, MURO), proy(COLS, 0, MURO)], [proy(0, 0, MURO), proy(0, ROWS, MURO)], [proy(COLS, 0, MURO), proy(COLS, ROWS, MURO)]] as const) {
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(61,220,151,.4)';
+  for (const [a, b] of [[proy(0, 0, MURO * 0.4), proy(COLS, 0, MURO * 0.4)]] as const) {
+    ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+  }
+  return cv;
 }

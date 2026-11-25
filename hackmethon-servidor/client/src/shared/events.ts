@@ -727,7 +727,7 @@ export interface ClientToServerEvents {
   'phase:leave': (p: unknown, ack: (r: { ok: boolean }) => void) => void;
   /** Comando del Operador de Terminal. El acuse NO lleva la respuesta:
    *  solo confirma la entrega. Lo que respondió el sistema va a Pantalla. */
-  'terminal:command': (p: { texto: string }, ack: Ack<{ aceptado: boolean }>) => void;
+  'terminal:command': (p: { texto: string }, ack: Ack<{ aceptado: boolean; valido?: boolean }>) => void;
   /** La consola no admite pegar: el intento se cuenta para el panel. */
   'terminal:pegado': () => void;
 }

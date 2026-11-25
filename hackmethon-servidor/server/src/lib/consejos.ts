@@ -100,6 +100,126 @@ const CONSEJOS: Record<string, FaseConsejos> = {
       },
     ],
   },
+  'fase-mano-listas': {
+    capas: [
+      {
+        nombre: 'LAS FALANGES',
+        consejos: {
+          TERMINAL: [
+            'Pantalla solo ve una cara a la vez: pídele qué necesita ver y cambia con `camara 1` o `camara 2`.',
+            'Antes de `apretar`, usa `probar`: es gratis y dice cuántos dedos ya están en orden.',
+          ],
+          PANTALLA: [
+            'En el reverso la mano se ve en espejo: el pulgar queda del otro lado. Guíate por el número de cada dedo.',
+            'Apunta los dos datos de cada falange, el del frente y el del reverso: no los vas a ver al mismo tiempo.',
+          ],
+          DATOS: [
+            'Revisa el tipo de cada dedo antes de que muevan nada: no todos se ordenan igual.',
+            'Como texto, "10" va antes que "9": se compara el primer carácter, y "1" es menor que "9".',
+          ],
+        },
+      },
+      {
+        nombre: 'LOS TENDONES',
+        consejos: {
+          TERMINAL: [
+            'No muevas nada sin plan: cada intercambio gasta del presupuesto.',
+            'Si se acaban los intercambios, `reiniciar` los devuelve, pero también el revoltijo.',
+          ],
+          PANTALLA: [
+            'Dicta el orden actual de las letras, de izquierda a derecha, para que Datos lo compare con su tabla.',
+            'Después de cada intercambio, confirma en voz alta qué letra quedó en cada lugar.',
+          ],
+          DATOS: [
+            'Primero escriban el orden final completo, de la posición 0 a la 11. Luego decidan los intercambios.',
+            '¿Qué tendón tiene que ir en la posición 0? Búsquenlo y llévenlo ahí. Luego la 1, y así.',
+            'Si dos tendones son del mismo dedo, manda la tensión: el de menor tensión va primero.',
+          ],
+        },
+      },
+    ],
+  },
+  'fase-5-boveda': {
+    capas: [
+      {
+        nombre: 'EL EMBUDO',
+        consejos: {
+          TERMINAL: [
+            'Usa `contar` antes de `buscar`: dice cuántos quedan sin gastar nada.',
+            'Agrega una condición a la vez y pide a Pantalla el número: así se ve cómo se cierra el embudo.',
+            'Si mezclas `y` con `o`, pon paréntesis: `( emocion = a o emocion = b )`.',
+          ],
+          PANTALLA: [
+            'Canta el número de cada recuento: si de pronto da 0, algo sobra o algún valor está mal escrito.',
+            'Debajo de cada respuesta está la consulta en SQL: léela para confirmar que la bóveda entendió lo que querían.',
+          ],
+          DATOS: [
+            'Traduce cada requisito del encargo a una condición: columna, operador y valor.',
+            'El requisito de emoción es un O: cualquiera de las dos sirve, pero tiene que ir entre paréntesis.',
+            '"Después de 2023" es `año > 2023`; "7 o más" es `intensidad >= 7`.',
+          ],
+        },
+      },
+      {
+        nombre: 'EL RECUERDO COMPARTIDO',
+        consejos: {
+          TERMINAL: [
+            'El oficio está en `personas`: para usarlo, `unir personas`.',
+            '`agrupar por nombre` con `contar` dice cuántos recuerdos tiene cada persona.',
+            'Para "el más intenso": `ordenar por intensidad desc limitar 1`.',
+          ],
+          PANTALLA: [
+            'Al agrupar, el primer grupo de la tabla es el que más tiene: dicta su nombre y su número.',
+            'Compara el agrupado con y sin la condición de oficio: no siempre gana la misma persona.',
+          ],
+          DATOS: [
+            'Son dos pasos: primero quién (agrupar y contar), luego cuál de sus recuerdos (ordenar).',
+            'El último requisito avisa de la trampa: sin filtrar por oficio, gana otra persona.',
+          ],
+        },
+      },
+    ],
+  },
+  'fase-6-puente': {
+    capas: [
+      {
+        nombre: 'LAS DEFENSAS',
+        consejos: {
+          TERMINAL: [
+            'Primero el acceso: `enviar POST /mente/sesion cuerpo clave=...`. Sin token no pasa nada.',
+            'El token va en la CABECERA; la fuerza, en el CUERPO. No son lo mismo.',
+            'Si sale 429, espera: si insistes, la mente contraataca.',
+          ],
+          PANTALLA: [
+            'Dicta el token y los ids letra por letra: Terminal no los ve.',
+            'Canta el código de cada respuesta: Datos sabe qué significa cada uno.',
+          ],
+          DATOS: [
+            'Revisa la tabla de códigos con cada respuesta: 401, 403 y 422 se arreglan distinto.',
+            'Las facultades con blindaje piden `fuerza` en el cuerpo, igual o mayor que su blindaje.',
+          ],
+        },
+      },
+      {
+        nombre: 'EL ULTIMO PENSAMIENTO',
+        consejos: {
+          TERMINAL: [
+            'Ten listas las tres peticiones: reto, escudo abajo y golpe. El escudo solo dura 25 s.',
+            'Golpea con `fuerza=25`, el máximo: son cuatro golpes.',
+            'Tras cada contraataque el token deja de servir: pide acceso otra vez.',
+          ],
+          PANTALLA: [
+            'En cuanto aparezca el reto, cántalo: cambia cada 45 s.',
+            'Avisa cuando el escudo baje, y cuánto le queda.',
+          ],
+          DATOS: [
+            'Prepara al equipo para los contraataques a los 75, 50 y 25 de vida: el que quede averiado, que espere.',
+            'Repasen el orden en voz alta antes de cada golpe: GET reto, PATCH escudo, DELETE fuerza.',
+          ],
+        },
+      },
+    ],
+  },
   'fase-bonus-espesura': {
     capas: [
       {

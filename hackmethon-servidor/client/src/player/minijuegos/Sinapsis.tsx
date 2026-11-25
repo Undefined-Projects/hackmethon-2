@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FOV, pintar, type Celda } from '../fases/motor3d';
 import type { MinijuegoView } from '../../shared/events';
 import type { AppSocket } from '../../lib/socket';
 import { sonar } from '../../lib/sonido';
@@ -210,7 +211,7 @@ export function Sinapsis({
         tabIndex={-1}
         aria-label="Neurona: dispara cuando se encienda"
       >
-        <Neurona />
+        <Neurona3D estado={estado} />
         <p key={`${estado}-${tiempos.length}`} className="sinapsis__rotulo" aria-live="polite">{rotulo[estado]}</p>
         <ol className="sinapsis__tiempos" aria-label="Tiempos">
           {Array.from({ length: RONDAS }, (_, i) => (
@@ -247,30 +248,117 @@ export function Sinapsis({
   );
 }
 
-/** La neurona: un soma con dendritas de circuito. Todo el color lo pone
- *  el CSS según el estado (reposo, señal, flor). */
-function Neurona() {
+/* ── la neurona en 3D ──────────────────────────────────────
+   Un túnel nervioso; al fondo, sobre la pared, la neurona con sus
+   dendritas, y su axón recorriendo el piso hasta la cámara. Al
+   dispararse, el impulso corre por el axón hacia quien juega. Un ancla
+   invisible (.neurona__soma) marca su centro: de ahí salen los efectos. */
+
+const NW = 320, NH = 200;
+const SALA_N = ['#####', '#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '#####'];
+const NC = { x: 2.5, y: 8.4 };
+const FONDO_Y = 1.25;
+const prN = (x: number, y: number, h: number) => {
+  const z = Math.max(0.05, NC.y - y);
+  return { x: (NW / 2) * (1 + (x - NC.x) / (z * FOV)), y: NH / 2 + ((0.5 - h) * NH) / z, z };
+};
+/** Las dendritas: ramas sobre la pared del fondo, en coordenadas (x, h). */
+const RAMAS: [number, number][][] = [
+  [[2.5, 0.55], [1.9, 0.75], [1.5, 0.78], [1.2, 0.95]], [[1.9, 0.75], [1.7, 0.95]],
+  [[2.5, 0.55], [3.1, 0.75], [3.5, 0.78], [3.8, 0.95]], [[3.1, 0.75], [3.3, 0.95]],
+  [[2.5, 0.55], [1.8, 0.4], [1.35, 0.36], [1.1, 0.2]], [[2.5, 0.55], [3.2, 0.4], [3.65, 0.36], [3.9, 0.2]],
+  [[2.5, 0.55], [2.5, 0.85], [2.3, 0.98]], [[2.5, 0.85], [2.75, 0.98]],
+];
+
+let fondoN: HTMLCanvasElement | null = null;
+function fondoNeurona() {
+  if (fondoN) return fondoN;
+  const cv = document.createElement('canvas'); cv.width = NW; cv.height = NH;
+  const ctx = cv.getContext('2d')!;
+  const img = ctx.createImageData(NW, NH);
+  const celda: Celda = (f, c) => SALA_N[f]?.[c] ?? '#';
+  pintar(new Uint32Array(img.data.buffer), new Float32Array(NW), celda, { x: NC.x, y: NC.y, ang: 0 }, { niebla: 10, ambiente: 0.06, salto: 0, sprites: [] });
+  ctx.putImageData(img, 0, 0);
+  return (fondoN = cv);
+}
+
+function Neurona3D({ estado }: { estado: Estado }) {
+  const cv = useRef<HTMLCanvasElement>(null);
+  const est = useRef(estado);
+  const cambio = useRef(performance.now());
+  if (est.current !== estado) { est.current = estado; cambio.current = performance.now(); }
+  const soma = prN(2.5, FONDO_Y, 0.55);
+  useEffect(() => {
+    const ctx = cv.current?.getContext('2d');
+    if (!ctx) return;
+    let id = 0, ultimo = 0;
+    const cuadro = (t: number) => {
+      id = requestAnimationFrame(cuadro);
+      if (t - ultimo < 70) return;
+      ultimo = t;
+      const e = est.current, u = (t - cambio.current) / 1000;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(fondoNeurona(), 0, 0);
+      const senal = e === 'senal' || (e === 'tiempo' && u < 0.6);
+      const mal = e === 'pronto' && u < 0.8;
+      const tono = senal ? '61,220,151' : mal ? '255,51,85' : e === 'flor' ? '217,70,239' : '250,57,186';
+      // Cuánto brilla: respira en reposo, tiembla al esperar, estalla al disparar.
+      const brillo = senal ? 1 : mal ? 0.9 * (1 - u / 0.8) + 0.2 : e === 'espera' ? 0.25 + 0.12 * Math.sin(t / 45) : 0.3 + 0.15 * Math.sin(t / 600);
+      // El halo del fondo.
+      const c = prN(2.5, FONDO_Y, 0.55);
+      const h = ctx.createRadialGradient(c.x, c.y, 2, c.x, c.y, 90);
+      h.addColorStop(0, `rgba(${tono},${0.15 + brillo * 0.5})`); h.addColorStop(1, `rgba(${tono},0)`);
+      ctx.fillStyle = h; ctx.fillRect(0, 0, NW, NH);
+      // Las dendritas, sobre la pared.
+      ctx.lineWidth = 1.5;
+      for (const rama of RAMAS) {
+        ctx.strokeStyle = `rgba(${tono},${0.35 + brillo * 0.6})`;
+        ctx.beginPath();
+        rama.forEach(([x, hh], i) => { const p = prN(x, FONDO_Y, hh); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+        ctx.stroke();
+        const [fx, fh] = rama[rama.length - 1]; const q = prN(fx, FONDO_Y, fh);
+        ctx.fillStyle = `rgba(${tono},${0.5 + brillo * 0.5})`; ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3);
+      }
+      // El axón: del soma al piso y por el piso hasta la cámara.
+      const ax = [prN(2.5, FONDO_Y, 0.55), prN(2.5, FONDO_Y + 0.2, 0.02), prN(2.5, NC.y - 0.9, 0.02)];
+      ctx.strokeStyle = `rgba(${tono},${0.3 + brillo * 0.4})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(ax[0].x, ax[0].y); ctx.lineTo(ax[1].x, ax[1].y); ctx.lineTo(ax[2].x, ax[2].y); ctx.stroke();
+      // El impulso: al dispararse, corre por el axón hacia quien juega.
+      if (senal) {
+        const k = Math.min(1, u / 0.35);
+        const y = FONDO_Y + 0.2 + k * (NC.y - 0.9 - FONDO_Y - 0.2);
+        const p = prN(2.5, y, 0.03), r = Math.max(2, 10 / p.z);
+        ctx.fillStyle = 'rgba(180,245,212,.5)'; ctx.beginPath(); ctx.arc(p.x, p.y, r * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      // El soma: un nodo de circuito, o una flor que se abre.
+      const r = 15;
+      if (e === 'flor') {
+        const abre = Math.min(1, u / 0.25);
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + t / 900;
+          ctx.fillStyle = k % 2 ? '#d946ef' : '#a32198';
+          ctx.beginPath(); ctx.ellipse(c.x + Math.cos(a) * r * abre, c.y + Math.sin(a) * r * abre, r * 0.7 * abre + 1, r * 0.4 * abre + 1, a, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = '#ffd3ee'; ctx.beginPath(); ctx.arc(c.x, c.y, r * 0.5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.fillStyle = `rgba(${tono},${0.4 + brillo * 0.6})`;
+        ctx.fillRect(c.x - r, c.y - r * 0.85, r * 2, r * 1.7);
+        ctx.fillStyle = '#0a070c'; ctx.fillRect(c.x - r * 0.45, c.y - r * 0.4, r * 0.9, r * 0.8);
+        ctx.fillStyle = `rgba(${tono},1)`; ctx.fillRect(c.x - r * 0.25, c.y - r * 0.2, r * 0.5, r * 0.4);
+        ctx.strokeStyle = senal ? '#fff' : `rgba(${tono},.9)`; ctx.lineWidth = 1;
+        ctx.strokeRect(c.x - r + 0.5, c.y - r * 0.85 + 0.5, r * 2 - 1, r * 1.7 - 1);
+      }
+      // Al disparar, la pantalla entera se ilumina un instante.
+      if (senal && u < 0.15) { ctx.fillStyle = `rgba(180,245,212,${0.25 * (1 - u / 0.15)})`; ctx.fillRect(0, 0, NW, NH); }
+    };
+    id = requestAnimationFrame(cuadro);
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
-    <svg className="neurona" viewBox="0 0 240 160" shapeRendering="crispEdges" aria-hidden="true">
-      <g className="neurona__dendritas">
-        <path d="M120 80 H80 L60 60 H30 M60 60 L50 40 H20 M80 80 L60 100 H24 L14 110" />
-        <path d="M120 80 H160 L180 60 H210 M180 60 L190 40 H222 M160 80 L180 100 H216 L228 112" />
-        <path d="M120 80 V40 L100 20 H84 M120 40 L140 20 H156 M120 80 V120 L104 140 H86 M120 120 L136 140 H156" />
-      </g>
-      <g className="neurona__vias">
-        {[[30, 60], [20, 40], [24, 100], [210, 60], [222, 40], [216, 100], [84, 20], [156, 20], [86, 140], [156, 140]].map(([x, y]) => (
-          <rect key={`${x}-${y}`} x={x - 3} y={y - 3} width="6" height="6" />
-        ))}
-      </g>
-      <rect className="neurona__soma" x="100" y="62" width="40" height="36" />
-      <rect className="neurona__nucleo" x="112" y="72" width="16" height="16" />
-      <g className="neurona__flor">
-        <rect x="114" y="52" width="12" height="10" />
-        <rect x="100" y="66" width="12" height="28" />
-        <rect x="128" y="66" width="12" height="28" />
-        <rect x="114" y="98" width="12" height="10" />
-        <rect className="neurona__flor-c" x="112" y="72" width="16" height="16" />
-      </g>
-    </svg>
+    <div className="neurona3d" aria-hidden="true">
+      <canvas ref={cv} width={NW} height={NH} />
+      <span className="neurona__soma" style={{ left: `${(soma.x / NW) * 100}%`, top: `${(soma.y / NH) * 100}%` }} />
+    </div>
   );
 }

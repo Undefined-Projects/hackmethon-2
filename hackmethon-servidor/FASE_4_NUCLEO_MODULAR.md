@@ -142,3 +142,31 @@ probar
 ejecutar
 ```
 *(En Parte 2: `carga(5) = 20` hace que M1 dé `50`; en M2 `valvula(6) = 30` hace que M2 dé `36`; y en M3 `flujo(5)` recibe `x = freno(5) + carga(5) = 3 + 20 = 23`, le suma `4` (`27`) y `latido(5)` da `23` $\to$ ¡Colapso total del núcleo y victoria!).*
+
+---
+
+## 7. La Sala del Núcleo en 3D (cámara 1 de Pantalla)
+
+Las dos cámaras ya no se ven en ASCII: Pantalla las ve en 3D, con el mismo motor y estética que La Maraña y El Reflejo (`client/src/player/fases/Nucleo3D.tsx` y `Dependencias3D.tsx`, sobre `motor3d.ts`).
+
+### Cámara 1 · Sala del Núcleo
+
+- **Tres torres** al fondo de la sala, una por subsistema (`M1 · TRACCIÓN`, `M2 · HIDRÁULICA`, `M3 · ENFRIAMIENTO`). Cada torre son **tres bloques apilados**, uno por función: `base/` abajo, `medio/` en medio y `nucleo/` arriba (con candado: está sellado).
+- Cada bloque se ve **sellado** (oscuro, `???`), **armado** (circuito verde) o **saboteado** (rosa, con interferencia). Un **dron** marca la pieza abierta con `abrir`.
+- **`probar`**: el pulso sube a saltos por las tres torres (base → medio → núcleo, 0,6 s por salto) y junto a cada bloque aparece el valor que devolvió esa función. Si una validación frena el pulso, sale una **barrera roja** en ese bloque. Arriba, la salida final.
+- **`ejecutar`**: cada torre enseña su desenlace: **COLAPSA** (sobrecarga, con chispas), **FUSIBLE** (destello y humo) o **AGUANTA**.
+- **Parte 2**: un cable rosa une la base de M1 (`carga`) con el medio de M3 (`flujo`): el acoplamiento, y el pulso también viaja por él.
+
+### Cámara 2 · Dependencias
+
+Un corredor donde **la profundidad es la profundidad de la cadena**: tres carriles (M1, M2, M3) y en cada uno tres plataformas, `nucleo/` cerca de la cámara, `medio/` más lejos y `base/` al fondo y más alta (cada nivel en su franja de la pantalla).
+
+- **`probar` / `ejecutar`**: la **llamada** viaja hacia el fondo (azul: el núcleo llama al medio, el medio a la base) y el **retorno** vuelve hacia la cámara (verde), dejando junto a cada plataforma el valor que devolvió. Si una validación frena, el retorno se para ahí con un anillo rojo y `BLOQUEO`.
+- **Sin corrida**, un pulso suave baja y sube en bucle para ilustrar la dependencia.
+- **Parte 2**: un cable rosa cruza de la base de M1 al medio de M3, y cuando `flujo` llama, el pulso también viaja por él. Los valores se asignan por pieza, así que el paso extra de `carga` en M3 no los descuadra.
+
+**No revela nada nuevo.** Solo enseña lo que la salida de `probar` / `ejecutar`, el árbol y el visor de código ya le dan a Pantalla. Las ventanas (`aguanta_max`, `fusible_corte`) no viajan: siguen siendo de Datos.
+
+**Cómo se alimenta.** Cada `probar` y cada `ejecutar` guardan en el estado la `ultimaCorrida` (`armarCorrida` en `nucleo.ts`), y la cámara 1 la manda como `dibujo` de tipo `nucleo`. La corrida se anima una vez por pestaña: quien recarga la ve ya contada.
+
+**Ligera:** la sala se dibuja una sola vez y cada cuadro solo pega las torres encima (~8 cuadros por segundo, y solo mientras algo se mueve). Mide menos de 1 ms por cuadro, también con la CPU 6× más lenta y en Firefox (`node e2e/_rendimiento.mjs`).

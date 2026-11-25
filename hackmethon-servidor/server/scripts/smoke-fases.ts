@@ -7,8 +7,8 @@
 import { acceso, instanciaDeAcceso } from '../src/phases/acceso.js';
 import { muro } from '../src/phases/muro.js';
 import { nucleo } from '../src/phases/nucleo.js';
-import { boveda } from '../src/phases/boveda.js';
-import { puente } from '../src/phases/puente.js';
+import { boveda, instanciaDeBoveda, solucionDeBoveda } from '../src/phases/boveda.js';
+import { instanciaDeMente, mente } from '../src/phases/mente.js';
 import { rastro } from '../src/phases/rastro.js';
 import type { ModuloFase } from '../src/phases/types.js';
 
@@ -632,226 +632,126 @@ console.log('\n4) Nucleo Modular · FUNCIONES DEPENDIENTES');
   check((rReset.estado.armadas as any)?.pulso === true, 'pero conserva las piezas armadas');
 }
 
-console.log('\n5) Boveda de Credenciales · BASES DE DATOS');
+console.log('\n5) La Boveda de los Recuerdos · BASES DE DATOS');
 {
   const corre = corredor(boveda);
-  check(!dice(corre('ayuda')).includes('cr-1843'), 'la ayuda no lleva la respuesta dentro');
-  check(!dice(corre('ayuda')).includes('sistemas'), 'ni el encargo, que es cosa de Datos');
-
-  const todo = dice(corre('contar en credenciales'));
-  check(todo.includes('2400'), 'la boveda tiene 2400 credenciales');
-
-  // El embudo: cada condicion tira registros.
-  const n = (q: string) => Number(dice(corre(q)).match(/(\d+) registros/)![1]);
-  const c1 = n('contar en credenciales donde tipo = maestra');
-  const c2 = n('contar en credenciales donde tipo = maestra y estado = activa');
-  const c3 = n('contar en credenciales unir usuarios donde tipo = maestra y estado = activa y departamento = sistemas');
-  const c4 = n('contar en credenciales unir usuarios donde tipo = maestra y estado = activa y departamento = sistemas y sede = torre');
-  check(c1 < 2400 && c2 < c1 && c3 < c2, `el embudo estrecha (2400 → ${c1} → ${c2} → ${c3} → ${c4})`);
-  check(c4 === 1, 'y las cuatro condiciones dejan exactamente una');
-
-  // El error mas instructivo: la columna existe, pero en la otra tabla.
-  const sinUnir = corre('buscar en credenciales donde departamento = sistemas');
-  check(!sinUnir.fallo && dice(sinUnir).includes('unir'),
-    'filtrar por una columna de la otra tabla explica que hay que unirlas');
-
-  const muchos = corre('buscar en credenciales donde tipo = maestra');
-  check(dice(muchos).includes('demasiados'), 'pedir demasiadas filas manda a estrechar, no vuelca la boveda');
-
-  const una = corre('buscar en credenciales unir usuarios donde tipo = maestra y estado = activa y departamento = sistemas y sede = torre');
-  const fila = una.bloques[0].filas[0];
-  check(una.bloques[0].filas.length === 1, 'la consulta completa devuelve una sola fila');
-
-  check(corre('extraer CR-0001').fallo === true, 'extraer la credencial equivocada penaliza');
-  check(corre(`extraer ${fila[0]}`).resuelto === true, `y la del encargo (${fila[0]}) resuelve la fase`);
-  check(dice(corre('buscar en credenciales donde color = azul')).includes('no es ninguna columna'),
-    'una columna inventada se explica');
+  for (const semilla of ['equipo-1', 'equipo-2']) {
+    const inst = instanciaDeBoveda(semilla);
+    const sol = solucionDeBoveda(inst);
+    let estado: Record<string, unknown> = {};
+    const paso = (q: string) => {
+      const r = boveda.ejecutar(q, { estado, intentos: 0, ahora: AHORA, traficoActivo: false, semilla });
+      if (r.estado) estado = r.estado;
+      return r;
+    };
+    const ayudaTxt = dice(paso('ayuda'));
+    check(!ayudaTxt.includes(inst.objetivo1.toLowerCase()) && ayudaTxt === dice(corre('ayuda')),
+      `[${semilla}] la ayuda no lleva la respuesta y es la misma para todos: el encargo es de Datos`);
+    check(dice(paso('contar en recuerdos')).includes('1000 recuerdos'), '  la boveda guarda mil recuerdos');
+    const e = inst.embudo;
+    const n = (q: string) => Number(dice(paso(q)).match(/(\d+) recuerdos de/)![1]);
+    const c1 = n(`contar en recuerdos donde lugar = ${e.lugar}`);
+    const c2 = n(`contar en recuerdos donde lugar = ${e.lugar} y ( emocion = ${e.emociones[0]} o emocion = ${e.emociones[1]} )`);
+    const c3 = n(`contar en recuerdos donde lugar = ${e.lugar} y ( emocion = ${e.emociones[0]} o emocion = ${e.emociones[1]} ) y año > ${e.desde}`);
+    check(c1 < 1000 && c2 < c1 && c3 < c2, `  el embudo estrecha (1000 → ${c1} → ${c2} → ${c3})`);
+    const mezcla = paso(`contar en recuerdos donde lugar = ${e.lugar} y emocion = ${e.emociones[0]} o emocion = ${e.emociones[1]} y año > ${e.desde} y intensidad >= ${e.intensidad}`);
+    check(dice(mezcla).includes('parentesis') && Number(dice(mezcla).match(/(\d+) recuerdos de/)![1]) > 1,
+      '  mezclar y con o sin parentesis da otra cosa, y la boveda lo avisa');
+    check(dice(paso('buscar en recuerdos donde lugar = patio')).includes('demasiados'), '  pedir demasiadas filas manda a estrechar');
+    check(paso('contar en recuerdos unir personas').bloques[0].tipo === 'error', '  en la capa 1 no se puede unir todavia');
+    const una = paso(sol.capa1);
+    check(una.bloques[0].filas?.length === 1 && una.bloques[0].filas[0][0] === inst.objetivo1, '  la consulta del encargo deja exactamente uno');
+    check(dice(una).includes('select * from recuerdos where'), '  y Pantalla ve su traduccion a SQL');
+    const otro = inst.objetivo1 === 'R-0001' ? 'R-0002' : 'R-0001';
+    check(paso(`abrir ${otro}`).fallo === true, '  abrir el recuerdo equivocado pone la boveda en cuarentena');
+    estado = { ...estado, cuarentenaHasta: 0 };
+    check(paso(`abrir ${inst.objetivo1}`).estado?.capa === 2, '  y el del encargo abre la capa 2');
+    // Capa 2
+    check(dice(paso('contar en recuerdos donde oficio = visita')).includes('unir'), '  filtrar por una columna de personas explica que hay que unir');
+    const trampa = paso(`contar en recuerdos unir personas donde tipo = ${inst.compartido.tipo} agrupar por persona_id`);
+    check(trampa.bloques[0].filas[0][0] === inst.trampa, '  sin filtrar por oficio, gana la persona trampa');
+    const grupos = paso(sol.grupos);
+    const elegida = inst.personas.find((p) => p.id === inst.elegida)!;
+    check(grupos.bloques[0].filas[0][0] === elegida.nombre && grupos.bloques[0].filas[0][1] !== grupos.bloques[0].filas[1]?.[1],
+      '  agrupando con el oficio, gana la elegida, sin empate');
+    const top = paso(sol.capa2);
+    check(top.bloques[0].filas[0][0] === inst.objetivo2, '  ordenar y limitar dan su recuerdo mas intenso');
+    check(paso(`abrir ${inst.objetivo2}`).resuelto === true, '  y abrirlo resuelve la fase');
+  }
+  check(instanciaDeBoveda('equipo-1').objetivo1 !== instanciaDeBoveda('equipo-2').objetivo1, 'cada equipo tiene otra respuesta');
+  check(dice(corre('volar')).includes('no reconocido'), 'un comando inventado se explica');
 }
 
 // ============================================================
-console.log('\n6) Puente de Lanzamiento · APIS');
+console.log('\n6) El Asalto a la Mente · APIS · la final');
 {
-  const corre = corredor(puente);
-  const TOK = 'cabecera autorizacion=tk-4f19-sistemas';
-  const a = dice(corre('ayuda'));
-  check(!a.includes('tk-4f19') && !a.includes('op-7741') && !a.includes('k7qx'),
-    'la ayuda no lleva ni el token, ni la operacion, ni el reto');
-  check(!a.includes('/v2/operacion'), 'ni las rutas: la documentacion la tiene Datos');
-  // Que HAY varias y que solo una lleva carga si lo dice: es la regla del
-  // juego. CUAL, no: eso es lo que hay que ir a mirar.
-  check(!a.includes('b-07') && !a.includes('a-12') && !a.includes('c-03'),
-    'ni cual de las rampas lleva carga: eso solo se ve mirando');
-
-  // Cada numero dice una cosa distinta, y ninguno de estos hace dano.
-  const codigo = (q: string, e: Record<string, unknown> = {}) => corre(q, e).bloques[0].titulo.split(' ')[0];
-  check(codigo('enviar GET /v2/nada') === '404', '404 cuando la ruta no existe');
-  check(codigo('enviar GET /v2/operacion/estado') === '401', '401 cuando no dices quien eres');
-  check(codigo('enviar GET /v2/operacion/estado cabecera autorizacion=otro') === '403', '403 cuando el token no vale');
-  check(codigo(`enviar GET /v2/operacion/cancelar ${TOK}`) === '405', '405 cuando la ruta no escucha ese metodo');
-  check(codigo(`enviar POST /v2/operacion/cancelar ${TOK}`) === '422', '422 cuando falta algo en el cuerpo');
-  for (const q of ['enviar GET /v2/nada', 'enviar GET /v2/operacion/estado', `enviar POST /v2/operacion/cancelar ${TOK}`]) {
-    check(corre(q).fallo !== true, `y ${q.split(' ')[2]} no penaliza: ningun 4xx llega a la capa de lanzamiento`);
-  }
-
-  // ---- Tres operaciones y el puente no sabe cual lleva ojiva ----
-  const get = corre(`enviar GET /v2/operacion/estado ${TOK}`);
-  const textoGet = dice(get);
-  check(textoGet.includes('op-7112') && textoGet.includes('op-7741') && textoGet.includes('op-7903'),
-    'el GET lista las TRES operaciones en curso');
-  check((textoGet.match(/armada/g) ?? []).length === 3,
-    'y las da las tres por armadas: su inventario esta viejo');
-  check(textoGet.includes('a-12') && textoGet.includes('b-07') && textoGet.includes('c-03'),
-    'cada una con su sector, que es lo unico que las ata a las camaras');
-  check(!textoGet.includes('ojiva') && !textoGet.includes('maqueta') && !textoGet.includes('vacia'),
-    'por el puente NO se puede saber cual lleva carga');
-  check(get.estado?.reto === 'k7qx' && get.estado?.retoHasta === AHORA + 90_000,
-    'el GET abre una ventana de 90 s con su reto');
-
-  // ---- La ventana ----
-  const conReto = get.estado as Record<string, unknown>;
-  const cancelar = (op: string, reto: string, extra: Record<string, unknown> = {}) =>
-    corre(`enviar POST /v2/operacion/cancelar ${TOK} cuerpo operacion=${op} confirmacion=${reto}`,
-      { ...conReto, ...extra });
-  check(codigo(`enviar POST /v2/operacion/cancelar ${TOK} cuerpo operacion=op-7741 confirmacion=k7qx`) === '428',
-    '428 si se intenta cancelar sin haber preguntado nunca');
-  check(cancelar('op-7741', 'k7qx', { retoHasta: AHORA - 1 }).bloques[0].titulo.split(' ')[0] === '410',
-    '410 cuando el reto ya ha caducado');
-  const caducado = cancelar('op-7741', 'k7qx', { retoHasta: AHORA - 1 });
-  check(caducado.fallo !== true, 'caducar no penaliza: cuesta tiempo, no intentos');
-  check(caducado.estado?.reto === null, 'pero cierra la ventana: hay que volver a pedirlo');
-  check(cancelar('op-7741', 'zzzz').bloques[0].titulo.split(' ')[0] === '409', '409 cuando el reto no cuadra');
-  check(cancelar('op-0000', 'k7qx').bloques[0].titulo.split(' ')[0] === '404', '404 cuando la operacion no existe');
-
-  // Un segundo GET da un reto DISTINTO: no se puede memorizar.
-  const get2 = corre(`enviar GET /v2/operacion/estado ${TOK}`, get.estado);
-  check(get2.estado?.reto === 'm3vd' && get2.estado?.reto !== get.estado?.reto,
-    `cada consulta trae un reto nuevo (${get.estado?.reto} → ${get2.estado?.reto})`);
-
-  // ---- Cancelar la que no era ----
-  for (const [op, como] of [['op-7112', 'una rampa vacia'], ['op-7903', 'una maqueta']] as const) {
-    const fallida = cancelar(op, 'k7qx');
-    check(fallida.fallo === true, `cancelar ${como} cuenta como intento`);
-    check(fallida.resuelto !== true, `y NO resuelve la fase (${op})`);
-    check(fallida.estado?.reto === null, 'y quema el reto: a preguntar otra vez');
-  }
-
-  // El mensaje equivocado. Esta documentado en mayusculas y aun asi se envia.
-  const mal = corre(`enviar POST /v2/operacion/programar ${TOK}`);
-  check(mal.fallo === true && mal.estado.adelantos === 1, 'la ruta equivocada adelanta el lanzamiento y penaliza');
-  check(dice(mal).includes('6 minutos'), 'y la cuenta atras se acorta de verdad');
-
-  const bien = cancelar('op-7741', 'k7qx');
-  check(bien.resuelto === true, 'la operacion con ojiva, con su reto y en plazo, cancela el lanzamiento');
-
-  check(dice(corre('enviar MANDAR /v2/operacion/estado')).includes('no es un metodo'), 'un metodo inventado se explica');
-  check(dice(corre(`enviar POST /v2/operacion/cancelar autorizacion=x`)).includes('ni en la cabecera ni en el cuerpo'),
-    'y un par suelto sin decir donde va, tambien');
-
-  // ---- El circuito cerrado ----
-  // La consola cambia las camaras y NO las ve; Pantalla las ve y no las
-  // cambia. Si alguna de las dos mitades se saltara eso, la fase se
-  // resolveria desde un solo puesto.
-  const proy = (rol: any, estado: Record<string, unknown> = {}) =>
-    puente.proyectar(rol, { estado, intentos: 0, ahora: AHORA, traficoActivo: false, salidas: [] } as any) as any;
-
-  const pant = proy('PANTALLA');
-  check(!!pant.camaras, 'Pantalla recibe el circuito cerrado');
-  check(pant.camaras.lista.length === 6 && pant.camaras.activa === 1,
-    `seis camaras y arranca en la 1 (${pant.camaras.lista.length})`);
-  check(pant.camaras.vista.fotogramas.length > 0, 'con imagen, no solo con el rotulo');
-  const todosLosAltos = new Set<number>();
-  for (const n of [1, 2, 3, 4, 5, 6]) {
-    for (const adelantos of [0, 1, 2, 3]) {
-      for (const f of proy('PANTALLA', { camara: n, adelantos }).camaras.vista.fotogramas) todosLosAltos.add(f.length);
+  for (const semilla of ['equipo-1', 'equipo-2']) {
+    const inst = instanciaDeMente(semilla);
+    let estado: Record<string, unknown> = {};
+    let reloj = AHORA;
+    const paso = (q: string, dt = 3000) => {
+      reloj += dt;
+      const r = mente.ejecutar(q, { estado, intentos: 0, ahora: reloj, traficoActivo: false, semilla });
+      if (r.estado) estado = r.estado;
+      return r;
+    };
+    const codigo = (r: any) => Number(String(r.bloques[0]?.titulo ?? '').split(' ')[0]);
+    check(!dice(paso('ayuda')).includes(inst.clave), `[${semilla}] la ayuda no lleva la clave`);
+    check(paso('enviar get /mente/nada').bloques[0].tipo !== 'error' && codigo(paso('enviar get /mente/nada')) === 404, '  404 cuando la ruta no existe, y no rebota: la mente contesto');
+    check(codigo(paso('enviar get /mente/sesion')) === 405, '  405 con el metodo equivocado');
+    check(codigo(paso('enviar post /mente/sesion')) === 422, '  422 si falta la clave');
+    check(codigo(paso('enviar post /mente/sesion cuerpo clave=otra')) === 401, '  401 con la clave equivocada');
+    check(codigo(paso('enviar get /mente/procesos')) === 401, '  401 sin token');
+    check(codigo(paso('enviar get /mente/procesos cabecera token=tk-000000')) === 403, '  403 con un token que no vale');
+    check(paso('enviar volar /x').bloques[0].tipo === 'error', '  un metodo inventado no es una peticion: rebota');
+    const ses = paso(`enviar post /mente/sesion cuerpo clave=${inst.clave}`);
+    const token = dice(ses).match(/tk-[0-9a-f]{6}/)![0];
+    check(codigo(ses) === 200, '  la clave de Datos da un token');
+    const lista = dice(paso(`enviar get /mente/procesos cabecera token=${token}`));
+    check(inst.procesos.every((x) => lista.includes(x.id)), '  GET /mente/procesos lista las cinco facultades con su id');
+    const blindado = inst.procesos.find((x) => x.blindaje > 0)!;
+    check(codigo(paso(`enviar delete /mente/procesos/${blindado.id} cabecera token=${token}`)) === 422, '  422 si la facultad tiene blindaje y falta la fuerza');
+    check(codigo(paso(`enviar delete /mente/procesos/${blindado.id} cabecera token=${token} cuerpo fuerza=1`)) === 422, '  y si no alcanza');
+    // El límite de ritmo.
+    const antes = estado;
+    for (let k = 0; k < 4; k++) paso(`enviar get /mente/procesos cabecera token=${token}`, 200);
+    const lim = paso(`enviar get /mente/procesos cabecera token=${token}`, 200);
+    check(codigo(lim) === 429, '  429 si se le bombardea');
+    paso('enviar get /mente/procesos', 200);
+    paso('enviar get /mente/procesos', 200);
+    const harta = mente.ejecutar('enviar get /mente/procesos', { estado, intentos: 0, ahora: reloj + 200, traficoActivo: false, semilla });
+    check(!!harta.contraataque, '  y si insisten tres veces durante el cierre, contraataca');
+    estado = antes; reloj += 10_000;
+    // Las cinco, una por una.
+    for (const x of inst.procesos) paso(`enviar delete /mente/procesos/${x.id} cabecera token=${token}${x.blindaje ? ` cuerpo fuerza=${x.blindaje}` : ''}`);
+    check(estado.capa === 2, '  cinco facultades destruidas abren la capa 2');
+    check((mente.proyectar('PANTALLA', { estado, salidas: [], traficoActivo: false, filtroTrafico: null, semilla }) as any).animo.perdidas.length === 5,
+      '  y el animo de la maquina sabe lo que perdio');
+    // La voluntad.
+    let tok = token;
+    check(codigo(paso(`enviar delete /mente/nucleo cabecera token=${tok} cuerpo fuerza=25`)) === 423, '  423 con el escudo arriba');
+    const golpear = () => {
+      const reto = dice(paso(`enviar get /mente/nucleo/reto cabecera token=${tok}`)).match(/"reto\\?": ?\\?"([0-9a-f]{4})/)![1];
+      paso(`enviar patch /mente/nucleo cabecera token=${tok} cuerpo escudo=abajo reto=${reto}`, 1000);
+      return paso(`enviar delete /mente/nucleo cabecera token=${tok} cuerpo fuerza=25`, 1000);
+    };
+    check(codigo(paso(`enviar patch /mente/nucleo cabecera token=${tok} cuerpo escudo=abajo reto=zzzz`)) === 400, '  400 con un reto que no es el vigente');
+    const contras: number[] = [];
+    let ultimo: any = null;
+    for (let k = 0; k < 4; k++) {
+      ultimo = golpear();
+      if (ultimo.contraataque) {
+        contras.push(ultimo.contraataque.roles.length);
+        check(codigo(paso(`enviar get /mente/nucleo cabecera token=${tok}`)) === 403, `  tras el contraataque ${contras.length}, el token ya no vale`);
+        tok = dice(paso(`enviar post /mente/sesion cuerpo clave=${inst.clave}`)).match(/tk-[0-9a-f]{6}/)![0];
+      }
+      reloj += 10_000;
     }
-    for (const f of proy('PANTALLA', { camara: n, cancelada: true }).camaras.vista.fotogramas) todosLosAltos.add(f.length);
+    check(contras.join(',') === '1,2,3', `  contraataca a 1, 2 y 3 puestos al cruzar 75, 50 y 25 (${contras.join(',')})`);
+    check(ultimo.resuelto === true && estado.resuelta === true, '  el cuarto golpe apaga la mente y gana la final');
   }
-  for (const f of proy('PANTALLA', { camara: 2, cancelada: true }).camaras.vista.detonacion) todosLosAltos.add(f.length);
-  check(todosLosAltos.size === 1, `todos los fotogramas miden lo mismo (${[...todosLosAltos].join('/')} lineas)`);
-  check(!dice(proy('TERMINAL')).includes('fotogramas') && !dice(proy('TERMINAL')).includes('rampa'),
-    'y la consola NO ve ninguna imagen');
-  check(!dice(proy('DATOS')).includes('cam-') && !dice(proy('DATOS')).includes('ojiva armada'),
-    'Datos tampoco: el circuito es de Pantalla');
-
-  // ---- Las camaras son OBLIGATORIAS ----
-  // Sin ellas no hay forma de saber cual de las tres cancelar: el puente
-  // da las tres por armadas y la documentacion no nombra ninguna.
-  const rampas = [1, 2, 3].map((n) => proy('PANTALLA', { camara: n }).camaras.vista);
-  const conOjiva = rampas.filter((r) => dice(r.rotulos).includes('ojiva armada'));
-  check(conOjiva.length === 1, `solo UNA rampa se ve cargada (${conOjiva.length} de 3)`);
-  check(conOjiva[0].sector === 'B-07', `y es la del sector ${conOjiva[0].sector}`);
-  check(dice(rampas.find((r) => r.sector === 'A-12')!.rotulos).includes('rampa vacia'),
-    'la de A-12 se ve vacia');
-  check(dice(rampas.find((r) => r.sector === 'C-03')!.rotulos).includes('maqueta'),
-    'y la de C-03 se ve que es una maqueta');
-  check(dice(rampas.find((r) => r.sector === 'C-03')!.fotogramas).includes('maq'),
-    'lo pone en el propio cascaron, no solo en el rotulo');
-  const sectoresEnDatos = dice(proy('DATOS'));
-  check(!sectoresEnDatos.includes('b-07'), 'la documentacion de Datos no dice cual es el sector bueno');
-
-  const todasLasCamaras = [1, 2, 3, 4, 5, 6]
-    .map((n) => dice(proy('PANTALLA', { camara: n, peticiones: 3, rechazadas: 2, adelantos: 1 }).camaras))
-    .join(' ');
-  check(!todasLasCamaras.includes('tk-4f19') && !todasLasCamaras.includes('k7qx'),
-    'ninguna camara enseña el token ni el reto');
-  check(!todasLasCamaras.includes('/v2/'), 'ni una sola ruta: la documentacion sigue siendo de Datos');
-  check(!todasLasCamaras.includes('op-7741'),
-    'ni el identificador de la operacion: la camara da el SECTOR, la lista da el id');
-
-  const cambio = corre('camara 5');
-  check(cambio.estado?.camara === 5, '`camara 5` cambia la camara');
-  check(proy('PANTALLA', cambio.estado).camaras.vista.nombre.includes('ENLACE'),
-    'y a Pantalla le llega ya la nueva');
-  check(corre('camara enlace').estado?.camara === 5, 'tambien vale por nombre');
-  check(corre('camara siguiente', { camara: 6 }).estado?.camara === 1, '`siguiente` da la vuelta');
-  check(corre('camara 12').estado === undefined && dice(corre('camara 12')).includes('no hay ninguna camara'),
-    'una camara que no existe se explica y no toca el estado');
-  check(corre('camara b-07').estado?.camara === 2, 'y se puede pedir por sector, que es como se habla');
-  check(corre('camara centro').estado?.camara === 2, 'o por nombre');
-  check(dice(corre('camaras')).includes('sector'), '`camaras` las lista con su sector');
-  check(corre('camara 2').fallo !== true, 'mirar no penaliza');
-
-  // Las camaras reaccionan: es lo que las hace algo mas que un adorno.
-  const trasError = corre('enviar GET /v2/operacion/estado');
-  check(trasError.estado?.peticiones === 1 && trasError.estado?.rechazadas === 1,
-    'cada peticion queda contada en la sala de control');
-  const silo = proy('PANTALLA', { camara: 2, adelantos: 1 }).camaras.vista;
-  check(dice(silo.rotulos).includes('cuenta acortada'), 'el silo avisa de que la cuenta se ha acortado');
-  check(silo.ruido > 0, 'y la señal se ensucia');
-
-  // ---- La cuenta atras se ve, y la detonacion tambien ----
-  const tension = (adelantos: number) => proy('PANTALLA', { camara: 2, adelantos }).camaras.vista.tension;
-  check(tension(0) === 0 && tension(1) === 1 && tension(2) === 2 && tension(3) === 3,
-    `la tension sube con cada adelanto (${[0, 1, 2, 3].map(tension).join(' → ')})`);
-  check(proy('PANTALLA', { camara: 1, adelantos: 3 }).camaras.vista.tension === 0,
-    'y una rampa vacia no enciende motores por mucho que corra el reloj');
-  const calma = proy('PANTALLA', { camara: 2 }).camaras.vista;
-  const ardiendo = proy('PANTALLA', { camara: 2, adelantos: 3 }).camaras.vista;
-  check(calma.fotogramas.length > 1, 'en calma la imagen ya se mueve (venteo)');
-  check(ardiendo.ritmo < calma.ritmo, `y a punto de lanzar va mas rapido (${ardiendo.ritmo} < ${calma.ritmo} ms)`);
-  check(dice(ardiendo.fotogramas).includes('vvvv') || dice(ardiendo.fotogramas).includes('wwww'),
-    'con la tobera encendida');
-  check(dice(ardiendo.rotulos).includes('ignicion'), 'y el rotulo lo dice');
-  check(calma.detonacion === null, 'mientras esta armada no hay detonacion que reproducir');
-  check(calma.clave !== ardiendo.clave, 'la firma de la imagen cambia con la tension');
-
-  // El reloj del reto viaja para las seis camaras, no para una.
-  check(proy('PANTALLA', { camara: 4, ...(get.estado as any) }).camaras.ventana?.hasta === AHORA + 90_000,
-    'el reloj del reto se ve desde cualquier camara');
-  check(proy('PANTALLA', {}).camaras.ventana?.hasta === null,
-    'y sin reto abierto el hueco sigue ahi, vacio: esta fase SI tiene reloj');
-
-  check(bien.estado?.camara === 2, 'al cancelar, la camara salta sola a la rampa buena');
-  check((bien.esperaVictoriaMs ?? 0) > 2000,
-    `la cortinilla de victoria espera a que arda (${bien.esperaVictoriaMs} ms)`);
-  const ruina = proy('PANTALLA', bien.estado).camaras.vista;
-  check(ruina.detonacion !== null && ruina.detonacion.length >= 5,
-    `la detonacion viene en ${ruina.detonacion?.length} fotogramas`);
-  check(dice(ruina.detonacion).includes('####') && dice(ruina.detonacion).includes('~~~'),
-    'con bola de fuego y humo');
-  check(!dice(ruina.fotogramas).includes('7741'), 'y en reposo ya no queda ojiva en la rampa');
-  check(proy('PANTALLA', { ...(bien.estado as any), camara: 1 }).camaras.vista.detonacion === null,
-    'las otras rampas no revientan: alli no habia nada');
+  check(instanciaDeMente('equipo-1').clave !== instanciaDeMente('equipo-2').clave
+    || instanciaDeMente('equipo-1').procesos[0].id !== instanciaDeMente('equipo-2').procesos[0].id, 'cada equipo tiene su mente');
 }
 
 // ============================================================
@@ -866,8 +766,6 @@ console.log('\n7) Circuito cerrado de todas las fases');
     // fase · modulo · cuantas camaras · lo que NO puede aparecer en la imagen
     ['Fase 1 · El Reflejo', acceso, 2, ['caducada', 'ausente', 'binario', 'anticuerpo']],
     ['Fase 4 · Nucleo Modular', nucleo, 2, ['v * f', 'n * 2', 'n - 1', '12', '24']],
-    ['Fase 5 · Boveda', boveda, 2, ['cr-1843', 'maestra', 'torre']],
-    ['Fase 6 · Puente', puente, 6, ['tk-4f19', 'k7qx', '/v2/']],
     ['Fase 7 · El Rastro', rastro, 2, ['9f2ae1', 'pruebas-07', 'nomina-02']],
   ];
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlayer, useSession } from '../session/SessionContext';
 import { formatMs, roleLabel } from '../lib/format';
 import { Lobby } from './Lobby';
@@ -12,6 +12,9 @@ import { SuperAtaque } from './SuperAtaque';
 import { CaraRobot } from './RobotAtaque';
 import { LaminaFase } from './LaminaFase';
 import { LetreroRobot } from './LetreroRobot';
+import { BarraMaquina, nivelDeMiedo, type Animo } from './RostroMaquina';
+import { Deterioro } from './Deterioro';
+import { Habitacion } from './Habitacion';
 import { INTROS, IntroFase, introDeCapa, introVista, marcarIntroVista } from './fases/IntroFase';
 
 export function PlayerApp() {
@@ -45,6 +48,22 @@ export function PlayerApp() {
     const t = setTimeout(() => setIntro((abierta) => abierta ?? deCapa), esperaCapa.current);
     return () => clearTimeout(t);
   }, [deCapa, pendienteCapa]);
+
+  // La máquina: su miedo es el de la fase en la que está el equipo, y cada
+  // capa que cruzan (o la fase que resuelven) le arranca un respingo.
+  const miedo = nivelDeMiedo(faseKey, player.lobby);
+  const [reaccion, setReaccion] = useState(0);
+  // El easter egg: la habitación oscura, en primera persona.
+  const [habitacion, setHabitacion] = useState(false);
+  const salirHabitacion = useCallback(() => setHabitacion(false), []);
+  const animo = (player.workspace?.payload as { animo?: Animo } | null)?.animo ?? null;
+  const capaVista = useRef<{ fase: string | null; capa: number | null }>({ fase: faseKey, capa });
+  useEffect(() => {
+    const antes = capaVista.current;
+    capaVista.current = { fase: faseKey, capa };
+    if (antes.fase === faseKey && antes.capa !== null && capa !== null && capa > antes.capa) setReaccion((r) => r + 1);
+  }, [faseKey, capa]);
+  useEffect(() => { if (resuelta) setReaccion((r) => r + 1); }, [resuelta]);
 
   const cerrarIntro = () => {
     if (intro) marcarIntroVista(player.me.id, intro);
@@ -166,6 +185,18 @@ export function PlayerApp() {
       {/* Fuera del flujo, como el botón de salir: tiene que estar a la
           vista en el lobby y dentro de cualquier fase, sin empujar nada. */}
       {enJuego && <MenuAtaque />}
+
+      {/* La máquina, abajo y al centro: cada vez más asustada. Fuera de la
+          fase, como el menú de ataque: dentro, «fija» se anclaría al final
+          del contenido y no a la pantalla. */}
+      {/* Mientras te atacan, la máquina se ríe de ti. */}
+      {player.workspace && <BarraMaquina nivel={miedo} reaccion={reaccion} riendo={!!averia && averia.hasta > Date.now()}
+        animo={animo} alSecreto={() => setHabitacion(true)} />}
+
+      {habitacion && <Habitacion nivel={miedo} alSalir={salirHabitacion} />}
+
+      {/* La página se rompe con la máquina: más cuanto más adentro. */}
+      {player.workspace && <Deterioro nivel={miedo} furia={animo?.furia ?? 0} apagada={!!animo?.apagada} />}
 
       {/* Superó todo lo abierto y la siguiente aún no abre: minijuegos
           mientras espera. El recreo del panel, si lo hay, manda. */}

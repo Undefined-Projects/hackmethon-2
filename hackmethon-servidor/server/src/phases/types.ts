@@ -79,6 +79,9 @@ export type ResultadoComando = {
    * conseguido. Los tres puestos esperan lo mismo: el momento es común.
    */
   esperaVictoriaMs?: number;
+  /** La fase contraataca: avería a los puestos del equipo que se nombran,
+   *  con remite «LA MÁQUINA». La usa la final. */
+  contraataque?: { roles: Role[]; duracionMs?: number };
 };
 
 export interface ModuloFase {

@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { PhaseWorkspace } from '../../shared/events';
 import { useMountId } from './mount';
 import { useSession } from '../../session/SessionContext';
-import { sonar } from '../../lib/sonido';
-import { RobotSacudiendo, useSalida } from '../RobotAtaque';
 import { JardinEscena } from '../../admin/JardinEscena';
 import { FlujoDiagrama, Pseudocodigo } from '../fases/Flujo';
 import { ProgramaDatos } from '../fases/ProgramaBrote';
+import { Archivo3D } from './Archivo3D';
 
 type Tabla = {
   id: string;
@@ -36,8 +35,6 @@ type Payload = {
   programa?: Parameters<typeof ProgramaDatos>[0]['programa'];
 };
 
-type Arista = { clave: string; d: string; etiqueta: string; lx: number; ly: number };
-
 /**
  * Operador de Datos: el esquema primero, el contenido después.
  *
@@ -50,14 +47,19 @@ type Arista = { clave: string; d: string; etiqueta: string; lx: number; ly: numb
 export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   const mountId = useMountId();
   const { averia } = useSession();
-  const temblando = averia?.tipo === 'DATOS';
-  const robot = useSalida(temblando);
+  // El ataque: la mano del robot secuestra el archivo y la base de datos
+  // entera queda inutilizable hasta que lo suelte.
+  const secuestro = averia?.tipo === 'DATOS' && averia.hasta > Date.now() ? averia : null;
   const datos = workspace.payload as Payload | null;
 
   const [abierta, setAbierta] = useState<string | null>(null);
   const [aperturas, setAperturas] = useState(0);
   const [filtro, setFiltro] = useState('');
   const [resaltado, setResaltado] = useState<string | null>(null);
+  // El último salto por una relación (la luz recorre ese cable en el
+  // archivo) y cuántas filas deja ver la consulta de la hoja.
+  const [viaje, setViaje] = useState<{ n: number; de: string; a: string } | null>(null);
+  const [visibles, setVisibles] = useState<number | null>(null);
 
   // Si aparece una tabla nueva en el esquema (ej. al pasar de Parte 1 a Parte 2),
   // volvemos al mapa para que el Operador de Datos vea la nueva tabla de inmediato.
@@ -68,7 +70,7 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
 
   if (!datos) {
     return (
-      <section className={`vista vista-datos${temblando ? ' temblando' : ''}`}>
+      <section className={`vista vista-datos${secuestro ? ' secuestrada' : ''}`}>
       {/* La máquina viva de fondo: late al abrir cada tabla. */}
       <JardinEscena variante="datos" marco={150} latido={aperturas} />
         <p className="pendiente">Esta fase no tiene base de datos.</p>
@@ -77,8 +79,20 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   }
 
   const tabla = datos.tablas.find((t) => t.id === abierta) ?? null;
+  // La torre que agarra la mano: la abierta; si no hay, una al azar
+  // (la misma durante todo el ataque).
+  const agarrada = secuestro
+    ? tabla?.id ?? datos.tablas[Math.floor(secuestro.hasta / 7) % Math.max(1, datos.tablas.length)]?.id ?? null
+    : null;
+  // Lo que queda inutilizable: ni clic ni teclado, y corrupto a la vista.
+  // Sin desmontarlo: la consulta que estaba armada vuelve intacta.
+  const bloqueo = secuestro
+    ? { inert: true, className: 'datos-bloque corrupto', 'aria-hidden': true }
+    : { className: 'datos-bloque' };
 
   const abrir = (id: string, filtroInicial = '', destacar: string | null = null) => {
+    if (abierta && abierta !== id) setViaje((v) => ({ n: (v?.n ?? 0) + 1, de: abierta, a: id }));
+    setVisibles(null);
     setAbierta(id);
     setAperturas((n) => n + 1);
     setFiltro(filtroInicial);
@@ -86,13 +100,9 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   };
 
   return (
-    <section className={`vista vista-datos${temblando ? ' temblando' : ''}`}>
+    <section className={`vista vista-datos${secuestro ? ' secuestrada' : ''}`}>
       {/* La máquina viva de fondo: late al abrir cada tabla. */}
       <JardinEscena variante="datos" marco={150} latido={aperturas} />
-      {/* Lo que sacude la base de datos: el robot, con los brazos
-          agarrando la pantalla por los lados y la cabeza asomada por
-          arriba. Al acabar se reinicia y se va. */}
-      <RobotSacudiendo fase={robot} />
       <header>
         <h2>{tabla ? `tabla · ${tabla.nombre}` : datos.titulo}</h2>
         <span className="organo">la memoria</span>
@@ -101,6 +111,7 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
 
       <p className="ayuda">{datos.nota}</p>
 
+      <div {...bloqueo}>
       {datos.flujo && (
         <div className="flujo-datos">
           <FlujoDiagrama {...datos.flujo} />
@@ -117,9 +128,23 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
       )}
 
       {datos.programa && <ProgramaDatos programa={datos.programa} />}
+      </div>
+
+      {/* El archivo: las tablas como torres y las relaciones como cables.
+          Siempre a la vista; la tabla abierta se lee abajo, en la hoja. */}
+      <Archivo3D
+        tablas={datos.tablas} relaciones={datos.relaciones} lienzo={datos.lienzo}
+        seleccion={tabla?.id ?? null} visibles={tabla ? visibles : null} viaje={viaje}
+        alAbrir={(id) => abrir(id)}
+        secuestro={secuestro ? { hasta: secuestro.hasta, tabla: agarrada, de: secuestro.de } : null}
+      />
+
+      <div {...bloqueo}>
 
       {tabla ? (
         <DetalleTabla
+          key={tabla.id}
+          alVisibles={setVisibles}
           tabla={tabla}
           relaciones={datos.relaciones}
           tablas={datos.tablas}
@@ -130,129 +155,39 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
           alSaltar={abrir}
         />
       ) : (
-        <Mapa datos={datos} alAbrir={(id) => abrir(id)} />
+        <p className="archivo-pista">Toca una torre para abrir su tabla y consultarla.</p>
       )}
+      </div>
 
       <footer className="huella">montaje #{mountId}</footer>
     </section>
   );
 }
 
-/* ── el mapa ─────────────────────────────────────────────── */
-
-function Mapa({ datos, alAbrir }: { datos: Payload; alAbrir: (id: string) => void }) {
-  const lienzoRef = useRef<HTMLDivElement>(null);
-  const nodos = useRef<Record<string, HTMLElement | null>>({});
-  const [aristas, setAristas] = useState<Arista[]>([]);
-  const [caja, setCaja] = useState({ w: datos.lienzo.w, h: datos.lienzo.h });
-
-  // Las aristas se calculan MIDIENDO el DOM, no a partir de las
-  // coordenadas del módulo: la altura de cada nodo depende de cuántas
-  // columnas tenga, y estimarla dejaría las líneas despegadas del borde.
-  const recalcular = useCallback(() => {
-    const base = lienzoRef.current?.getBoundingClientRect();
-    if (!base) return;
-    setCaja({ w: base.width, h: base.height });
-
-    const nuevas: Arista[] = [];
-    for (const r of datos.relaciones) {
-      const a = nodos.current[r.desde]?.getBoundingClientRect();
-      const b = nodos.current[r.hasta]?.getBoundingClientRect();
-      if (!a || !b) continue;
-
-      const rel = (c: DOMRect) => ({
-        izq: c.left - base.left, der: c.right - base.left,
-        arr: c.top - base.top, aba: c.bottom - base.top,
-        cx: c.left + c.width / 2 - base.left,
-        cy: c.top + c.height / 2 - base.top,
-      });
-      const A = rel(a), B = rel(b);
-      const dx = B.cx - A.cx, dy = B.cy - A.cy;
-
-      let d: string, lx: number, ly: number;
-      if (Math.abs(dx) >= Math.abs(dy)) {
-        // Codo horizontal: sale por el costado y entra por el contrario.
-        const x1 = dx > 0 ? A.der : A.izq;
-        const x2 = dx > 0 ? B.izq : B.der;
-        const mx = (x1 + x2) / 2;
-        d = `M ${x1} ${A.cy} H ${mx} V ${B.cy} H ${x2}`;
-        lx = mx; ly = (A.cy + B.cy) / 2;
-      } else {
-        const y1 = dy > 0 ? A.aba : A.arr;
-        const y2 = dy > 0 ? B.arr : B.aba;
-        const my = (y1 + y2) / 2;
-        d = `M ${A.cx} ${y1} V ${my} H ${B.cx} V ${y2}`;
-        lx = (A.cx + B.cx) / 2; ly = my;
-      }
-      nuevas.push({ clave: `${r.desde}.${r.campo}`, d, etiqueta: r.campo, lx, ly });
-    }
-    setAristas(nuevas);
-  }, [datos.relaciones]);
-
-  useLayoutEffect(recalcular, [recalcular]);
-  useEffect(() => {
-    const ro = new ResizeObserver(recalcular);
-    if (lienzoRef.current) ro.observe(lienzoRef.current);
-    window.addEventListener('resize', recalcular);
-    return () => { ro.disconnect(); window.removeEventListener('resize', recalcular); };
-  }, [recalcular]);
-
-  const pct = (v: number, total: number) => `${(v / total) * 100}%`;
-
-  return (
-    <div className="mapa-scroll">
-      <div
-        className="mapa"
-        ref={lienzoRef}
-        style={{ aspectRatio: `${datos.lienzo.w} / ${datos.lienzo.h}` }}
-      >
-        <svg className="mapa-aristas" width={caja.w} height={caja.h} aria-hidden="true">
-          {aristas.map((a) => (
-            <g key={a.clave}>
-              <path d={a.d} />
-              <text x={a.lx} y={a.ly - 5}>{a.etiqueta}</text>
-            </g>
-          ))}
-        </svg>
-
-        {datos.tablas.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="nodo"
-            data-tabla={t.id}
-            ref={(el) => { nodos.current[t.id] = el; }}
-            style={{
-              left: pct(t.x, datos.lienzo.w),
-              top: pct(t.y, datos.lienzo.h),
-              width: pct(t.w, datos.lienzo.w),
-            }}
-            onClick={() => { sonar('abrir'); alAbrir(t.id); }}
-          >
-            <span className="nodo__nombre">{t.nombre}</span>
-            <span className="nodo__desc">{t.descripcion}</span>
-            <ul className="nodo__cols">
-              {t.columnas.map((c) => (
-                <li key={c} className={c === t.clave ? 'clave' : c.endsWith('_id') ? 'ajena' : ''}>
-                  {c}
-                </li>
-              ))}
-            </ul>
-            <span className="nodo__n">
-              {t.filas.length} filas
-              {!!t.nuevas?.length && <span className="nodo__nuevas">+{t.nuevas.length} nuevas</span>}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── el contenido de una tabla ───────────────────────────── */
 
+/** Como número si los dos lo parecen; si no, como texto. */
+const pareceNumero = (v: string) => v.trim() !== '' && !Number.isNaN(Number(v));
+const comparar = (a: string, b: string) =>
+  (pareceNumero(a) && pareceNumero(b) ? Number(a) - Number(b) : a.localeCompare(b, 'es'));
+const OPS = ['=', '≠', 'contiene', '>', '<', '≥', '≤'] as const;
+type Op = (typeof OPS)[number];
+const cumple = (v: string, op: Op, x: string) => {
+  const c = comparar(v, x);
+  switch (op) {
+    case '=': return c === 0;
+    case '≠': return c !== 0;
+    case 'contiene': return v.toLowerCase().includes(x.toLowerCase());
+    case '>': return c > 0;
+    case '<': return c < 0;
+    case '≥': return c >= 0;
+    case '≤': return c <= 0;
+  }
+};
+const SQL_OP: Record<Op, string> = { '=': '=', '≠': '<>', contiene: 'LIKE', '>': '>', '<': '<', '≥': '>=', '≤': '<=' };
+
 function DetalleTabla({
-  tabla, relaciones, tablas, filtro, setFiltro, resaltado, alVolver, alSaltar,
+  tabla, relaciones, tablas, filtro, setFiltro, resaltado, alVolver, alSaltar, alVisibles,
 }: {
   tabla: Tabla;
   relaciones: Relacion[];
@@ -262,18 +197,59 @@ function DetalleTabla({
   resaltado: string | null;
   alVolver: () => void;
   alSaltar: (id: string, filtro?: string, destacar?: string | null) => void;
+  /** Cuántas filas quedan con la consulta (null: todas), para el archivo. */
+  alVisibles: (n: number | null) => void;
 }) {
   const salidas = relaciones.filter((r) => r.desde === tabla.id);
   const entradas = relaciones.filter((r) => r.hasta === tabla.id);
   const nombre = (id: string) => tablas.find((t) => t.id === id)?.nombre ?? id;
 
-  const q = filtro.trim().toLowerCase();
-  const filas = q ? tabla.filas.filter((f) => f.some((c) => c.toLowerCase().includes(q))) : tabla.filas;
+  // La consulta: filtrar por una columna, ordenar y unir con otra tabla.
+  const [col, setCol] = useState('');
+  const [op, setOp] = useState<Op>('=');
+  const [valor, setValor] = useState('');
+  const [ordenCol, setOrdenCol] = useState('');
+  const [desc, setDesc] = useState(false);
+  const [union, setUnion] = useState('');
+
+  const relUnion = salidas.find((r) => r.campo === union) ?? null;
+  const otra = relUnion ? tablas.find((t) => t.id === relUnion.hasta) ?? null : null;
+  const extra = otra ? otra.columnas.filter((c) => c !== otra.clave).map((c) => `${otra.nombre}.${c}`) : [];
+  const columnas = [...tabla.columnas, ...extra];
+
+  const filas = useMemo(() => {
+    let xs = tabla.filas.map((f) => {
+      if (!otra || !relUnion) return f;
+      const i = tabla.columnas.indexOf(relUnion.campo);
+      const k = otra.columnas.indexOf(otra.clave);
+      const par = otra.filas.find((g) => g[k] === f[i]);
+      return [...f, ...otra.columnas.filter((c) => c !== otra.clave).map((c) => (par ? par[otra.columnas.indexOf(c)] : ''))];
+    });
+    const q = filtro.trim().toLowerCase();
+    if (q) xs = xs.filter((f) => f.some((c) => c.toLowerCase().includes(q)));
+    const ic = columnas.indexOf(col);
+    if (ic >= 0 && valor.trim() !== '') xs = xs.filter((f) => cumple(f[ic] ?? '', op, valor.trim()));
+    const io = columnas.indexOf(ordenCol);
+    if (io >= 0) xs = [...xs].sort((a, b) => (desc ? -1 : 1) * comparar(a[io] ?? '', b[io] ?? ''));
+    return xs;
+  }, [tabla, otra, relUnion, filtro, col, op, valor, ordenCol, desc, columnas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { alVisibles(filas.length === tabla.filas.length ? null : filas.length); }, [filas.length, tabla.filas.length, alVisibles]);
+
+  // La misma consulta, dicha como la diría una base de datos.
+  const sql = [
+    `SELECT * FROM ${tabla.nombre}`,
+    otra && relUnion ? `JOIN ${otra.nombre} ON ${tabla.nombre}.${relUnion.campo} = ${otra.nombre}.${otra.clave}` : '',
+    col && valor.trim() ? `WHERE ${col} ${SQL_OP[op]} ${op === 'contiene' ? `'%${valor.trim()}%'` : pareceNumero(valor) ? valor.trim() : `'${valor.trim()}'`}` : '',
+    ordenCol ? `ORDER BY ${ordenCol} ${desc ? 'DESC' : 'ASC'}` : '',
+  ].filter(Boolean).join(' ');
+  const limpiar = () => { setCol(''); setValor(''); setOrdenCol(''); setDesc(false); setUnion(''); setFiltro(''); };
+  const firmaConsulta = `${filtro}|${col}|${op}|${valor}|${ordenCol}|${desc}|${union}`;
 
   return (
     <>
       <div className="detalle-barra">
-        <button className="sutil" onClick={alVolver}>&lt;&lt; MAPA</button>
+        <button className="sutil" onClick={alVolver}>&lt;&lt; CERRAR HOJA</button>
         <span className="detalle-desc">{tabla.descripcion}</span>
       </div>
 
@@ -293,30 +269,58 @@ function DetalleTabla({
         </div>
       )}
 
-      <input
-        className="filtro"
-        value={filtro}
-        onChange={(e) => setFiltro(e.target.value)}
-        placeholder={`Filtrar ${tabla.nombre}…`}
-      />
+      {/* Las consultas: el superpoder de este puesto. Gratis e instantáneas. */}
+      <div className="consulta" role="group" aria-label={`Consultar ${tabla.nombre}`}>
+        <input className="filtro" value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="buscar…" aria-label="Buscar en todas las columnas" />
+        <span className="consulta__grupo">
+          <b>filtrar</b>
+          <select value={col} onChange={(e) => setCol(e.target.value)} aria-label="Columna para filtrar">
+            <option value="">columna…</option>
+            {columnas.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={op} onChange={(e) => setOp(e.target.value as Op)} aria-label="Comparación">
+            {OPS.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <input value={valor} onChange={(e) => setValor(e.target.value)} placeholder="valor" aria-label="Valor para filtrar" />
+        </span>
+        <span className="consulta__grupo">
+          <b>ordenar</b>
+          <select value={ordenCol} onChange={(e) => setOrdenCol(e.target.value)} aria-label="Columna para ordenar">
+            <option value="">—</option>
+            {columnas.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button type="button" className="sutil" onClick={() => setDesc((d) => !d)} aria-label={desc ? 'De mayor a menor' : 'De menor a mayor'}>{desc ? '▼' : '▲'}</button>
+        </span>
+        {salidas.length > 0 && (
+          <span className="consulta__grupo">
+            <b>unir</b>
+            <select value={union} onChange={(e) => setUnion(e.target.value)} aria-label="Unir con otra tabla">
+              <option value="">—</option>
+              {salidas.map((r) => <option key={r.campo} value={r.campo}>{nombre(r.hasta)} (por {r.campo})</option>)}
+            </select>
+          </span>
+        )}
+        <button type="button" className="sutil" onClick={limpiar}>limpiar</button>
+        <span className="consulta__cuenta">{filas.length} de {tabla.filas.length} filas</span>
+      </div>
+      <p className="consulta__sql" aria-label="La consulta, en lenguaje de base de datos"><code>{sql};</code></p>
 
       <div className="tabla-scroll">
         <table className="tabla-datos">
           <thead>
-            <tr>{tabla.columnas.map((c) => <th key={c}>{c}</th>)}</tr>
+            <tr>{columnas.map((c) => <th key={c} className={c.includes('.') ? 'unida' : ''}>{c}</th>)}</tr>
           </thead>
-          <tbody>
-            {filas.map((f) => (
-              <tr key={f[0]}
+          <tbody key={firmaConsulta}>
+            {filas.map((f, n) => (
+              <tr key={`${f[0]}-${n}`} style={{ animationDelay: `${Math.min(n, 20) * 18}ms` }}
                   className={`${resaltado && f[0] === resaltado ? 'resaltada' : ''}${tabla.nuevas?.includes(f[0]) ? ' nueva' : ''}`}>
                 {f.map((celda, j) => {
-                  const rel = relaciones.find(
-                    (r) => r.desde === tabla.id && r.campo === tabla.columnas[j],
-                  );
+                  const rel = j < tabla.columnas.length
+                    ? relaciones.find((r) => r.desde === tabla.id && r.campo === tabla.columnas[j]) : undefined;
                   // Una celda de clave ajena es un salto: se pulsa y te
                   // lleva a la fila referenciada, ya filtrada.
                   return (
-                    <td key={j}>
+                    <td key={j} className={j >= tabla.columnas.length ? 'unida' : ''}>
                       {rel && celda ? (
                         <button className="ref" onClick={() => alSaltar(rel.hasta, celda, celda)}>
                           {celda}

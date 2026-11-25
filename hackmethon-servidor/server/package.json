@@ -28,6 +28,7 @@
     "smoke:fases": "tsx scripts/smoke-fases.ts",
     "smoke:fase2": "tsx scripts/smoke-marana.ts",
     "smoke:fase2:servidor": "tsx scripts/smoke-marana-servidor.ts",
+    "smoke:mano": "tsx scripts/smoke-mano.ts",
     "smoke:plano": "tsx scripts/smoke-plano.ts",
     "smoke:ataque-mapa": "tsx scripts/smoke-ataque-mapa.ts",
     "smoke:ataque-reglas": "tsx scripts/smoke-ataque-reglas.ts",
@@ -36,7 +37,8 @@
     "luces": "python3 ../Luces/servidor/servidor.py",
     "luces:sin-placa": "python3 ../Luces/servidor/servidor.py --sin-arduino",
     "solucion:f1": "tsx scripts/solucion-f1.ts",
-    "solucion:f2": "tsx scripts/solucion-f2.ts"
+    "solucion:f2": "tsx scripts/solucion-f2.ts",
+    "solucion:mano": "tsx scripts/solucion-mano.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

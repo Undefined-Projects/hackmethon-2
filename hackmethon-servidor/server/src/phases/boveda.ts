@@ -1,570 +1,743 @@
 // ============================================================
-//  FASE 5 — Bóveda de Credenciales   ·   BASES DE DATOS
+//  FASE 5 — La Bóveda de los Recuerdos   ·   BASES DE DATOS
 //
-//  Dos mil cuatrocientos registros y uno solo sirve. Leerlos con los
-//  ojos es media noche; preguntarle bien a la bóveda son cuatro
-//  condiciones y tres segundos.
+//  El torso guarda la memoria de la máquina: mil recuerdos registrados
+//  desde que la encendieron. Escondido entre ellos está el que abre el
+//  torso. Para llegar hay que preguntarle bien a su memoria —y cada
+//  consulta es la máquina recordando, a su pesar.
 //
-//  LO QUE ENSEÑA
-//    · una consulta es un embudo: cada condición tira registros
-//    · `contar` antes de `buscar`: primero cuántos, luego cuáles
-//    · lo que buscas no está en una sola tabla — hay que UNIRLAS por la
-//      columna que comparten
-//    · para preguntar hay que saber qué columnas existen y qué valores
-//      admiten: eso es el diccionario de datos, y lo tiene otro
+//  CAPA 1 · EL EMBUDO
+//    Una tabla, `recuerdos`. El encargo pide cuatro condiciones a la vez,
+//    y una de ellas es un O. Se enseña:
+//      · una consulta es un embudo: cada condición tira registros;
+//      · `contar` antes de `buscar`: primero cuántos, luego cuáles;
+//      · Y no es O, y `y` se resuelve antes que `o` (los paréntesis
+//        mandan) — igual que AND y OR en SQL.
+//
+//  CAPA 2 · EL RECUERDO COMPARTIDO
+//    Los recuerdos apuntan a `personas` por `persona_id`. El encargo pide
+//    el recuerdo más intenso de quien más aparece, contando solo a las
+//    personas de un oficio. Se enseña:
+//      · CLAVE FORÁNEA: una columna que apunta a la fila de otra tabla;
+//      · UNIR (JOIN) para usar las columnas de la otra tabla;
+//      · AGRUPAR (GROUP BY) y contar por grupo;
+//      · ORDENAR y LIMITAR para sacar «el más».
+//    Y una trampa honesta: quien más aparece en total NO es de ese oficio.
+//    Sin unir, se elige mal.
 //
 //  EL REPARTO
-//    PANTALLA  lo que devuelve la bóveda. Nada más: ni qué tablas hay,
-//              ni qué columnas, ni qué se está buscando.
-//    DATOS     el diccionario de datos y el encargo. No ve ni un
-//              registro: tiene el mapa, no el territorio.
-//    TERMINAL  pregunta, y no ve nada.
+//    TERMINAL  pregunta a ciegas, en español.
+//    DATOS     el diccionario (qué tablas, columnas y valores hay) y el
+//              encargo. No ve ni un registro: el mapa, no el territorio.
+//    PANTALLA  lo que devuelve la bóveda, con su traducción a SQL, y la
+//              bóveda en 3D: los cajones que siguen encendidos.
+//
+//  Cada equipo tiene su propia bóveda (semilla por equipo): mismas reglas,
+//  otros recuerdos y otra respuesta. Copiarle al vecino no sirve.
 // ============================================================
 
 import type { Role } from '../lib/constants.js';
 import type { ContextoComando, ModuloFase, ResultadoComando } from './types.js';
 import {
-  ANCHO_CAMARA, AYUDA_CAMARAS, circuitoCerrado, lienzo, mandoDeCamaras, numero, tira,
-  type CamaraDef, type Escena, type Rotulo,
-} from './comun.js';
-import {
-  cuarentenaActiva, error, exito, normalizar, rechazo, tabla, texto,
+  cuarentenaActiva, error, exito, normalizar, numero, rechazo, tabla, texto,
 } from './comun.js';
 
-// ---------- La bóveda ----------
-//
-// Se genera con un aleatorio propio y una semilla fija: la misma bóveda
-// en todos los equipos y en todas las partidas. Un `Math.random()` aquí
-// haría que dos equipos vecinos tuvieran respuestas distintas y que una
-// prueba verde hoy fallara mañana.
-function generador(semilla: number) {
-  let s = semilla;
-  return (n: number) => {
-    s = (s * 1103515245 + 12345) % 2147483648;
-    // Los bits BAJOS de una LCG con modulo potencia de dos casi no varian
-    // —`s % 6` recorria dos valores— asi que se descartan los 16 primeros.
-    return Math.floor(s / 65536) % n;
-  };
-}
+type Capa = 1 | 2;
+const CAPAS = 2;
+const NOMBRES_CAPA = ['EL EMBUDO', 'EL RECUERDO COMPARTIDO'];
 
-type Usuario = { id: string; nombre: string; departamento: string; sede: string };
-type Credencial = { id: string; usuario_id: string; tipo: string; estado: string; nivel: number; emitida: string };
-
-const DEPARTAMENTOS = ['sistemas', 'finanzas', 'almacen', 'direccion', 'soporte'];
-const SEDES = ['torre', 'nave norte', 'remoto'];
-const TIPOS = ['operativa', 'operativa', 'operativa', 'temporal', 'temporal', 'maestra'];
-const ESTADOS = ['activa', 'activa', 'revocada', 'caducada'];
-
-const { USUARIOS, CREDENCIALES, OBJETIVO } = (() => {
-  const az = generador(20260915);
-  const usuarios: Usuario[] = [];
-  for (let i = 1; i <= 240; i++) {
-    usuarios.push({
-      id: `US-${String(i).padStart(3, '0')}`,
-      nombre: `usuario_${String(i).padStart(3, '0')}`,
-      departamento: DEPARTAMENTOS[az(DEPARTAMENTOS.length)],
-      sede: SEDES[az(SEDES.length)],
-    });
-  }
-
-  const credenciales: Credencial[] = [];
-  for (let i = 1; i <= 2400; i++) {
-    credenciales.push({
-      id: `CR-${String(i).padStart(4, '0')}`,
-      usuario_id: usuarios[az(usuarios.length)].id,
-      tipo: TIPOS[az(TIPOS.length)],
-      estado: ESTADOS[az(ESTADOS.length)],
-      nivel: 1 + az(5),
-      emitida: `202${az(5)}-${String(1 + az(12)).padStart(2, '0')}`,
-    });
-  }
-
-  // La respuesta tiene que ser ÚNICA, y dejarlo al azar sería confiar en
-  // que la semilla se porte bien. Se aplasta a mano todo lo que encaje
-  // con el encargo y luego se planta una sola coincidencia.
-  const porId = new Map(usuarios.map((u) => [u.id, u]));
-  const encaja = (c: Credencial) => {
-    const u = porId.get(c.usuario_id)!;
-    return c.tipo === 'maestra' && c.estado === 'activa'
-        && u.departamento === 'sistemas' && u.sede === 'torre';
-  };
-  for (const c of credenciales) if (encaja(c)) c.estado = 'revocada';
-
-  const sistemasTorre = usuarios.find((u) => u.departamento === 'sistemas' && u.sede === 'torre')!;
-  const objetivo = credenciales[1842];
-  objetivo.usuario_id = sistemasTorre.id;
-  objetivo.tipo = 'maestra';
-  objetivo.estado = 'activa';
-  objetivo.nivel = 5;
-
-  return { USUARIOS: usuarios, CREDENCIALES: credenciales, OBJETIVO: objetivo };
-})();
-
-const USUARIO_POR_ID = new Map(USUARIOS.map((u) => [u.id, u]));
-
-// ---------- La mitad del Operador de Datos ----------
-//
-// El diccionario, no los registros. Dos mil cuatrocientas filas en esta
-// pantalla se podrían leer con el dedo, y entonces la fase no enseñaría
-// a consultar: enseñaría a tener paciencia.
-const ESQUEMA = {
-  tablas: [
-    {
-      id: 'tablas',
-      nombre: 'tablas',
-      x: 40, y: 30, w: 440,
-      descripcion: 'Que hay dentro de la boveda',
-      clave: 'id',
-      columnas: ['id', 'tabla', 'registros', 'se une con'],
-      filas: [
-        ['T1', 'credenciales', '2400', 'usuarios, por usuario_id'],
-        ['T2', 'usuarios', '240', 'credenciales, por id'],
-      ],
-    },
-    {
-      id: 'columnas',
-      nombre: 'columnas',
-      x: 40, y: 250, w: 620,
-      descripcion: 'Que se puede preguntar, y con que valores',
-      clave: 'id',
-      columnas: ['id', 'tabla', 'columna', 'valores que admite'],
-      filas: [
-        ['K1', 'credenciales', 'id', 'CR-0001 ... CR-2400'],
-        ['K2', 'credenciales', 'usuario_id', 'US-001 ... US-240'],
-        ['K3', 'credenciales', 'tipo', 'operativa · temporal · maestra'],
-        ['K4', 'credenciales', 'estado', 'activa · revocada · caducada'],
-        ['K5', 'credenciales', 'nivel', '1 a 5'],
-        ['K6', 'credenciales', 'emitida', '2020-01 ... 2024-12'],
-        ['K7', 'usuarios', 'departamento', 'sistemas · finanzas · almacen · direccion · soporte'],
-        ['K8', 'usuarios', 'sede', 'torre · nave norte · remoto'],
-      ],
-    },
-    {
-      id: 'encargo',
-      nombre: 'encargo',
-      x: 700, y: 30, w: 260,
-      descripcion: 'La credencial que hace falta',
-      clave: 'id',
-      columnas: ['id', 'requisito'],
-      filas: [
-        ['R1', 'tipo: maestra'],
-        ['R2', 'estado: activa'],
-        ['R3', 'del departamento de sistemas'],
-        ['R4', 'con sede en la torre'],
-        ['R5', 'las cuatro a la vez. Solo hay una.'],
-      ],
-    },
-  ],
-  relaciones: [],
-} as const;
-
+export const TOTAL = 1000;
 const TOPE_FILAS = 10;
-const COLUMNAS_CRED = ['id', 'usuario_id', 'tipo', 'estado', 'nivel', 'emitida'];
-const COLUMNAS_USR = ['departamento', 'sede', 'nombre'];
 
-type Fila = Credencial & Partial<Usuario>;
+export const TIPOS = ['imagen', 'sonido', 'palabra', 'tacto'];
+export const EMOCIONES = ['alegria', 'miedo', 'tristeza', 'calma', 'asombro'];
+export const LUGARES = ['taller', 'laboratorio', 'almacen', 'patio', 'pruebas'];
+export const OFICIOS = ['construccion', 'pruebas', 'limpieza', 'visita'];
+const NOMBRES = ['ines', 'tomas', 'lucia', 'bruno', 'marta', 'hugo', 'elena', 'dario', 'sofia', 'ivan',
+  'rosa', 'leo', 'nora', 'pablo', 'vera', 'joel', 'alba', 'raul', 'irene', 'saul'];
+const ANIO_MIN = 2019, ANIO_MAX = 2026;
 
-const unidas = (): Fila[] =>
-  CREDENCIALES.map((c) => {
-    const u = USUARIO_POR_ID.get(c.usuario_id)!;
-    return { ...c, departamento: u.departamento, sede: u.sede, nombre: u.nombre };
-  });
+// ---------- Azar con semilla ----------
 
-type Filtro = { campo: string; op: string; valor: string };
-
-function aplicar(filas: Fila[], filtros: Filtro[]): Fila[] {
-  return filas.filter((f) =>
-    filtros.every((ft) => {
-      const v = (f as Record<string, unknown>)[ft.campo];
-      if (v === undefined) return false;
-      if (ft.campo === 'nivel') {
-        const a = Number(v);
-        const b = Number(ft.valor);
-        switch (ft.op) {
-          case '=': return a === b;
-          case '!=': return a !== b;
-          case '>': return a > b;
-          case '<': return a < b;
-          case '>=': return a >= b;
-          case '<=': return a <= b;
-        }
-      }
-      const s = String(v);
-      return ft.op === '!=' ? s !== ft.valor : s === ft.valor;
-    }),
-  );
+function azarDe(semilla: string) {
+  let a = [...semilla].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 2166136261);
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const entero = (r: () => number, a: number, b: number) => a + Math.floor(r() * (b - a + 1));
+const uno = <T>(xs: readonly T[], r: () => number): T => xs[Math.floor(r() * xs.length)];
+function barajar<T>(xs: T[], r: () => number): T[] {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
 }
 
-// ---------- El circuito cerrado de la boveda ----------
-//
-//  Dos camaras. Lo que cuentan es el EMBUDO: cuantos cajones siguen
-//  encendidos despues de la ultima consulta. Cual es el bueno no sale por
-//  ninguna parte —eso es la fase— pero ver caer dos mil cuatrocientos a
-//  veintiuno de una condicion a otra es lo que convierte una consulta en
-//  algo que se entiende.
+// ---------- La bóveda de un equipo ----------
 
-const CAMARAS: CamaraDef[] = [
-  { n: 1, id: 'boveda', nombre: 'BOVEDA', sector: 'B-01', que: 'los cajones que siguen encendidos' },
-  { n: 2, id: 'brazo', nombre: 'BRAZO EXTRACTOR', sector: 'B-02', que: 'el brazo que saca la credencial' },
-];
+export type Recuerdo = {
+  id: string; tipo: string; emocion: string; ano: number; lugar: string; intensidad: number; persona_id: string;
+};
+export type Persona = { id: string; nombre: string; oficio: string };
+export type EncargoEmbudo = { lugar: string; emociones: [string, string]; desde: number; intensidad: number };
+export type EncargoCompartido = { tipo: string; oficio: string };
+export type InstanciaBoveda = {
+  recuerdos: Recuerdo[];
+  personas: Persona[];
+  embudo: EncargoEmbudo;
+  objetivo1: string;
+  compartido: EncargoCompartido;
+  /** La persona que buscan en la capa 2, y la trampa: quien más aparece sin filtrar por oficio. */
+  elegida: string;
+  trampa: string;
+  objetivo2: string;
+};
 
-/** El total, para saber cuanto se ha estrechado. */
-const TOTAL_CAJONES = CREDENCIALES.length;
+const instancias = new Map<string, InstanciaBoveda>();
 
-function escenaBoveda(quedan: number, f: number): string[] {
-  // Veinte cajones para representar el total: es una barra, no un
-  // inventario. La escala es LOGARITMICA porque el embudo de esta fase va
-  // de 2400 a 1, y en lineal los tres ultimos pasos —162, 21, 1— pintaban
-  // todos un cajon y no se veia nada de lo interesante.
-  const encendidos = quedan <= 0
-    ? 0
-    : Math.max(1, Math.ceil((20 * Math.log(quedan + 1)) / Math.log(TOTAL_CAJONES + 1)));
-  const cajon = (i: number) =>
-    i < encendidos ? ((i + f) % 4 === 0 ? '[#]' : '[=]') : '[ ]';
-  const decena = (desde: number) =>
-    tira('   ' + [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => cajon(desde + i)).join(''), ANCHO_CAMARA);
-  return lienzo([
-    '  __________________________________',
-    '                                    ',
-    decena(0),
-    decena(10),
-    '                                    ',
-    tira(`   ${quedan} de ${TOTAL_CAJONES} siguen encendidos`, ANCHO_CAMARA),
-    '                                    ',
-    '  ==================================',
-    '  ::::::::::::::::::::::::::::::::::',
-    '                                    ',
-    tira(quedan === 1
-      ? '  uno solo. ya se puede sacar.'
-      : quedan === 0
-        ? '  ningun cajon encaja. afloja algo.'
-        : '  siguen siendo demasiados.', ANCHO_CAMARA),
-  ]);
-}
+export function instanciaDeBoveda(semilla?: string): InstanciaBoveda {
+  const clave = semilla ?? '';
+  const hecha = instancias.get(clave);
+  if (hecha) return hecha;
+  const r = azarDe(`${semilla ?? 'canon'}:boveda`);
 
-function escenaBrazo(quedan: number, f: number): string[] {
-  const listo = quedan === 1;
-  // El brazo baja solo cuando queda uno: hasta entonces no tiene a que ir.
-  // El cable se dibuja hasta la garra, no un trozo suelto y la garra mas
-  // abajo: un brazo partido por la mitad se lee como un fallo de imagen.
-  const alto = listo ? 3 + (f % 2) : 1;
-  const POZO = 5;
-  const lineas = [
-    '        [ BRAZO  EXTRACTOR ]        ',
-    '                                    ',
-    '   ==============|=============     ',
-  ];
-  for (let i = 0; i < POZO; i++) {
-    lineas.push(tira(i < alto - 1 ? '                |' : i === alto - 1 ? `                ${listo ? '[v]' : '[ ]'}` : '', ANCHO_CAMARA));
+  // Doce personas, tres por oficio.
+  const nombres = barajar(NOMBRES, r).slice(0, 12);
+  const personas: Persona[] = nombres.map((nombre, i) => ({
+    id: `P-${String(i + 1).padStart(2, '0')}`, nombre, oficio: OFICIOS[i % OFICIOS.length],
+  }));
+
+  // El encargo de la capa 2, primero: decide cuántos recuerdos de su tipo
+  // tiene cada persona. La elegida gana entre las de su oficio; la trampa,
+  // de otro oficio, gana a todas.
+  const compartido: EncargoCompartido = { tipo: uno(TIPOS, r), oficio: uno(OFICIOS, r) };
+  const delOficio = barajar(personas.filter((p) => p.oficio === compartido.oficio), r);
+  const otras = barajar(personas.filter((p) => p.oficio !== compartido.oficio), r);
+  const elegida = delOficio[0], trampa = otras[0];
+  const cuantos = new Map<string, number>();
+  for (const p of personas) cuantos.set(p.id, entero(r, 13, 20));
+  cuantos.set(elegida.id, 25);
+  cuantos.set(trampa.id, 29);
+  const totalTipo = [...cuantos.values()].reduce((a, b) => a + b, 0);
+
+  // Los mil recuerdos: los del tipo del encargo, repartidos como manda la
+  // cuenta de arriba; el resto, de los otros tres tipos y de cualquiera.
+  const otrosTipos = TIPOS.filter((t) => t !== compartido.tipo);
+  const duenos: string[] = [];
+  for (const [id, n] of cuantos) for (let k = 0; k < n; k++) duenos.push(id);
+  const delTipo = barajar(duenos, r);
+  const recuerdos: Recuerdo[] = [];
+  for (let i = 0; i < TOTAL; i++) {
+    recuerdos.push({
+      id: `R-${String(i + 1).padStart(4, '0')}`,
+      tipo: '', emocion: uno(EMOCIONES, r), ano: entero(r, ANIO_MIN, ANIO_MAX),
+      lugar: uno(LUGARES, r), intensidad: entero(r, 1, 9), persona_id: '',
+    });
   }
-  lineas.push('                                    ');
-  lineas.push('  ==================================');
-  lineas.push('  ::::::::::::::::::::::::::::::::::');
-  lineas.push('                                    ');
-  lineas.push(tira(listo
-    ? '  el brazo esta sobre el cajon.'
-    : '  el brazo espera. hay mas de uno.', ANCHO_CAMARA));
-  return lienzo(lineas);
-}
-
-function vistaDeCamaras(estado: Record<string, unknown>) {
-  // -1 = todavia no se ha preguntado nada. La boveda arranca entera.
-  const bruto = estado.quedan;
-  const quedan = typeof bruto === 'number' ? bruto : TOTAL_CAJONES;
-  const consultas = numero(estado, 'consultas');
-
-  return circuitoCerrado(CAMARAS, estado, (cam) => {
-    const escena: Escena = cam.id === 'boveda'
-      ? { fotogramas: [0, 1, 2, 3].map((f) => escenaBoveda(quedan, f)), ritmo: 340 }
-      : { fotogramas: [0, 1].map((f) => escenaBrazo(quedan, f)), ritmo: 520 };
-    const rotulos: Rotulo[] = [
-      { texto: `QUEDAN ${quedan}`, tono: quedan === 1 ? 'ok' : 'neutro' },
-      { texto: `DE ${TOTAL_CAJONES}`, tono: 'neutro' },
-    ];
-    if (consultas > 0) rotulos.push({ texto: `${consultas} CONSULTA(S)`, tono: 'neutro' });
-    if (quedan === 1) rotulos.push({ texto: 'LISTO PARA EXTRAER', tono: 'ok' });
-    return { escena, rotulos, clave: `${cam.n}:${quedan}:${consultas}` };
+  const huecos = barajar(recuerdos.map((_, i) => i), r);
+  huecos.forEach((idx, k) => {
+    if (k < totalTipo) { recuerdos[idx].tipo = compartido.tipo; recuerdos[idx].persona_id = delTipo[k]; }
+    else { recuerdos[idx].tipo = uno(otrosTipos, r); recuerdos[idx].persona_id = uno(personas, r).id; }
   });
+
+  // El encargo de la capa 1: un lugar, dos emociones (el O), desde un año
+  // y una intensidad mínima. La respuesta tiene que ser ÚNICA: se aplasta
+  // a mano todo lo que encaje y luego se planta una sola.
+  const emo = barajar(EMOCIONES, r);
+  const embudo: EncargoEmbudo = {
+    lugar: uno(LUGARES, r), emociones: [emo[0], emo[1]], desde: entero(r, 2022, 2024), intensidad: entero(r, 6, 8),
+  };
+  const encaja1 = (x: Recuerdo) => x.lugar === embudo.lugar && embudo.emociones.includes(x.emocion)
+    && x.ano > embudo.desde && x.intensidad >= embudo.intensidad;
+  for (const x of recuerdos) if (encaja1(x)) x.intensidad = entero(r, 1, embudo.intensidad - 1);
+  // El plantado: de la segunda emoción, para que quien olvide el O no lo
+  // encuentre; y no de la persona elegida, para no estorbar a la capa 2.
+  const candidato1 = barajar(recuerdos, r).find((x) => x.lugar === embudo.lugar && x.emocion === embudo.emociones[1]
+    && x.persona_id !== elegida.id)!;
+  candidato1.ano = entero(r, embudo.desde + 1, ANIO_MAX);
+  candidato1.intensidad = entero(r, embudo.intensidad, 9);
+
+  // La capa 2: de la elegida, un solo recuerdo con la intensidad más alta.
+  // Ninguno suyo pasa de 8 —sin tocar el plantado— y uno, fuera del lugar
+  // del embudo para no crear otra respuesta en la capa 1, sube a 9.
+  const suyos = recuerdos.filter((x) => x.persona_id === elegida.id);
+  for (const x of suyos) if (x.intensidad > 8) x.intensidad = 8;
+  const top = barajar(suyos, r).find((x) => x.lugar !== embudo.lugar)!;
+  top.intensidad = 9;
+
+  const inst: InstanciaBoveda = {
+    recuerdos, personas, embudo, objetivo1: candidato1.id, compartido,
+    elegida: elegida.id, trampa: trampa.id, objetivo2: top.id,
+  };
+  instancias.set(clave, inst);
+  return inst;
 }
 
-function ayuda(): ResultadoComando {
+// ---------- Las consultas ----------
+
+/** Las columnas que la terminal puede nombrar, con su nombre en SQL. */
+const COLS_RECUERDOS: Record<string, string> = {
+  id: 'id', tipo: 'tipo', emocion: 'emocion', ano: 'año', anio: 'año', lugar: 'lugar', intensidad: 'intensidad', persona_id: 'persona_id',
+};
+const COLS_PERSONAS: Record<string, string> = { nombre: 'nombre', oficio: 'oficio' };
+const NUMERICAS = new Set(['ano', 'intensidad']);
+/** De lo que se escribe al nombre interno: `año` llega como `ano`. */
+const interna = (c: string) => (c === 'anio' ? 'ano' : c);
+
+type Fila = Recuerdo & Partial<{ nombre: string; oficio: string }>;
+type Expr = { tipo: 'cond'; campo: string; op: string; valor: string } | { tipo: 'y' | 'o'; partes: Expr[] };
+export type Consulta = {
+  verbo: 'contar' | 'buscar';
+  unir: boolean;
+  donde: Expr | null;
+  agrupar: string | null;
+  ordenar: { campo: string; desc: boolean } | null;
+  limite: number | null;
+  /** Mezcló `y` con `o` sin paréntesis: se avisa, no se corrige. */
+  mezcla: boolean;
+};
+
+const OPS = ['>=', '<=', '!=', '=', '>', '<'];
+
+function tokens(s: string): string[] {
+  return s.replace(/(>=|<=|!=|=|>|<|\(|\))/g, ' $1 ').split(' ').filter(Boolean);
+}
+
+/** Analiza lo que va detrás de `contar` o `buscar`. Devuelve la consulta o
+ *  el motivo exacto por el que no se entiende. */
+export function parsear(verbo: 'contar' | 'buscar', arg: string, capa: Capa): Consulta | string {
+  const t = tokens(arg);
+  let i = 0;
+  if (t[i] === 'en') {
+    const tb = t[i + 1];
+    if (!tb) return 'Falta la tabla despues de `en`. Ejemplo: contar en recuerdos.';
+    if (tb === 'personas') return 'A `personas` no se le pregunta directo: se llega uniendo. `... en recuerdos unir personas ...`';
+    if (tb !== 'recuerdos') return `No hay ninguna tabla «${tb}». Que tablas hay lo sabe Datos.`;
+    i += 2;
+  }
+  let unir = false;
+  if (t[i] === 'unir') {
+    if (capa === 1) return 'Esa parte de la boveda sigue cerrada: aqui solo hay una tabla.';
+    if (t[i + 1] !== 'personas') return `No se puede unir con «${t[i + 1] ?? '(nada)'}». Con que se une lo sabe Datos.`;
+    unir = true; i += 2;
+  }
+
+  // Las cláusulas, cada una en su sitio: donde, agrupar por, ordenar por, limitar.
+  const CLAVES = ['donde', 'agrupar', 'ordenar', 'limitar'];
+  const trozos: Record<string, string[]> = {};
+  let actual: string | null = null;
+  for (; i < t.length; i++) {
+    if (CLAVES.includes(t[i])) {
+      if (trozos[t[i]]) return `\`${t[i]}\` aparece dos veces.`;
+      actual = t[i]; trozos[actual] = [];
+    } else if (actual) trozos[actual].push(t[i]);
+    else return `No entiendo «${t[i]}». Despues de la tabla va \`donde\`, \`agrupar por\`, \`ordenar por\` o \`limitar\`.`;
+  }
+
+  const columna = (c: string | undefined): string | null => {
+    if (!c) return null;
+    if (c in COLS_RECUERDOS) {
+      if (c === 'persona_id' && capa === 1) return null;
+      return interna(c);
+    }
+    if (c in COLS_PERSONAS) return unir ? c : `!${c}`;
+    return null;
+  };
+  const explicaColumna = (c: string | undefined): string => {
+    if (!c) return 'Falta la columna.';
+    if (c in COLS_PERSONAS) return `«${c}» no es una columna de recuerdos: es de personas. Para usarla hay que unirlas: \`... unir personas ...\``;
+    return `«${c}» no es ninguna columna. Las columnas estan en el diccionario, que tiene Datos.`;
+  };
+
+  // El DONDE: condiciones con `y`, `o` y paréntesis. `y` antes que `o`.
+  let donde: Expr | null = null;
+  let mezcla = false;
+  if (trozos.donde) {
+    const w = trozos.donde;
+    if (!w.length) return 'Despues de `donde` van las condiciones: columna operador valor.';
+    let k = 0;
+    const cond = (): Expr | string => {
+      if (w[k] === '(') {
+        k++;
+        const e = o();
+        if (typeof e === 'string') return e;
+        if (w[k] !== ')') return 'Falta cerrar un parentesis.';
+        k++;
+        return e;
+      }
+      const [c, op, v] = [w[k], w[k + 1], w[k + 2]];
+      const col = columna(c);
+      if (!col || col.startsWith('!')) return explicaColumna(c);
+      if (!op || !OPS.includes(op)) return `Cada condicion son tres piezas: columna operador valor. Operadores: ${OPS.join('  ')}.`;
+      if (v === undefined || ['y', 'o', '(', ')'].includes(v)) return `Falta el valor en «${c} ${op}».`;
+      if (NUMERICAS.has(col)) {
+        if (!Number.isFinite(Number(v))) return `«${COLS_RECUERDOS[c] ?? c}» es un numero: «${v}» no lo es.`;
+      } else if (!['=', '!='].includes(op)) {
+        return `Con «${COLS_RECUERDOS[c] ?? c}» solo valen = y !=: es texto, no un numero.`;
+      }
+      k += 3;
+      return { tipo: 'cond', campo: col, op, valor: v };
+    };
+    const y = (): Expr | string => {
+      const partes: Expr[] = [];
+      for (;;) {
+        const e = cond();
+        if (typeof e === 'string') return e;
+        partes.push(e);
+        if (w[k] !== 'y') break;
+        k++;
+      }
+      return partes.length === 1 ? partes[0] : { tipo: 'y', partes };
+    };
+    const o = (): Expr | string => {
+      const partes: Expr[] = [];
+      for (;;) {
+        const e = y();
+        if (typeof e === 'string') return e;
+        partes.push(e);
+        if (w[k] !== 'o') break;
+        k++;
+      }
+      return partes.length === 1 ? partes[0] : { tipo: 'o', partes };
+    };
+    const e = o();
+    if (typeof e === 'string') return e;
+    if (k < w.length) return w[k] === ')' ? 'Sobra un parentesis de cierre.' : `No entiendo «${w.slice(k).join(' ')}» al final de las condiciones.`;
+    donde = e;
+    // ¿Mezcló y con o sin paréntesis? Un `o` cuyas partes llevan `y`.
+    const plano = w.join(' ');
+    mezcla = !w.includes('(') && / y /.test(` ${plano} `) && / o /.test(` ${plano} `);
+  }
+
+  let agrupar: string | null = null;
+  if (trozos.agrupar) {
+    if (capa === 1) return 'Esa parte de la boveda sigue cerrada: todavia no se agrupa.';
+    if (verbo !== 'contar') return '`agrupar por` va con `contar`: cuenta cuantos hay en cada grupo.';
+    const [por, c] = trozos.agrupar;
+    if (por !== 'por') return 'Se escribe `agrupar por <columna>`.';
+    const col = columna(c);
+    if (!col || col.startsWith('!')) return explicaColumna(c);
+    if (trozos.agrupar.length > 2) return `Se agrupa por UNA columna. Sobra «${trozos.agrupar.slice(2).join(' ')}».`;
+    agrupar = col;
+  }
+
+  let ordenar: Consulta['ordenar'] = null;
+  if (trozos.ordenar) {
+    if (verbo !== 'buscar') return '`ordenar por` va con `buscar`: contar no trae filas que ordenar.';
+    const [por, c, dir] = trozos.ordenar;
+    if (por !== 'por') return 'Se escribe `ordenar por <columna>`, y si quieres de mayor a menor, `desc` al final.';
+    const col = columna(c);
+    if (!col || col.startsWith('!')) return explicaColumna(c);
+    if (dir && !['desc', 'asc'].includes(dir)) return `Despues de la columna solo cabe \`desc\` o \`asc\`, no «${dir}».`;
+    ordenar = { campo: col, desc: dir === 'desc' };
+  }
+
+  let limite: number | null = null;
+  if (trozos.limitar) {
+    if (verbo !== 'buscar') return '`limitar` va con `buscar`.';
+    const n = Number(trozos.limitar[0]);
+    if (!Number.isInteger(n) || n < 1 || trozos.limitar.length > 1) return '`limitar` necesita un numero entero: `limitar 3`.';
+    limite = Math.min(n, TOPE_FILAS);
+  }
+
+  return { verbo, unir, donde, agrupar, ordenar, limite, mezcla };
+}
+
+function cumple(f: Fila, e: Expr): boolean {
+  if (e.tipo !== 'cond') return e.tipo === 'y' ? e.partes.every((p) => cumple(f, p)) : e.partes.some((p) => cumple(f, p));
+  const v = (f as Record<string, unknown>)[e.campo];
+  if (v === undefined) return false;
+  if (NUMERICAS.has(e.campo)) {
+    const a = Number(v), b = Number(e.valor);
+    switch (e.op) {
+      case '=': return a === b; case '!=': return a !== b;
+      case '>': return a > b; case '<': return a < b;
+      case '>=': return a >= b; case '<=': return a <= b;
+    }
+  }
+  const s = String(v).toLowerCase(), x = e.valor.toLowerCase();
+  return e.op === '!=' ? s !== x : s === x;
+}
+
+export type Resultado = {
+  filas: Fila[];
+  grupos: { clave: string; n: number }[] | null;
+  quedan: number;
+};
+
+export function ejecutarConsulta(inst: InstanciaBoveda, q: Consulta): Resultado {
+  const porId = new Map(inst.personas.map((p) => [p.id, p]));
+  let base: Fila[] = q.unir
+    ? inst.recuerdos.map((x) => ({ ...x, nombre: porId.get(x.persona_id)?.nombre, oficio: porId.get(x.persona_id)?.oficio }))
+    : inst.recuerdos;
+  if (q.donde) base = base.filter((f) => cumple(f, q.donde!));
+  if (q.agrupar) {
+    const m = new Map<string, number>();
+    for (const f of base) { const k = String((f as Record<string, unknown>)[q.agrupar]); m.set(k, (m.get(k) ?? 0) + 1); }
+    const grupos = [...m].map(([clave, n]) => ({ clave, n })).sort((a, b) => b.n - a.n || a.clave.localeCompare(b.clave));
+    return { filas: [], grupos, quedan: base.length };
+  }
+  let filas = base;
+  if (q.ordenar) {
+    const { campo, desc } = q.ordenar;
+    const num = NUMERICAS.has(campo);
+    filas = [...filas].sort((a, b) => {
+      const va = (a as Record<string, unknown>)[campo], vb = (b as Record<string, unknown>)[campo];
+      const c = num ? Number(va) - Number(vb) : String(va).localeCompare(String(vb));
+      return (desc ? -c : c) || a.id.localeCompare(b.id);
+    });
+  }
+  return { filas, grupos: null, quedan: base.length };
+}
+
+// ---------- La traducción a SQL ----------
+
+const nombreSql = (c: string) => (c === 'ano' ? 'año' : c);
+function sqlExpr(e: Expr, dentro = false): string {
+  if (e.tipo === 'cond') {
+    const v = NUMERICAS.has(e.campo) ? e.valor : `'${e.valor}'`;
+    return `${nombreSql(e.campo)} ${e.op === '!=' ? '<>' : e.op} ${v}`;
+  }
+  const s = e.partes.map((p) => sqlExpr(p, true)).join(e.tipo === 'y' ? ' AND ' : ' OR ');
+  return dentro && e.tipo === 'o' ? `(${s})` : s;
+}
+export function sql(q: Consulta): string {
+  const desde = q.unir ? 'recuerdos JOIN personas ON recuerdos.persona_id = personas.id' : 'recuerdos';
+  const sel = q.agrupar ? `${nombreSql(q.agrupar)}, COUNT(*)` : q.verbo === 'contar' ? 'COUNT(*)' : '*';
+  return [
+    `SELECT ${sel} FROM ${desde}`,
+    q.donde ? `WHERE ${sqlExpr(q.donde)}` : '',
+    q.agrupar ? `GROUP BY ${nombreSql(q.agrupar)} ORDER BY COUNT(*) DESC` : '',
+    q.ordenar ? `ORDER BY ${nombreSql(q.ordenar.campo)}${q.ordenar.desc ? ' DESC' : ''}` : '',
+    q.limite ? `LIMIT ${q.limite}` : '',
+  ].filter(Boolean).join(' ') + ';';
+}
+
+// ---------- Lo que ve cada puesto ----------
+
+const capaDe = (e: Record<string, unknown>): Capa => (e.capa === 2 ? 2 : 1);
+const laminaDe = (estado: Record<string, unknown>) => ({
+  capa: capaDe(estado), capas: CAPAS, nombres: NOMBRES_CAPA, resuelta: estado.resuelta === true,
+});
+
+/** La última consulta, tal como la dibuja la bóveda en 3D. */
+export type UltimaConsulta = {
+  n: number;
+  tipo: 'contar' | 'buscar' | 'agrupar';
+  quedan: number;
+  ids: string[];
+  grupos: { clave: string; n: number }[] | null;
+  agrupadoPor: string | null;
+  unida: boolean;
+  sql: string;
+};
+
+function dibujo(inst: InstanciaBoveda, estado: Record<string, unknown>) {
+  const capa = capaDe(estado);
+  return {
+    capa,
+    resuelta: estado.resuelta === true,
+    total: TOTAL,
+    personas: capa === 2 ? inst.personas.map((p) => ({ id: p.id, nombre: p.nombre })) : [],
+    consulta: (estado.ultima as UltimaConsulta | undefined) ?? null,
+    abierto: (estado.abierto as { n: number; id: string; ok: boolean } | undefined) ?? null,
+  };
+}
+
+function esquemaDatos(inst: InstanciaBoveda, capa: Capa) {
+  const columnasRecuerdos = [
+    ['id', 'texto', `R-0001 … R-${String(TOTAL).padStart(4, '0')}`],
+    ['tipo', 'texto', TIPOS.join(' · ')],
+    ['emocion', 'texto', EMOCIONES.join(' · ')],
+    ['año', 'numero', `${ANIO_MIN} a ${ANIO_MAX}`],
+    ['lugar', 'texto', LUGARES.join(' · ')],
+    ['intensidad', 'numero', '1 a 9'],
+    ...(capa === 2 ? [['persona_id', 'texto · clave foranea', 'P-01 … P-12 → personas.id']] : []),
+  ];
+  const recuerdos = {
+    id: 'recuerdos', nombre: 'recuerdos', x: 40, y: capa === 1 ? 210 : 230, w: capa === 1 ? 600 : 470,
+    descripcion: `Mil recuerdos. Las columnas que se pueden preguntar y los valores que admiten.`,
+    clave: 'columna', columnas: ['columna', 'tipo de dato', 'valores'], filas: columnasRecuerdos,
+  };
+  if (capa === 1) {
+    const e = inst.embudo;
+    return {
+      lienzo: { w: 1000, h: 470 },
+      tablas: [
+        recuerdos,
+        {
+          id: 'encargo', nombre: 'encargo', x: 660, y: 30, w: 300,
+          descripcion: 'El recuerdo que abre el torso', clave: 'id', columnas: ['id', 'requisito'],
+          filas: [
+            ['E1', `lugar: ${e.lugar}`],
+            ['E2', `emocion: ${e.emociones[0]} O ${e.emociones[1]}`],
+            ['E3', `año: despues de ${e.desde}`],
+            ['E4', `intensidad: ${e.intensidad} o mas`],
+            ['E5', 'las cuatro a la vez. Solo hay uno.'],
+          ],
+        },
+      ],
+      relaciones: [],
+    };
+  }
+  const c = inst.compartido;
+  return {
+    lienzo: { w: 1000, h: 470 },
+    tablas: [
+      recuerdos,
+      {
+        id: 'personas', nombre: 'personas', x: 560, y: 260, w: 400,
+        descripcion: 'Quienes aparecen en los recuerdos', clave: 'columna', columnas: ['columna', 'tipo de dato', 'valores'],
+        filas: [
+          ['id', 'texto · clave', 'P-01 … P-12'],
+          ['nombre', 'texto', inst.personas.map((p) => p.nombre).join(' · ')],
+          ['oficio', 'texto', OFICIOS.join(' · ')],
+        ],
+      },
+      {
+        id: 'encargo', nombre: 'encargo', x: 560, y: 30, w: 400,
+        descripcion: 'El recuerdo que abre el torso', clave: 'id', columnas: ['id', 'requisito'],
+        filas: [
+          ['E1', `cuenta solo los recuerdos de tipo ${c.tipo}`],
+          ['E2', `y solo los de personas con oficio ${c.oficio}`],
+          ['E3', 'de esas personas, la que MAS recuerdos tiene'],
+          ['E4', 'de esa persona, su recuerdo mas intenso, de cualquier tipo'],
+          ['E5', `ojo: quien mas aparece en total no es de ${c.oficio}`],
+        ],
+      },
+    ],
+    relaciones: [{ desde: 'recuerdos', campo: 'persona_id', hasta: 'personas' }],
+  };
+}
+
+function ayuda(capa: Capa): ResultadoComando {
   return {
     bloques: [
-      texto(
-        [
-          'contar en <tabla> [donde ...]        — cuantos hay, sin traerlos',
-          'buscar en <tabla> [unir <otra>] [donde ...] [limitar <n>]',
-          'extraer <id>                         — sacar UNA credencial. Esto no es gratis',
-          'estado                               — como va',
-          ...AYUDA_CAMARAS,
-        ],
-        'Comandos disponibles',
-      ),
-      texto(
-        [
-          'Las condiciones van despues de `donde`, separadas por `y`:',
+      texto([
+        'contar en recuerdos [donde ...]           — cuantos hay, sin traerlos',
+        'buscar en recuerdos [donde ...] [ordenar por <col> [desc]] [limitar <n>]',
+        ...(capa === 2 ? [
+          'contar en recuerdos [unir personas] [donde ...] agrupar por <col>',
+          '                                           — cuantos hay en cada grupo',
+        ] : []),
+        'abrir <id>                                — abrir UN recuerdo. No es gratis',
+      ], 'Comandos'),
+      texto([
+        'Las condiciones van despues de `donde`: columna operador valor.',
+        'Se juntan con `y` (las dos a la vez) o con `o` (cualquiera de las dos).',
+        '',
+        '  contar en recuerdos donde lugar = patio',
+        '  contar en recuerdos donde lugar = patio y intensidad >= 5',
+        '  contar en recuerdos donde ( emocion = calma o emocion = miedo ) y lugar = patio',
+        '',
+        'Ojo: `y` se resuelve ANTES que `o`. Si mezclas las dos, los parentesis mandan.',
+        'Operadores: =  !=  y, para numeros, tambien >  <  >=  <=',
+        ...(capa === 2 ? [
           '',
-          '  contar en credenciales',
-          '  contar en credenciales donde tipo = maestra',
-          '  buscar en credenciales donde tipo = maestra y estado = activa',
-          '',
-          'Si lo que buscas esta en otra tabla, hay que UNIRLAS. Al unir, las',
-          'columnas de la otra tabla se pueden usar como si fueran de esta:',
-          '',
-          '  buscar en credenciales unir usuarios donde departamento = almacen',
-          '',
-          'Operadores: =  !=  y, para numeros, tambien >  <  >=  <=',
-        ],
-        'Como se pregunta',
-      ),
-      texto(
-        [
-          `Esta terminal no sabe que tablas hay, ni que columnas, ni que valores`,
-          'admiten, ni que credencial hace falta. Todo eso esta en el diccionario',
-          'de datos, en la base de datos. Pregunta a Datos antes de preguntar aqui.',
-          '',
-          `La boveda devuelve como mucho ${TOPE_FILAS} filas: si salen mas, no las ensena.`,
-          'Eso no es una limitacion, es el ejercicio: hay que estrechar la pregunta.',
-        ],
-        'Lo que esta terminal NO sabe',
-      ),
+          'Las columnas de personas solo se pueden usar uniendo:',
+          '  contar en recuerdos unir personas donde oficio = visita agrupar por nombre',
+        ] : []),
+      ], 'Como se pregunta'),
+      texto([
+        'Esta terminal no sabe que columnas hay, ni que valores admiten, ni que',
+        'recuerdo hace falta: eso esta en el diccionario, que tiene Datos.',
+        `La boveda ensena como mucho ${TOPE_FILAS} filas: si salen mas, hay que estrechar.`,
+      ], 'Lo que esta terminal NO sabe'),
     ],
   };
 }
+
+// ---------- El módulo ----------
 
 export const boveda: ModuloFase = {
   key: 'fase-5-boveda',
 
   proyectar(role: Role, ctx) {
+    const inst = instanciaDeBoveda(ctx.semilla);
+    const capa = capaDe(ctx.estado);
+    const lamina = laminaDe(ctx.estado);
     switch (role) {
       case 'DATOS':
         return {
-          titulo: 'Boveda · diccionario de datos',
-          nota: 'Tu tienes el mapa: que tablas hay, que columnas tiene cada una, que valores '
-              + 'admiten y que credencial hace falta. Los registros no los ve nadie de golpe: '
-              + 'se le preguntan a la boveda, y quien ve las respuestas es Pantalla.',
-          lienzo: { w: 1000, h: 470 },
-          ...ESQUEMA,
+          titulo: capa === 1 ? 'La boveda · el diccionario' : 'La boveda · dos tablas',
+          nota: capa === 1
+            ? 'Tienes el mapa de la memoria: que columnas tiene `recuerdos`, que valores admite cada una y que '
+              + 'recuerdo hace falta. No ves ni un registro. Terminal pregunta a ciegas y Pantalla ve lo que '
+              + 'contesta la boveda. Ojo con el O del encargo.'
+            : 'Ahora son dos tablas: cada recuerdo apunta a una persona por `persona_id`. El oficio esta en '
+              + '`personas`, asi que para filtrar por oficio hay que UNIRLAS. Y para saber quien aparece mas '
+              + 'hay que AGRUPAR y contar.',
+          lamina,
+          ...esquemaDatos(inst, capa),
         };
-
       case 'PANTALLA':
         return {
           salidas: ctx.salidas,
-          camaras: vistaDeCamaras(ctx.estado),
-          nota: 'Tu ves la boveda por circuito cerrado y lo que contesta. Que se puede '
-              + 'preguntar y que se busca lo tiene Datos. Quien escribe no ve nada: cantaselo.',
+          nota: capa === 1
+            ? 'Ves la boveda de los recuerdos: cada consulta apaga los cajones que no cumplen. Debajo de cada '
+              + 'respuesta, su traduccion a SQL. Lo que se busca lo sabe Datos.'
+            : 'A la derecha, los cajones de las personas. Al unir, se conectan; al agrupar, cada grupo se '
+              + 'levanta como una columna de luz.',
+          boveda: dibujo(inst, ctx.estado),
+          lamina,
         };
-
       case 'TERMINAL':
         return {
-          camara: numero(ctx.estado, 'camara') || 1,
-          pista: 'Escribe `ayuda` y pregunta a Pantalla que aparecio.',
+          pista: capa === 1
+            ? 'Escribe `ayuda`. Pregunta con `contar` antes de `buscar`: primero cuantos, luego cuales. '
+              + 'Cuando quede uno, `abrir <id>`.'
+            : 'Ahora hay dos tablas. `unir personas` para usar sus columnas y `agrupar por` para contar por '
+              + 'grupo. Escribe `ayuda`.',
           cuarentenaHasta: (ctx.estado.cuarentenaHasta as number) ?? null,
+          lamina,
         };
     }
   },
 
   ejecutar(comandoBruto: string, ctx: ContextoComando): ResultadoComando {
+    const inst = instanciaDeBoveda(ctx.semilla);
+    const cmd = normalizar(comandoBruto);
+    const [verbo, ...resto] = cmd.split(' ').filter(Boolean);
+    const arg = resto.join(' ');
+    const capa = capaDe(ctx.estado);
+    const n = numero(ctx.estado, 'consultaN') + 1;
+
+    if (ctx.estado.resuelta === true && verbo !== 'ayuda') {
+      return { bloques: [texto(['La boveda ya esta abierta. El torso no guarda nada mas.'])] };
+    }
+    if (verbo === 'ayuda' || verbo === 'help') return ayuda(capa);
     const enCuarentena = cuarentenaActiva(ctx);
     if (enCuarentena) return enCuarentena;
 
-    const cmd = normalizar(comandoBruto);
-    const [verbo, ...resto] = cmd.split(' ');
-    const arg = resto.join(' ');
-
-    // El circuito cerrado se atiende antes del switch: es el mismo mando
-    // en todas las fases que tienen camaras.
-    const mando = mandoDeCamaras(CAMARAS, verbo, arg, ctx.estado);
-    if (mando) return mando;
-
     switch (verbo) {
-      case 'ayuda':
-      case 'help':
-        return ayuda();
-
       case 'contar':
       case 'buscar': {
-        const q = parsearConsulta(arg);
-        if ('fallo' in q) return q.fallo;
+        const q = parsear(verbo, arg, capa);
+        if (typeof q === 'string') return { bloques: [error(q)] };
+        const res = ejecutarConsulta(inst, q);
+        const consulta = sql(q);
+        const aviso = q.mezcla
+          ? [texto(['Ojo: mezclaste `y` con `o` sin parentesis. La boveda resolvio primero los `y`.',
+              'Si querias otra cosa, agrupa con ( ).'])]
+          : [];
+        const ultima = (tipo: UltimaConsulta['tipo'], ids: string[] = []): UltimaConsulta => ({
+          n, tipo, quedan: res.quedan, ids, grupos: res.grupos, agrupadoPor: q.agrupar ? nombreSql(q.agrupar) : null,
+          unida: q.unir, sql: consulta,
+        });
+        const estado = (u: UltimaConsulta) => ({ ...ctx.estado, consultaN: n, ultima: u, abierto: null });
+        const lineaSql = texto([consulta], 'En SQL');
 
-        const base = q.unir ? unidas() : (CREDENCIALES as Fila[]);
-        const filas = aplicar(base, q.filtros);
-
-        // El embudo se persiste para que la boveda lo ENSEÑE: sin esto la
-        // camara seria un dibujo fijo, y lo unico interesante que pasa en
-        // esta fase es justo como se estrecha.
-        const embudo = { quedan: filas.length, consultas: numero(ctx.estado, 'consultas') + 1 };
-
-        if (verbo === 'contar') {
+        if (verbo === 'contar' && res.grupos) {
           return {
-            estado: { ...ctx.estado, ...embudo },
+            estado: estado(ultima('agrupar')),
             bloques: [
-              texto(
-                [
-                  `${filas.length} registros de ${base.length}.`,
-                  q.filtros.length === 0
-                    ? 'Sin condiciones, la boveda devuelve todo. Cada condicion tira registros.'
-                    : `Condiciones aplicadas: ${q.filtros.map((f) => `${f.campo} ${f.op} ${f.valor}`).join(' y ')}.`,
-                ],
-                'Recuento',
-              ),
+              tabla(`${res.quedan} recuerdos en ${res.grupos.length} grupos`, [nombreSql(q.agrupar!), 'cuantos'],
+                res.grupos.map((g) => [g.clave, String(g.n)])),
+              ...aviso, lineaSql,
             ],
           };
         }
-
+        if (verbo === 'contar') {
+          return {
+            estado: estado(ultima('contar')),
+            bloques: [
+              texto([`${res.quedan} recuerdos de ${TOTAL}.`,
+                res.quedan === 0 ? 'Ninguno cumple. O sobra una condicion, o algun valor no existe en esa columna.' : '',
+              ].filter(Boolean), 'Recuento'),
+              ...aviso, lineaSql,
+            ],
+          };
+        }
+        // buscar
+        const filas = q.limite ? res.filas.slice(0, q.limite) : res.filas;
         if (filas.length === 0) {
           return {
-            estado: { ...ctx.estado, ...embudo },
-            bloques: [texto(
-              ['Ningun registro cumple todas esas condiciones a la vez.',
-               'O sobra una condicion, o alguna lleva un valor que esa columna no admite.'],
-              'Sin resultados',
-            )],
+            estado: estado(ultima('buscar')),
+            bloques: [texto(['Ningun recuerdo cumple todas esas condiciones a la vez.',
+              'O sobra una condicion, o algun valor no existe en esa columna.'], 'Sin resultados'), ...aviso, lineaSql],
           };
         }
-        if (filas.length > (q.limite ?? TOPE_FILAS)) {
+        if (filas.length > TOPE_FILAS) {
           return {
-            estado: { ...ctx.estado, ...embudo },
-            bloques: [texto(
-              [
-                `${filas.length} registros. La boveda solo ensena ${q.limite ?? TOPE_FILAS}.`,
-                'Anade otra condicion: cada una tira registros. `contar` te dice cuantos',
-                'quedarian antes de pedirlos.',
-              ],
-              'Demasiados resultados',
-            )],
+            estado: estado(ultima('contar')),
+            bloques: [texto([
+              `${filas.length} recuerdos. La boveda solo ensena ${TOPE_FILAS}.`,
+              'Anade otra condicion —cada una tira recuerdos— o `limitar`.',
+            ], 'Demasiados resultados'), ...aviso, lineaSql],
           };
         }
-
-        const cols = q.unir ? [...COLUMNAS_CRED, ...COLUMNAS_USR] : COLUMNAS_CRED;
+        const cols = ['id', 'tipo', 'emocion', 'ano', 'lugar', 'intensidad', ...(capa === 2 ? ['persona_id'] : []),
+          ...(q.unir ? ['nombre', 'oficio'] : [])];
         return {
-          estado: { ...ctx.estado, ...embudo },
+          estado: estado(ultima('buscar', filas.map((f) => f.id))),
           bloques: [
-            tabla(
-              `${filas.length} resultado(s)`,
-              cols,
-              filas.map((f) => cols.map((c) => String((f as Record<string, unknown>)[c] ?? '—'))),
-            ),
-            texto([filas.length === 1 ? 'Uno solo. `extraer <id>` lo saca.' : 'Sigue estrechando.']),
+            tabla(`${filas.length} recuerdo(s)${q.limite && res.quedan > filas.length ? ` de ${res.quedan}` : ''}`,
+              cols.map(nombreSql), filas.map((f) => cols.map((c) => String((f as Record<string, unknown>)[c] ?? '—')))),
+            ...aviso, lineaSql,
           ],
         };
       }
 
+      case 'abrir':
       case 'extraer': {
-        if (!arg) return { bloques: [error('Falta el identificador. `extraer <id>`.')] };
-        if (arg.toUpperCase() === OBJETIVO.id) {
+        const id = arg.toUpperCase().replace(/^R(\d)/, 'R-$1');
+        if (!/^R-\d{4}$/.test(id) || Number(id.slice(2)) < 1 || Number(id.slice(2)) > TOTAL) {
+          return { bloques: [error(`Falta el recuerdo: \`abrir R-0042\`. Van del R-0001 al R-${TOTAL}.`)] };
+        }
+        const objetivo = capa === 1 ? inst.objetivo1 : inst.objetivo2;
+        if (id !== objetivo) {
+          // El mismo rechazo para uno que casi cumple y para uno cualquiera:
+          // decir cuál falla sería ir resolviendo el filtro a base de abrir.
+          return rechazo(ctx, `${id} no es el recuerdo del encargo. La boveda se cierra un rato.`,
+            { abierto: { n, id, ok: false }, consultaN: n });
+        }
+        if (capa === 1) {
           return {
-            resuelto: true,
+            estado: { ...ctx.estado, capa: 2, consultaN: n, abierto: { n, id, ok: true }, ultima: null },
             bloques: [
-              exito(`Credencial ${OBJETIVO.id} extraida`, [
-                'Maestra, activa, sistemas, torre. La unica de dos mil cuatrocientas.',
-                '',
-                'No la encontrasteis mirando: la encontrasteis preguntando. Cada condicion',
-                'que anadisteis tiro registros, y cuando hizo falta un dato que no estaba',
-                'en la tabla, unisteis las dos por la columna que compartian.',
-                '',
-                'Eso es todo lo que hace una consulta. Leerlas una a una habria sido',
-                'exactamente el mismo trabajo, repartido en cinco horas.',
+              exito(`${id} · el primer cerrojo cede`, [
+                'Uno de mil. No lo encontraron mirando: lo encontraron preguntando.',
+                'Eso es una CONSULTA: un embudo donde cada condicion tira registros.',
+                'Y el O importa: Y pide las dos cosas; O, cualquiera de las dos.',
               ]),
+              texto([
+                'Ahora EL RECUERDO COMPARTIDO: cada recuerdo apunta a una persona.',
+                'La segunda tabla, `personas`, se une por `persona_id`. Datos tiene el encargo.',
+              ], 'Capa 2 · EL RECUERDO COMPARTIDO'),
             ],
           };
         }
-        // Mismo rechazo para un id que no existe y para uno que existe
-        // pero no cumple: decir cuál de las dos cosas falla sería ir
-        // resolviendo el filtro a base de extraer.
-        return rechazo(
-          ctx,
-          `«${arg}» no es la credencial del encargo. La boveda registra el intento.`,
-        );
+        return {
+          resuelto: true,
+          estado: { ...ctx.estado, resuelta: true, consultaN: n, abierto: { n, id, ok: true } },
+          esperaVictoriaMs: 2600,
+          bloques: [exito(`${id} · el torso se abre`, [
+            'Era de alguien. Para llegar a el tuvieron que UNIR dos tablas por su',
+            'clave foranea, AGRUPAR y contar por persona, y ORDENAR para quedarse',
+            'con el mas intenso. Eso es una base de datos: tablas que se apuntan.',
+            '',
+            'La maquina no queria recordarlo. Ahora ustedes tambien lo saben.',
+          ])],
+        };
       }
 
-      case 'estado':
-        return {
-          bloques: [texto(
-            [
-              `La boveda guarda ${CREDENCIALES.length} credenciales de ${USUARIOS.length} personas.`,
-              'Hace falta una sola. El encargo dice cual: lo tiene Datos.',
-            ],
-            'Estado',
-          )],
-        };
-
       default:
-        return { bloques: [error(`Comando no reconocido: «${comandoBruto}». Prueba \`ayuda\`.`)] };
+        return { bloques: [error(`Comando no reconocido: «${comandoBruto.trim()}». Prueba \`ayuda\`.`)] };
     }
   },
 };
 
-// ---------- El analizador de consultas ----------
-
-type Consulta = { unir: boolean; filtros: Filtro[]; limite?: number } | { fallo: ResultadoComando };
-
-const CAMPOS_CRED = new Set(COLUMNAS_CRED);
-const CAMPOS_USR = new Set(COLUMNAS_USR);
-const OPS = ['=', '!=', '>=', '<=', '>', '<'];
-
-function parsearConsulta(arg: string): Consulta {
-  const malo = (t: string, extra: string[] = []): Consulta => ({
-    fallo: { bloques: [error(t), ...(extra.length ? [texto(extra)] : [])] },
-  });
-
-  const p = arg.split(' ').filter(Boolean);
-  if (p[0] !== 'en') return malo('Falta `en <tabla>`. Ejemplo: contar en credenciales.');
-  if (p[1] !== 'credenciales') {
-    return malo(
-      `No se puede consultar «${p[1] ?? '(nada)'}» directamente.`,
-      ['La consulta arranca siempre en `credenciales`; a `usuarios` se llega uniendo.'],
-    );
-  }
-
-  let i = 2;
-  let unir = false;
-  if (p[i] === 'unir') {
-    if (p[i + 1] !== 'usuarios') return malo(`No se puede unir con «${p[i + 1] ?? '(nada)'}».`);
-    unir = true;
-    i += 2;
-  }
-
-  let limite: number | undefined;
-  const iLimitar = p.indexOf('limitar');
-  if (iLimitar !== -1) {
-    const n = Number(p[iLimitar + 1]);
-    if (!Number.isInteger(n) || n < 1) return malo('`limitar` necesita un numero.');
-    limite = Math.min(n, TOPE_FILAS);
-    p.length = iLimitar;
-  }
-
-  const filtros: Filtro[] = [];
-  if (i < p.length) {
-    if (p[i] !== 'donde') return malo(`No entiendo «${p[i]}». Tras la tabla va `+ '`donde`, o nada.');
-    const trozos: string[][] = [[]];
-    for (const w of p.slice(i + 1)) {
-      if (w === 'y') trozos.push([]);
-      else trozos[trozos.length - 1].push(w);
-    }
-    for (const t of trozos) {
-      if (t.length !== 3) {
-        return malo(`Cada condicion son tres piezas: columna operador valor. «${t.join(' ') || '(vacio)'}» no lo es.`);
-      }
-      const [campo, op, valor] = t;
-      if (!OPS.includes(op)) return malo(`«${op}» no es un operador. Son: ${OPS.join('  ')}.`);
-      if (CAMPOS_USR.has(campo) && !unir) {
-        // El error más instructivo de la fase: la columna existe, pero no
-        // en la tabla que se está consultando.
-        return malo(
-          `«${campo}» no es una columna de credenciales.`,
-          ['Esta en la otra tabla. Para usarla hay que unirlas: `buscar en credenciales unir usuarios donde ...`'],
-        );
-      }
-      if (!CAMPOS_CRED.has(campo) && !CAMPOS_USR.has(campo)) {
-        return malo(`«${campo}» no es ninguna columna. Las columnas estan en el diccionario, que tiene Datos.`);
-      }
-      if (campo !== 'nivel' && !['=', '!='].includes(op)) {
-        return malo(`Con «${campo}» solo valen = y !=: es texto, no un numero.`);
-      }
-      filtros.push({ campo, op, valor });
-    }
-  }
-
-  return { unir, filtros, limite };
+/** La solución, para las pruebas: las consultas que llegan a cada respuesta. */
+export function solucionDeBoveda(inst: InstanciaBoveda) {
+  const e = inst.embudo, c = inst.compartido;
+  const elegida = inst.personas.find((p) => p.id === inst.elegida)!;
+  return {
+    capa1: `buscar en recuerdos donde lugar = ${e.lugar} y ( emocion = ${e.emociones[0]} o emocion = ${e.emociones[1]} ) y año > ${e.desde} y intensidad >= ${e.intensidad}`,
+    grupos: `contar en recuerdos unir personas donde tipo = ${c.tipo} y oficio = ${c.oficio} agrupar por nombre`,
+    capa2: `buscar en recuerdos unir personas donde nombre = ${elegida.nombre} ordenar por intensidad desc limitar 1`,
+  };
 }

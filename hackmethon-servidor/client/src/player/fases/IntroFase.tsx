@@ -3,6 +3,9 @@ import type { CSSProperties, ReactNode } from 'react';
 import { sonar } from '../../lib/sonido';
 import { INTRO_REFLEJO } from './IntroReflejo';
 import { INTRO_ESPESURA, INTRO_MARANA, INTRO_SETO } from './IntroMarana';
+import { INTRO_MANO, INTRO_TENDONES } from './IntroMano';
+import { INTRO_BOVEDA, INTRO_COMPARTIDO } from './IntroBoveda';
+import { INTRO_MENTE, INTRO_VOLUNTAD } from './IntroMente';
 
 // ============================================================
 //  LA INTRODUCCIÓN DE UNA FASE
@@ -49,6 +52,42 @@ export const INTROS: Record<string, Intro> = {
     nombre: 'El Reflejo',
     cierre: 'ENTENDIDO · A LA MEMBRANA',
     escenas: INTRO_REFLEJO,
+  },
+  'fase-mano-listas': {
+    lamina: 'LÁMINA IV · BRAZO DERECHO',
+    nombre: 'La Mano',
+    cierre: 'ENTENDIDO · A LAS FALANGES',
+    escenas: INTRO_MANO,
+  },
+  'fase-mano-listas:capa-2': {
+    lamina: 'LÁMINA IV · BRAZO DERECHO · CAPA 2',
+    nombre: 'Los Tendones',
+    cierre: 'ENTENDIDO · A LOS TENDONES',
+    escenas: INTRO_TENDONES,
+  },
+  'fase-5-boveda': {
+    lamina: 'LÁMINA V · TORSO',
+    nombre: 'La Bóveda de los Recuerdos',
+    cierre: 'ENTENDIDO · A LA BÓVEDA',
+    escenas: INTRO_BOVEDA,
+  },
+  'fase-5-boveda:capa-2': {
+    lamina: 'LÁMINA V · TORSO · CAPA 2',
+    nombre: 'El Recuerdo Compartido',
+    cierre: 'ENTENDIDO · A LAS DOS TABLAS',
+    escenas: INTRO_COMPARTIDO,
+  },
+  'fase-6-puente': {
+    lamina: 'LÁMINA VI · CABEZA',
+    nombre: 'El Asalto a la Mente',
+    cierre: 'ENTENDIDO · A LA MENTE',
+    escenas: INTRO_MENTE,
+  },
+  'fase-6-puente:capa-2': {
+    lamina: 'LÁMINA VI · CABEZA · CAPA 2',
+    nombre: 'El Último Pensamiento',
+    cierre: 'ENTENDIDO · A LA VOLUNTAD',
+    escenas: INTRO_VOLUNTAD,
   },
   'fase-bonus-espesura': {
     lamina: 'BONUS · EL CORAZÓN',

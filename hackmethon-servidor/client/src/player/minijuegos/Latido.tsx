@@ -144,7 +144,7 @@ export function Latido({
 
   const multiplicador = () => Math.min(3, 1 + Math.floor(rachaRef.current / 8));
   /** Dónde está el pico en la línea, en ventana: ahí salen los efectos. */
-  const enLinea = (alto = 1) => enLienzo(lienzo.current, XL, BASE - AMP * alto);
+  const enLinea = (alto = 1) => { const q = enPared(XL, BASE - AMP * alto); return enLienzo(lienzo.current, q.x, q.y); };
 
   const publica = () => {
     setPuntos(puntosRef.current);
@@ -159,7 +159,7 @@ export function Latido({
     // Sube el multiplicador: se canta en grande.
     const mult = multiplicador();
     if (mult > multAntes) {
-      const m = enLienzo(lienzo.current, W / 2, H / 2);
+      const m = enLienzo(lienzo.current, VW / 2, VH / 2);
       fx.texto(m.x, m.y, `×${mult}`, { color: color('verdeHi'), tam: 64, dura: 1100 });
       fx.destello(color('verde'), 0.18, 420);
       fx.sacudida(0.7);
@@ -303,8 +303,11 @@ export function Latido({
   /* ── el monitor ───────────────────────────────────────────── */
   useEffect(() => {
     let raf = 0;
+    // El monitor se pinta como siempre, pero en un lienzo aparte; luego se
+    // proyecta como una pared de luz que se aleja (ver `pared`).
+    const buf = document.createElement('canvas'); buf.width = W; buf.height = H;
     const cuadro = (t: number) => {
-      const ctx = lienzo.current?.getContext('2d');
+      const ctx = buf.getContext('2d');
       const C = tonos();
       if (ctx) {
         ctx.fillStyle = C.fondo; ctx.fillRect(0, 0, W, H);
@@ -419,6 +422,7 @@ export function Latido({
           }
         }
       }
+      if (ctx && lienzo.current) pared(lienzo.current, buf, t, !!vivo.current, t - pulsoEn.current);
       raf = requestAnimationFrame(cuadro);
     };
     raf = requestAnimationFrame(cuadro);
@@ -469,8 +473,8 @@ export function Latido({
     >
       <canvas
         ref={lienzo}
-        width={W}
-        height={H}
+        width={VW}
+        height={VH}
         className={`latido__monitor ${racha >= 16 ? 'latido__monitor--x3' : racha >= 8 ? 'latido__monitor--x2' : ''} ${sosteniendo ? 'latido__monitor--sosten' : ''}`}
         onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); presiona(); }}
         onPointerUp={suelta}
@@ -504,4 +508,83 @@ export function Latido({
       )}
     </Marco>
   );
+}
+
+// ---------- el monitor en 3D: una pared de luz que se aleja ----------
+//
+//  El trazo se pinta en un lienzo plano (el de siempre) y aquí se proyecta
+//  columna a columna sobre una pared en perspectiva: lo que ya pasó queda
+//  cerca, a la izquierda; lo que viene aparece al fondo y se acerca hacia
+//  la línea de marcado, como una pista de juego de ritmo.
+
+const VW = 600, VH = 300;
+const PROF = 3.2;                          // cuántas veces más lejos queda el final
+const BORDE_CERCA = -0.22 * VW, BORDE_LEJOS = 1.0 * VW;
+const HORIZONTE = VH * 0.48, ALTO_CERCA = VH * 1.25;
+const CENTRO_SRC = 0.55;
+
+/** De una posición del monitor plano a la pared. */
+function enPared(x: number, y: number) {
+  const u = Math.max(0, Math.min(1, x / W)), z = 1 + u * (PROF - 1);
+  const frac = (u * PROF) / z;
+  const alto = ALTO_CERCA / z;
+  return { x: BORDE_CERCA + frac * (BORDE_LEJOS - BORDE_CERCA), y: HORIZONTE + (y - H * CENTRO_SRC) * (alto / H) };
+}
+const uDe = (sx: number) => { const f = (sx - BORDE_CERCA) / (BORDE_LEJOS - BORDE_CERCA); return f / (PROF - f * (PROF - 1)); };
+
+let fondoPared: HTMLCanvasElement | null = null;
+function salaMonitor() {
+  if (fondoPared) return fondoPared;
+  const cv = document.createElement('canvas'); cv.width = VW; cv.height = VH;
+  const ctx = cv.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 0, VH);
+  g.addColorStop(0, '#12081c'); g.addColorStop(0.5, '#07050c'); g.addColorStop(1, '#141028');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+  // El piso y el techo convergen al fondo de la pared.
+  const fuga = { x: BORDE_LEJOS + 40, y: HORIZONTE };
+  ctx.strokeStyle = 'rgba(79,134,238,.22)'; ctx.lineWidth = 1;
+  for (let k = -12; k <= 12; k++) {
+    ctx.beginPath(); ctx.moveTo(fuga.x, fuga.y); ctx.lineTo(-VW * 0.6, HORIZONTE + k * 60); ctx.stroke();
+  }
+  for (let k = 1; k < 14; k++) {
+    const u = k / 14, a = enPared(u * W, H * 1.15), b = enPared(u * W, -H * 0.15);
+    ctx.strokeStyle = 'rgba(79,134,238,.12)';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x - 30 / (1 + u * (PROF - 1)), VH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - 30 / (1 + u * (PROF - 1)), 0); ctx.stroke();
+  }
+  // Un resplandor al fondo: de ahí viene el pulso.
+  const luz = ctx.createRadialGradient(fuga.x, fuga.y, 4, fuga.x, fuga.y, VW * 0.5);
+  luz.addColorStop(0, 'rgba(250,57,186,.35)'); luz.addColorStop(1, 'rgba(250,57,186,0)');
+  ctx.fillStyle = luz; ctx.fillRect(0, 0, VW, VH);
+  return (fondoPared = cv);
+}
+
+function pared(cv: HTMLCanvasElement, buf: HTMLCanvasElement, _t: number, sosten: boolean, desdePulso: number) {
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(salaMonitor(), 0, 0);
+  // La pared, columna a columna (de dos en dos píxeles: sobra resolución).
+  for (let sx = 0; sx < VW; sx += 2) {
+    const u0 = uDe(sx), u1 = uDe(sx + 2);
+    if (u1 < 0 || u0 > 1) continue;
+    const z = 1 + Math.max(0, u0) * (PROF - 1), alto = ALTO_CERCA / z;
+    const src = Math.max(0, u0) * W, ancho = Math.max(1, (Math.min(1, u1) - Math.max(0, u0)) * W);
+    ctx.drawImage(buf, src, 0, ancho, H, sx, HORIZONTE - alto * CENTRO_SRC, 2, alto);
+  }
+  // El borde de arriba y de abajo de la pared, con luz.
+  ctx.strokeStyle = 'rgba(250,57,186,.6)'; ctx.lineWidth = 1;
+  for (const y of [0, H]) {
+    const a = enPared(0, y), b = enPared(W, y);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  // La puerta de marcado: un arco de luz sobre la línea, y su reflejo en el piso.
+  const arriba = enPared(XL, -H * 0.08), abajo = enPared(XL, H * 1.08);
+  const late = Math.exp(-desdePulso / 160);
+  ctx.strokeStyle = sosten ? 'rgba(180,245,212,.95)' : `rgba(61,220,151,${0.55 + 0.4 * late})`;
+  ctx.lineWidth = sosten ? 4 : 2 + late * 2;
+  ctx.beginPath(); ctx.moveTo(arriba.x, arriba.y); ctx.lineTo(abajo.x, abajo.y); ctx.lineTo(abajo.x - 60, VH); ctx.stroke();
+  const brillo = ctx.createLinearGradient(abajo.x - 30, 0, abajo.x + 30, 0);
+  brillo.addColorStop(0, 'rgba(61,220,151,0)'); brillo.addColorStop(0.5, `rgba(61,220,151,${0.12 + 0.2 * late})`); brillo.addColorStop(1, 'rgba(61,220,151,0)');
+  ctx.fillStyle = brillo; ctx.fillRect(abajo.x - 30, arriba.y, 60, abajo.y - arriba.y);
 }
