@@ -362,12 +362,18 @@ export async function enterPhase(teamId: string, phaseId: string, userId?: strin
     include: { phase: true },
   });
 
+  const estadoActual = JSON.parse(progress.stateJson || '{}') as Record<string, unknown>;
+  if (typeof estadoActual.semilla !== 'number') {
+    estadoActual.semilla = Math.floor(Math.random() * 900) + 100;
+  }
+
   await prisma.teamPhaseProgress.update({
     where: { id: progress.id },
     data: {
       status: 'IN_PROGRESS',
       // Solo la PRIMERA entrada sella el cronómetro de trabajo real.
       enteredAt: progress.enteredAt ?? new Date(),
+      stateJson: JSON.stringify(estadoActual),
     },
   });
 

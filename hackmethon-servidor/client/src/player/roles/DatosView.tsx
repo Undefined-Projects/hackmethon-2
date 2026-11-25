@@ -59,6 +59,13 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   const [filtro, setFiltro] = useState('');
   const [resaltado, setResaltado] = useState<string | null>(null);
 
+  // Si aparece una tabla nueva en el esquema (ej. al pasar de Parte 1 a Parte 2),
+  // volvemos al mapa para que el Operador de Datos vea la nueva tabla de inmediato.
+  useEffect(() => {
+    setAbierta(null);
+    setResaltado(null);
+  }, [datos?.tablas.length]);
+
   if (!datos) {
     return (
       <section className={`vista vista-datos${temblando ? ' temblando' : ''}`}>

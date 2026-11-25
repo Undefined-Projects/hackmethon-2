@@ -3,6 +3,7 @@
 !/.gitignore
 !/hackmethon-2/
 !/hackmethon-servidor/
+!/FASE_4_NUCLEO_MODULAR.md
 
 node_modules/
 .vercel/

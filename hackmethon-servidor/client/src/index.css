@@ -865,7 +865,7 @@ body.fallo .cortinilla > strong{ animation:falloCanales .22s steps(1) infinite; 
   font-family:var(--f-mono); font-size:11px; font-weight:400; letter-spacing:0;
   transition:background .12s linear, box-shadow .12s linear;
 }
-.nodo:hover{
+.nodo:hover:not(:disabled){
   background:rgba(79,134,238,.14); color:var(--phos-soft);
   box-shadow:0 0 18px rgba(79,134,238,.3);
 }
