@@ -7,6 +7,7 @@ import { call } from '../../lib/socket';
 import { sonar } from '../../lib/sonido';
 import { useMountId } from './mount';
 import { Nervio3D } from './Nervio3D';
+import { ANTICOPIA } from './anticopia';
 
 type Payload = {
   pista: string;
@@ -212,7 +213,7 @@ export function TerminalView({ workspace }: { workspace: PhaseWorkspace }) {
   }
 
   return (
-    <section className="vista vista-terminal">
+    <section className="vista vista-terminal" {...ANTICOPIA}>
       {/* La máquina viva de fondo: late con cada comando que sale. */}
       <JardinEscena variante="terminal" marco={150} latido={ecos.length} />
       <header>

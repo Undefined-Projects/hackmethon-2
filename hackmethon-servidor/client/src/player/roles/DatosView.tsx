@@ -6,6 +6,7 @@ import { JardinEscena } from '../../admin/JardinEscena';
 import { FlujoDiagrama, Pseudocodigo } from '../fases/Flujo';
 import { ProgramaDatos } from '../fases/ProgramaBrote';
 import { Archivo3D } from './Archivo3D';
+import { ANTICOPIA } from './anticopia';
 
 type Tabla = {
   id: string;
@@ -72,7 +73,7 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
 
   if (!datos) {
     return (
-      <section className={`vista vista-datos${secuestro ? ' secuestrada' : ''}`}>
+      <section className={`vista vista-datos${secuestro ? ' secuestrada' : ''}`} {...ANTICOPIA}>
       {/* La máquina viva de fondo: late al abrir cada tabla. */}
       <JardinEscena variante="datos" marco={150} latido={aperturas} />
         <p className="pendiente">Esta fase no tiene base de datos.</p>
@@ -102,7 +103,7 @@ export function DatosView({ workspace }: { workspace: PhaseWorkspace }) {
   };
 
   return (
-    <section className={`vista vista-datos${secuestro ? ' secuestrada' : ''}`}>
+    <section className={`vista vista-datos${secuestro ? ' secuestrada' : ''}`} {...ANTICOPIA}>
       {/* La máquina viva de fondo: late al abrir cada tabla. */}
       <JardinEscena variante="datos" marco={150} latido={aperturas} />
       <header>
