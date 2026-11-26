@@ -32,7 +32,7 @@ import { getIO, pushLobby } from './server.js';
 import { pushAdminState } from './admin.js';
 import { detenerFlujo, filtrarFlujo, flujoActivo, iniciarFlujo } from './trafico.js';
 
-const MAX_LONGITUD = 200;
+const MAX_LONGITUD = 400;
 
 export class ErrorComando extends Error {}
 
