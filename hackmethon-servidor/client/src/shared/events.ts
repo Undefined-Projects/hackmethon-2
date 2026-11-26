@@ -31,6 +31,9 @@ export type SalidaComando = {
   comando: string;
   at: number;
   bloques: BloqueSalida[];
+  /** `limpiar terminal`: Pantalla borra lo que tenía pintado. No trae
+   *  bloques; al repintar, el historial empieza después de la última. */
+  limpiar?: true;
 };
 
 // ---------- Flujo de tráfico en vivo (lo ve solo PANTALLA) ----------

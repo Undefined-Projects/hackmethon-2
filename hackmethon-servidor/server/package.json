@@ -39,6 +39,7 @@
     "solucion:f1": "tsx scripts/solucion-f1.ts",
     "solucion:f2": "tsx scripts/solucion-f2.ts",
     "solucion:mano": "tsx scripts/solucion-mano.ts",
+    "smoke:limpiar": "tsx scripts/smoke-limpiar.ts",
     "smoke:corazon": "tsx scripts/smoke-corazon.ts"
   },
   "dependencies": {

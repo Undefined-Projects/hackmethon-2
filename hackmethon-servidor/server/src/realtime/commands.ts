@@ -37,6 +37,16 @@ import { DURACION_AVERIA, registrarAveria } from '../lib/averias.js';
 
 const MAX_LONGITUD = 200;
 
+/**
+ * `limpiar terminal` vale en TODAS las fases y bonus, así que lo atiende
+ * el motor y no cada módulo. Sin acentos, mayúsculas ni espacios de más:
+ * es una orden de servicio, no parte del reto.
+ */
+const normalizar = (t: string) =>
+  t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const esLimpiar = (t: string) => normalizar(t) === 'limpiar terminal';
+const esAyuda = (t: string) => ['ayuda', 'help'].includes(normalizar(t).split(' ')[0]);
+
 export class ErrorComando extends Error {}
 
 export async function procesarComando(
@@ -68,6 +78,19 @@ export async function procesarComando(
   // Un comando largo que llega más rápido de lo que se teclea: el panel
   // se entera. No cambia nada del juego.
   if (registrarComando(teamId, texto, ahora)) await pushAdminState();
+
+  // Limpiar no pasa por el módulo: ni gasta intento ni toca el estado de
+  // la fase. Se guarda en la bitácora para que `salidasDe` sepa desde
+  // dónde repintar si Pantalla recarga.
+  if (esLimpiar(texto)) {
+    const salida: SalidaComando = { id: randomUUID(), comando: texto, at: ahora, bloques: [], limpiar: true };
+    await prisma.commandLog.create({
+      data: { teamId, userId, phaseId: progreso.phaseId, raw: texto, accepted: true, responseJson: JSON.stringify(salida) },
+    });
+    getIO().to(roleRoom(teamId, 'PANTALLA')).emit('pantalla:output', salida);
+    return { aceptado: true, valido: true };
+  }
+
   const estado = JSON.parse(progreso.stateJson || '{}') as Record<string, unknown>;
   const resultado = modulo.ejecutar(texto, {
     estado,
@@ -81,7 +104,11 @@ export async function procesarComando(
     id: randomUUID(),
     comando: texto,
     at: ahora,
-    bloques: resultado.bloques,
+    // La ayuda de cada fase solo conoce sus comandos; el de limpiar es
+    // de todas, y se anuncia aquí.
+    bloques: esAyuda(texto)
+      ? [...resultado.bloques, { tipo: 'texto', lineas: ['limpiar terminal — borra lo que se ve en Pantalla (vale en cualquier fase)'] }]
+      : resultado.bloques,
   };
 
   // --- 4. Persistir antes de emitir ---
@@ -313,14 +340,14 @@ export async function salidasDe(teamId: string, phaseId: string, limite = 40): P
     orderBy: { createdAt: 'desc' },
     take: limite,
   });
-  return filas
-    .reverse()
-    .map((f) => {
-      try {
-        return JSON.parse(f.responseJson) as SalidaComando;
-      } catch {
-        return null;
-      }
-    })
-    .filter((x): x is SalidaComando => x !== null);
+  const salidas: SalidaComando[] = [];
+  // Más nuevas primero: lo que hubo antes del último `limpiar terminal`
+  // ya se borró de Pantalla y no vuelve al recargar.
+  for (const f of filas) {
+    let s: SalidaComando;
+    try { s = JSON.parse(f.responseJson) as SalidaComando; } catch { continue; }
+    if (s.limpiar) break;
+    salidas.push(s);
+  }
+  return salidas.reverse();
 }

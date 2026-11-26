@@ -511,6 +511,8 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
   const payload = workspace.payload as Payload | null;
 
   const [salidas, setSalidas] = useState<SalidaComando[]>(payload?.salidas ?? []);
+  // Tras `limpiar terminal` la caja vacía no es «aún no pasa nada».
+  const [limpiada, setLimpiada] = useState(false);
   const [lineas, setLineas] = useState<LineaTrafico[]>([]);
   // Quien recarga a mitad de captura recupera también el encuadre: sin
   // eso, un monitor acotado parecería una captura averiada.
@@ -542,6 +544,11 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
   useEffect(() => {
     if (!socket) return;
     const alRecibir = (s: SalidaComando) => {
+      if (s.limpiar) {
+        setSalidas([]);
+        setLimpiada(true);
+        return;
+      }
       // El veredicto suena AQUÍ y no en la consola: aquí es donde se ve,
       // y quien teclea lo hace a ciegas.
       sonar(s.bloques.some((b) => b.tipo === 'error') ? 'error' : 'ok');
@@ -844,7 +851,9 @@ export function PantallaView({ workspace }: { workspace: PhaseWorkspace }) {
       <div className="marco-pantalla" ref={salidasRef}>
         {salidas.length === 0 && (
           <p className="pendiente">
-            Sin salidas todavía. Pide al Operador de Terminal que escriba algo.
+            {limpiada
+              ? 'Terminal limpia. Esperando el siguiente comando.'
+              : 'Sin salidas todavía. Pide al Operador de Terminal que escriba algo.'}
           </p>
         )}
         {salidas.map((s) => <Salida key={s.id} s={s} />)}
