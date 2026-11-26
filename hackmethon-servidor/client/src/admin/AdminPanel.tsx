@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PanelIntros } from './PanelIntros';
 import { PruebaAnimaciones } from './PruebaAnimaciones';
-import { PruebaConsejo } from './PruebaConsejo';
+import { PanelPistas } from './PanelPistas';
 import type { AdminSnapshot } from '../shared/events';
 import type { AppSocket } from '../lib/socket';
 import { call } from '../lib/socket';
@@ -44,12 +44,12 @@ const VISTAS: Vista[] = ['carrera', 'prueba-carrera', 'prueba-ataque', 'mapa', '
 //  lo que solo se ensaya, al final y aparte, para no pulsarlo sin querer.
 //  La pestaña se recuerda en este navegador: es comodidad, no estado.
 // ============================================================
-type Pestana = 'vivo' | 'equipos' | 'sala' | 'pantallas' | 'ensayos';
+type Pestana = 'vivo' | 'equipos' | 'pistas' | 'sala' | 'pantallas' | 'ensayos';
 const PESTANA_KEY = 'hm:admin:pestana';
 const leerPestana = (): Pestana => {
   try {
     const p = localStorage.getItem(PESTANA_KEY);
-    return p === 'equipos' || p === 'sala' || p === 'pantallas' || p === 'ensayos' ? p : 'vivo';
+    return p === 'equipos' || p === 'pistas' || p === 'sala' || p === 'pantallas' || p === 'ensayos' ? p : 'vivo';
   } catch { return 'vivo'; }
 };
 /** Cómo se ven los equipos: fichas completas o lista para mover gente. */
@@ -201,9 +201,11 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
   // Las pestañas: lo de durante el evento, separado de lo que se ensaya.
   const alertas = teams.filter((t) => t.alertas.pegados > 0 || t.alertas.rafagas > 0 || t.alertas.rapidas.length > 0).length;
   const activas = phases.filter((p) => p.status === 'ACTIVE').length;
+  const totalPistas = teams.reduce((n, t) => n + t.pistas.length, 0);
   const PESTANAS: { id: Pestana; nombre: string; marca?: string; peligro?: boolean }[] = [
     { id: 'vivo', nombre: 'EN VIVO', marca: `${activas} abierta(s)` },
     { id: 'equipos', nombre: 'EQUIPOS', marca: alertas ? `[!] ${alertas}` : `${teams.length}`, peligro: alertas > 0 },
+    { id: 'pistas', nombre: 'PISTAS', marca: totalPistas ? `${totalPistas} mandadas` : undefined },
     { id: 'sala', nombre: 'MINIJUEGOS Y ATAQUES', marca: snapshot.minijuego ? 'en juego' : undefined },
     { id: 'pantallas', nombre: 'PANTALLAS' },
     { id: 'ensayos', nombre: 'ENSAYOS' },
@@ -436,17 +438,6 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
             >
               {busy === 'shuffle-all' ? 'MEZCLANDO…' : '>< MEZCLAR ROLES (TODOS)'}
             </button>
-            <button
-              className="mandar-consejo"
-              disabled={busy !== null}
-              title="El robot asoma con un letrero: a cada persona, un consejo para su puesto en la fase y capa en que está su equipo"
-              onClick={() => {
-                if (!confirm('¿Mandar el letrero del robot con un consejo a TODOS los equipos?\n\nCada persona recibe uno para su puesto, según la fase y la capa en que esté su equipo.')) return;
-                accion('consejo-all', 'admin:consejo', {}, 'Consejo del robot mandado a todos los equipos');
-              }}
-            >
-              {busy === 'consejo-all' ? 'MANDANDO…' : '[?] MANDAR CONSEJO (TODOS)'}
-            </button>
             </div>
           </div>
 
@@ -470,14 +461,6 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
                     onClick={() => accion(`shuffle-${t.id}`, 'admin:roles:shuffle', { teamIds: [t.id] }, `Roles mezclados en ${t.name}`)}
                   >
                     &gt;&lt;
-                  </button>
-                  <button
-                    className="sutil"
-                    title={`Mandar el letrero del robot con un consejo a ${t.name}`}
-                    disabled={busy !== null}
-                    onClick={() => accion(`consejo-${t.id}`, 'admin:consejo', { teamIds: [t.id] }, `Consejo del robot mandado a ${t.name}`)}
-                  >
-                    [?]
                   </button>
                   <button
                     className="sutil"
@@ -574,6 +557,18 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
         </section>
       )}
 
+      {pestana === 'pistas' && (
+        <section className="panel">
+          <div className="panel__bar">
+            <span className="panel__name">PISTAS</span>
+            <span className="panel__stat">{totalPistas} mandadas desde el último reinicio</span>
+          </div>
+          <div className="panel__body">
+            <PanelPistas socket={socket} snapshot={snapshot} onAviso={avisar} />
+          </div>
+        </section>
+      )}
+
       {pestana === 'sala' && (
         <>
           <PanelMinijuegos minijuego={snapshot.minijuego} bloqueado={busy !== null} accion={accion} />
@@ -648,7 +643,6 @@ export function AdminPanel({ snapshot, socket, online }: Props) {
                       {busy === 'celebrar-all' ? 'LANZANDO…' : '[OK] ENSAYAR VICTORIA (TODOS)'}
                     </button>
                 </article>
-                <PruebaConsejo socket={socket} phases={snapshot.phases} onAviso={avisar} />
               </div>
             </div>
           </section>

@@ -1716,6 +1716,29 @@ mensaje de error**. Las dos fases tienen un test dedicado a esa invariante
 («ningún comando nombra una cuenta / una máquina»), y en las dos cazó una fuga
 real escrita sin darse cuenta.
 
+## Pistas
+
+Pestaña **PISTAS** del panel. Cada capa de cada fase tiene **tres niveles** —no
+obvia, normal y muy obvia— con **tres pistas** en cada uno. Las tres de un nivel
+tratan tres atascos distintos, en el orden en que un equipo se los encuentra. La
+pista 1 del nivel normal es la misma duda que la 1 del no obvio, dicha más claro.
+Así, a un equipo muy atascado se le va subiendo el nivel.
+
+1. **Nivel.**
+2. **A quién:** equipos sueltos, los que están en **una fase** abierta, o **todos**.
+   Cada equipo la recibe de la fase y la capa en que está; Núcleo guarda su capa
+   como `parte`.
+3. **Cuál:** por omisión, **la siguiente que ese equipo no ha recibido** de ese
+   nivel; si ya tuvo las tres, la más vieja. También se puede elegir la 1, la 2 o
+   la 3. El panel enseña las tres pistas con «ya la recibió» y «→ sale», y [ver]
+   abre el letrero tal como lo verán.
+
+Todo el equipo ve **la misma** pista en el letrero del robot. Lo enviado se
+guarda en la bitácora (`EventLog` tipo `PISTA`) y cuenta desde el último
+reinicio. Los textos están en `server/src/lib/pistas-texto.ts` y nunca llevan
+valores de una mesa, porque cada mesa juega su versión. Pruebas:
+`npm run smoke:pistas`.
+
 ## El sonido
 
 Todo suena, y **nada es un archivo de audio**: se sintetiza en el navegador con

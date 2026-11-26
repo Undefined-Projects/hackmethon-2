@@ -22,7 +22,7 @@ import { addSocket, removeSocket, scheduleOffline } from './presence.js';
 import {
   activarFase, ajustarLimiteFinal, cambiarAccesoLibre, cambiarEstadoEvento, cerrarFase,
   destacarFase, ensayarCelebracion, ensayarFinal, guardarLogoEquipo, mezclarRoles,
-  provocarAveria, mandarConsejo, verConsejo, reiniciarJuego, renombrarEquipo, ensayarAnatomia,
+  provocarAveria, mandarPista, catalogoPistas, reiniciarJuego, renombrarEquipo, ensayarAnatomia,
   guardarPlano, ajustarEnfriamientoAtaque, ensayarDestruccion, asignarRol, moverDeEquipo, pushAdminState,
 } from './admin.js';
 import { ErrorComando, procesarComando } from './commands.js';
@@ -257,8 +257,8 @@ async function onConnection(socket: AppSocket) {
   socket.on('admin:minijuego', soloAdmin(({ clave }) => lanzarMinijuego(clave, userId)));
   socket.on('admin:equipo:tickets', soloAdmin(({ teamId: t, delta }) => ajustarTickets(t, delta, userId)));
   socket.on('admin:jugador:averia', soloAdmin(({ userId: a }) => provocarAveria(a, userId)));
-  socket.on('admin:consejo', soloAdmin(({ teamIds }) => mandarConsejo(userId, teamIds)));
-  socket.on('admin:consejo:ver', soloAdmin(({ faseKey, capa, rol }) => verConsejo(faseKey, capa, rol)));
+  socket.on('admin:pista', soloAdmin((p) => mandarPista(userId, p)));
+  socket.on('admin:pistas:catalogo', soloAdmin(() => catalogoPistas()));
 
   // ---------- Desconexión ----------
   socket.on('disconnect', async (reason) => {

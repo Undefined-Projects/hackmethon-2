@@ -20,7 +20,8 @@ import { detenerTodos, pausarFlujos, reanudarFlujos } from './trafico.js';
 import { dispararLuces, olvidarDerrota } from './luces.js';
 import { olvidarMarcas } from './minijuegos.js';
 import { escribirPlano } from '../lib/plano.js';
-import { capasConConsejo, consejoPara } from '../lib/consejos.js';
+import { NOMBRE_NIVEL, PISTAS, capaPistas, pistasEnviadas, siguienteIndice, ubicacionDe } from '../lib/pistas.js';
+import { NIVELES_PISTA, type DestinoPista, type NivelPista, type ResultadoPista } from '../lib/events.js';
 import { ENFRIAMIENTO_MAX_S, ENFRIAMIENTO_MIN_S } from '../lib/timing.js';
 
 const EVENT_ID = 'singleton';
@@ -932,71 +933,74 @@ export async function ensayarAnatomia(parte: ParteRobot | 'todo', adminId: strin
 }
 
 // ============================================================
-//  El letrero del robot: un consejo para cada puesto
+//  Pistas: tres niveles por capa, a equipos, a una fase o a todos
 //
-//  Va a la fase en la que está el equipo —la que tiene empezada y tocó
-//  por última vez; si no tiene ninguna, la primera abierta que le falta—
-//  y a su capa. Cada persona recibe el de SU puesto. Se recuerda el
-//  último de cada quien para no repetírselo si hay otro.
+//  A cada equipo le llega la pista de la fase y capa en que está, en el
+//  nivel que eligió el admin. Si el admin no eligió cuál de las tres,
+//  sale la siguiente que ese equipo no ha recibido. Lo recibido se
+//  guarda en la bitácora (`PISTA`) y cuenta desde el último reinicio.
 // ============================================================
-const ultimoConsejo = new Map<string, string>();
 
-async function faseDelEquipo(teamId: string) {
-  const empezada = await prisma.teamPhaseProgress.findFirst({
-    where: { teamId, status: 'IN_PROGRESS', phase: { status: 'ACTIVE' } },
-    include: { phase: true },
-    orderBy: { updatedAt: 'desc' },
-  });
-  const fila = empezada ?? await prisma.teamPhaseProgress.findFirst({
-    where: { teamId, status: { in: ['PENDING', 'IN_PROGRESS'] }, phase: { status: 'ACTIVE' } },
-    include: { phase: true },
-    orderBy: { phase: { order: 'asc' } },
-  });
-  if (!fila) return null;
-  let estado: Record<string, unknown> = {};
-  try { estado = JSON.parse(fila.stateJson || '{}'); } catch { /* estado roto: capa 1 */ }
-  return { key: fila.phase.key, title: fila.phase.title, capa: typeof estado.capa === 'number' ? estado.capa : 1 };
-}
+export async function mandarPista(
+  adminId: string,
+  { destino, nivel, indice }: { destino: DestinoPista; nivel: NivelPista; indice?: number | null },
+): Promise<ResultadoPista> {
+  if (!NIVELES_PISTA.includes(nivel)) throw new Error('NIVEL_DESCONOCIDO');
+  if (indice != null && !(Number.isInteger(indice) && indice >= 0 && indice <= 2)) throw new Error('PISTA_DESCONOCIDA');
+  if (!destino || !['equipos', 'fase', 'todos'].includes(destino.tipo)) throw new Error('DESTINO_DESCONOCIDO');
+  if (destino.tipo === 'equipos' && !destino.teamIds?.length) throw new Error('SIN_EQUIPOS');
 
-export async function mandarConsejo(adminId: string, teamIds?: string[]) {
-  const equipos = await prisma.team.findMany({
-    where: teamIds?.length ? { id: { in: teamIds } } : undefined,
-    select: { id: true, name: true, members: { where: { isAdmin: false }, select: { id: true, role: true } } },
-  });
-  if (equipos.length === 0) throw new Error('SIN_EQUIPOS');
+  const [fases, equipos, enviadas] = await Promise.all([
+    prisma.phase.findMany(),
+    prisma.team.findMany({
+      where: destino.tipo === 'equipos' ? { id: { in: destino.teamIds } } : undefined,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true, name: true,
+        members: { where: { isAdmin: false }, select: { id: true, role: true } },
+        progress: { select: { phaseId: true, status: true, stateJson: true, updatedAt: true } },
+      },
+    }),
+    pistasEnviadas(),
+  ]);
+  if (destino.tipo === 'fase' && !fases.some((f) => f.id === destino.phaseId)) throw new Error('FASE_DESCONOCIDA');
+  const faseDe = new Map(fases.map((f) => [f.id, f]));
 
   const io = getIO();
-  const id = `${Date.now()}`;
+  const resultado: ResultadoPista = { enviadas: [], omitidos: [] };
+  const sello = Date.now();
   for (const t of equipos) {
-    const fase = await faseDelEquipo(t.id);
+    const donde = ubicacionDe(t.progress, fases);
+    // A una fase: solo los que están en ella. Los demás ni cuentan como
+    // omitidos: no eran el destino.
+    if (destino.tipo === 'fase' && donde?.phaseId !== destino.phaseId) continue;
+    if (!donde) { resultado.omitidos.push({ equipo: t.name, motivo: 'no está en ninguna fase abierta' }); continue; }
+    const fase = faseDe.get(donde.phaseId)!;
+    const capa = capaPistas(fase.key, donde.capa);
+    if (!capa) { resultado.omitidos.push({ equipo: t.name, motivo: `${fase.title} no tiene pistas` }); continue; }
+    const lista = capa[nivel];
+    const i = indice != null
+      ? Math.min(indice, lista.length - 1)
+      : siguienteIndice(enviadas.get(t.id) ?? [], fase.id, capa.capa, nivel, lista.length);
+
     for (const m of t.members) {
-      const rol = m.role as Role;
-      const c = consejoPara(fase?.key ?? null, fase?.capa ?? null, rol, ultimoConsejo.get(m.id));
-      ultimoConsejo.set(m.id, c.texto);
-      io.to(userRoom(m.id)).emit('player:consejo', { id, fase: fase?.title ?? null, ...c, rol });
+      io.to(userRoom(m.id)).emit('player:consejo', {
+        id: `${sello}-${t.id}`, fase: fase.title, capa: capa.capa, nombreCapa: capa.nombre,
+        rol: m.role as Role, texto: lista[i], nivel, numero: i + 1,
+      });
     }
+    await prisma.eventLog.create({
+      data: {
+        type: 'PISTA', teamId: t.id, userId: adminId,
+        message: `Pista ${NOMBRE_NIVEL[nivel].toLowerCase()} ${i + 1} · ${fase.title} · capa ${capa.capa} · ${t.name}`,
+        dataJson: JSON.stringify({ phaseId: fase.id, capa: capa.capa, nivel, indice: i }),
+      },
+    });
+    resultado.enviadas.push({ teamId: t.id, equipo: t.name, fase: fase.title, capa: capa.capa, nivel, indice: i });
   }
-
-  await prisma.eventLog.create({
-    data: {
-      type: 'CONSEJO',
-      message: `Letrero del robot con consejo · ${equipos.map((t) => t.name).join(', ')}`,
-      userId: adminId,
-      dataJson: JSON.stringify({ teamIds: equipos.map((t) => t.id) }),
-    },
-  });
-  return { equipos: equipos.length };
+  if (resultado.enviadas.length > 0) await pushAdminState();
+  return resultado;
 }
 
-/** La vista previa del panel: el consejo, sin mandarlo a nadie. */
-export async function verConsejo(faseKey: string | null, capa: number | null, rol: Role) {
-  if (!ROLES.includes(rol)) throw new Error('ROL_DESCONOCIDO');
-  const fase = faseKey ? await prisma.phase.findFirst({ where: { key: faseKey } }) : null;
-  return {
-    id: `${Date.now()}`,
-    fase: fase?.title ?? null,
-    ...consejoPara(fase?.key ?? null, capa, rol),
-    rol,
-    capas: fase ? capasConConsejo(fase.key) : 0,
-  };
-}
+/** Todas las pistas, para el panel. */
+export const catalogoPistas = async () => PISTAS;

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { sonar } from '../lib/sonido';
 import { roleLabel } from '../lib/format';
-import type { ConsejoRobot } from '../shared/events';
+import type { ConsejoRobot, NivelPista } from '../shared/events';
+
+const NIVEL_LETRERO: Record<NivelPista, string> = { sutil: 'NO OBVIA', normal: 'NORMAL', obvia: 'MUY OBVIA' };
 
 // ============================================================
 //  EL LETRERO DEL ROBOT
@@ -98,8 +100,17 @@ export function LetreroRobot({ consejo, onCerrar, ensayo = false }: {
         <span className="consejo-letrero__cadena izq" aria-hidden="true" />
         <span className="consejo-letrero__cadena der" aria-hidden="true" />
         <header className="consejo-letrero__cab">
-          <span className="consejo-letrero__sello">CONSEJO DEL ROBOT</span>
-          <span className={`rol rol-${consejo.rol}`}>{roleLabel[consejo.rol]}</span>
+          {consejo.nivel ? (
+            // Una pista: la ve igual todo el equipo, así que va sin puesto.
+            <span className={`consejo-letrero__sello nivel-${consejo.nivel}`}>
+              PISTA · {NIVEL_LETRERO[consejo.nivel]}{consejo.numero ? ` · ${consejo.numero}/3` : ''}
+            </span>
+          ) : (
+            <>
+              <span className="consejo-letrero__sello">CONSEJO DEL ROBOT</span>
+              <span className={`rol rol-${consejo.rol}`}>{roleLabel[consejo.rol]}</span>
+            </>
+          )}
           {ensayo && <span className="consejo-letrero__ensayo">VISTA PREVIA</span>}
         </header>
         {donde && <p className="consejo-letrero__donde">{donde}</p>}

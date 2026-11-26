@@ -14,6 +14,7 @@
 // ============================================================
 
 import { alertasDe } from '../realtime/vigilancia.js';
+import { pistasEnviadas, ubicacionDe } from './pistas.js';
 import { prisma } from './prisma.js';
 import { leerPlano } from './plano.js';
 import { averiaDe } from './averias.js';
@@ -249,7 +250,7 @@ export async function buildAdminSnapshot(userId: string): Promise<AdminSnapshot 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.isAdmin) return null;
 
-  const [event, phases, teams] = await Promise.all([
+  const [event, phases, teams, pistas] = await Promise.all([
     prisma.eventState.findUniqueOrThrow({ where: { id: 'singleton' } }),
     prisma.phase.findMany({ orderBy: { order: 'asc' } }),
     // Mismo motivo que en el snapshot de jugador: `select` para dejar
@@ -271,6 +272,7 @@ export async function buildAdminSnapshot(userId: string): Promise<AdminSnapshot 
         progress: true,
       },
     }),
+    pistasEnviadas(),
   ]);
 
   return {
@@ -299,6 +301,8 @@ export async function buildAdminSnapshot(userId: string): Promise<AdminSnapshot 
       tickets: t.tickets, escudoMs: escudoRestanteMs(t, event),
       logoAt: t.logoAt?.getTime() ?? null,
       alertas: alertasDe(t.id),
+      ubicacion: ubicacionDe(t.progress, phases),
+      pistas: pistas.get(t.id) ?? [],
       members: t.members as MemberView[],
       progress: t.progress.map((p) => ({
         phaseId: p.phaseId, status: p.status,

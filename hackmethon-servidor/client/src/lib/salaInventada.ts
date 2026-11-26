@@ -17,7 +17,7 @@ const INVENTADOS = [
 
 export const SALA_LLENA: AdminSnapshot['teams'] = INVENTADOS.map((name, i) => ({
   id: `sim-${i}`, name, score: 0, tickets: 0, escudoMs: 0, logoAt: null,
-  alertas: { pegados: 0, rafagas: 0, rapidas: [] }, members: [], progress: [],
+  alertas: { pegados: 0, rafagas: 0, rapidas: [] }, ubicacion: null, pistas: [], members: [], progress: [],
 }));
 
 /** El auditorio de ejemplo: una mesa por equipo inventado, repartidas

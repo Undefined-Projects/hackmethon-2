@@ -307,6 +307,10 @@ export type AdminSnapshot = {
      *  de pegar en la consola, comandos más rápidos de lo que se teclea y
      *  fases resueltas en muy poco tiempo. Solo las ve el panel. */
     alertas: { pegados: number; rafagas: number; rapidas: string[] };
+    /** Dónde le llegaría una pista ahora: la fase y capa en que está. */
+    ubicacion: { phaseId: string; capa: number } | null;
+    /** Las pistas que lleva recibidas desde el último reinicio. */
+    pistas: PistaEnviada[];
     members: MemberView[];
     progress: {
       phaseId: string; status: string; timeToSolveMs: number | null; attempts: number;
@@ -520,8 +524,8 @@ export interface ServerToClientEvents {
    *  Sin remite es del panel: no es lo mismo que te averíe el sistema
    *  que saber quién te lo ha hecho. */
   'player:averia': (p: { tipo: TipoAveria; duracionMs: number; de?: string }) => void;
-  /** El letrero del robot: un consejo para el puesto de esa persona, en
-   *  la fase y capa en que está su equipo. Lo manda el admin. */
+  /** El letrero del robot con una pista: la misma para todo el equipo,
+   *  de la fase y capa en que está. La manda el admin. */
   'player:consejo': (p: ConsejoRobot) => void;
   /** El saldo del equipo cambió. Solo a la room del equipo. */
   'tickets:movimiento': (m: MovimientoTickets) => void;
@@ -576,6 +580,31 @@ export interface ServerToClientEvents {
 export type ConsejoRobot = {
   id: string; fase: string | null; capa: number | null; nombreCapa: string | null;
   rol: Role; texto: string;
+  /** Las pistas: todo el equipo ve la misma, con su nivel y su número
+   *  dentro del nivel (1 a 3). */
+  nivel?: NivelPista; numero?: number;
+};
+
+// ---------- Pistas ----------
+//
+// Tres niveles por capa de cada fase, con tres pistas en cada nivel. El
+// admin elige el nivel y a quién; la pista concreta, si no la elige, es
+// la siguiente de ese nivel que el equipo aún no recibió.
+export const NIVELES_PISTA = ['sutil', 'normal', 'obvia'] as const;
+export type NivelPista = (typeof NIVELES_PISTA)[number];
+export type CapaPistas = { nombre: string } & Record<NivelPista, string[]>;
+/** Todas las pistas, por clave de fase. */
+export type CatalogoPistas = Record<string, { capas: CapaPistas[] }>;
+export type DestinoPista =
+  | { tipo: 'equipos'; teamIds: string[] }
+  | { tipo: 'fase'; phaseId: string }
+  | { tipo: 'todos' };
+/** Una pista que ya recibió un equipo. `indice` va de 0 a 2. */
+export type PistaEnviada = { at: number; phaseId: string; capa: number; nivel: NivelPista; indice: number };
+export type ResultadoPista = {
+  enviadas: { teamId: string; equipo: string; fase: string; capa: number; nivel: NivelPista; indice: number }[];
+  /** Equipos del destino que no la recibieron, y por qué. */
+  omitidos: { equipo: string; motivo: string }[];
 };
 
 export type Ack<T = unknown> = (r: { ok: boolean; error?: string; data?: T }) => void;
@@ -662,13 +691,14 @@ export interface ClientToServerEvents {
   'minijuego:puntaje': (p: { ronda: string; puntos: number }, ack: Ack<{ mejor: number }>) => void;
   /** Enciende o apaga el acceso libre a las fases abiertas. */
   'admin:event:acceso': (p: { libre: boolean }, ack: Ack) => void;
-  /** El letrero del robot con un consejo. Sin equipos, va a todos. */
-  'admin:consejo': (p: { teamIds?: string[] }, ack: Ack<{ equipos: number }>) => void;
-  /** Vista previa del letrero en el panel: no se manda a nadie. */
-  'admin:consejo:ver': (
-    p: { faseKey: string | null; capa: number | null; rol: Role },
-    ack: Ack<ConsejoRobot & { capas: number }>,
+  /** Una pista a equipos sueltos, a los que están en una fase o a todos.
+   *  Sin `indice`, a cada equipo le toca la siguiente que no ha recibido. */
+  'admin:pista': (
+    p: { destino: DestinoPista; nivel: NivelPista; indice?: number | null },
+    ack: Ack<ResultadoPista>,
   ) => void;
+  /** Todas las pistas, para que el panel las enseñe antes de mandarlas. */
+  'admin:pistas:catalogo': (p: unknown, ack: Ack<CatalogoPistas>) => void;
   /** Ensayo de la pantalla de victoria. Sin equipos, va a todos. */
   'admin:phase:celebrar': (
     p: { teamIds?: string[] },

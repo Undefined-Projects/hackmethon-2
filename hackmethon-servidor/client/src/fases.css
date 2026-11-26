@@ -1671,3 +1671,6 @@ button.mandar-consejo:hover:not(:disabled){ background:var(--clorofila); color:v
 .imt-parte.metodo{ fill:#ff6b8f; } .imt-parte.ruta{ fill:var(--clorofila-hi); } .imt-parte.cab{ fill:var(--blue-hi); } .imt-parte.cuerpo{ fill:#ffd166; }
 .imt-codigo{ font-family:var(--f-pixel); font-size:30px; }
 .imt-codigo.ok{ fill:#fff; } .imt-codigo.mal{ fill:#ff4466; }
+/* El sello de una pista lleva el color de su nivel (ver `.nivel-*`). */
+.consejo-letrero__sello.nivel-sutil{ color:var(--clorofila-hi); }
+.consejo-letrero__sello.nivel-obvia{ color:var(--sangre-hi); }
