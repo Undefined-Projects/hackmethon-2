@@ -13,6 +13,7 @@ type Tabla = {
   columnas: string[];
   filas: string[][];
   totalFilas?: number;
+  soloEstructura?: boolean;
 };
 
 type Relacion = { desde: string; campo: string; hasta: string };
@@ -267,49 +268,57 @@ function DetalleTabla({
         </div>
       )}
 
-      <input
-        className="filtro"
-        value={filtro}
-        onChange={(e) => setFiltro(e.target.value)}
-        placeholder={`Filtrar ${tabla.nombre}…`}
-      />
-
-      <div className="tabla-scroll">
-        <table className="tabla-datos">
-          <thead>
-            <tr>{tabla.columnas.map((c) => <th key={c}>{c}</th>)}</tr>
-          </thead>
-          <tbody>
-            {visibles.map((f) => (
-              <tr key={f[0]} className={resaltado && f[0] === resaltado ? 'resaltada' : ''}>
-                {f.map((celda, j) => {
-                  const rel = relaciones.find(
-                    (r) => r.desde === tabla.id && r.campo === tabla.columnas[j],
-                  );
-                  // Una celda de clave ajena es un salto: se pulsa y te
-                  // lleva a la fila referenciada, ya filtrada.
-                  return (
-                    <td key={j}>
-                      {rel && celda ? (
-                        <button className="ref" onClick={() => alSaltar(rel.hasta, celda, celda)}>
-                          {celda}
-                        </button>
-                      ) : (
-                        celda || <span className="vacio">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {filas.length === 0 && <p className="pendiente">Ninguna fila coincide.</p>}
-      {filas.length > visibles.length && (
-        <p className="datos-filtro-pie">
-          Mostrando {visibles.length} de {filas.length} filas. Usa el filtro o ejecuta una consulta desde Terminal.
+      {tabla.soloEstructura ? (
+        <p className="pendiente">
+          Esta tabla tiene {tabla.totalFilas ?? tabla.filas.length} registros en la memoria.
+          Para consultarlos o cruzarlos, pidele a Terminal que ejecute{' '}
+          <code>MOSTRAR TODO DE {tabla.nombre}</code> y miralos en la Pantalla de Filtro en Vivo.
         </p>
+      ) : (
+        <>
+          <input
+            className="filtro"
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+            placeholder={`Filtrar ${tabla.nombre}…`}
+          />
+
+          <div className="tabla-scroll">
+            <table className="tabla-datos">
+              <thead>
+                <tr>{tabla.columnas.map((c) => <th key={c}>{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {visibles.map((f) => (
+                  <tr key={f[0]} className={resaltado && f[0] === resaltado ? 'resaltada' : ''}>
+                    {f.map((celda, j) => {
+                      const rel = relaciones.find(
+                        (r) => r.desde === tabla.id && r.campo === tabla.columnas[j],
+                      );
+                      return (
+                        <td key={j}>
+                          {rel && celda ? (
+                            <button className="ref" onClick={() => alSaltar(rel.hasta, celda, celda)}>
+                              {celda}
+                            </button>
+                          ) : (
+                            celda || <span className="vacio">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filas.length === 0 && <p className="pendiente">Ninguna fila coincide.</p>}
+          {filas.length > visibles.length && (
+            <p className="datos-filtro-pie">
+              Mostrando {visibles.length} de {filas.length} filas. Usa el filtro o ejecuta una consulta desde Terminal.
+            </p>
+          )}
+        </>
       )}
     </>
   );
@@ -317,12 +326,19 @@ function DetalleTabla({
 
 /* ── pantalla en vivo del resultado del filtro / join ─────── */
 
+const FILAS_POR_PAGINA = 100;
+
 function PantallaFiltro({ resultado }: { resultado: ResultadoFiltro }) {
-  const [busquedaLocal, setBusquedaLocal] = useState('');
-  const q = busquedaLocal.trim().toLowerCase();
-  const filasFiltradas = q
-    ? resultado.filas.filter((f) => f.some((c) => c.toLowerCase().includes(q)))
-    : resultado.filas;
+  const [pagina, setPagina] = useState(0);
+
+  useEffect(() => {
+    setPagina(0);
+  }, [resultado.consulta, resultado.total]);
+
+  const totalPaginas = Math.max(1, Math.ceil(resultado.filas.length / FILAS_POR_PAGINA));
+  const pagActual = Math.min(pagina, totalPaginas - 1);
+  const desde = pagActual * FILAS_POR_PAGINA;
+  const filasPagina = resultado.filas.slice(desde, desde + FILAS_POR_PAGINA);
 
   return (
     <div className="datos-filtro-panel" data-testid="datos-resultado-filtro">
@@ -349,12 +365,29 @@ function PantallaFiltro({ resultado }: { resultado: ResultadoFiltro }) {
         <p className="datos-filtro-nota">{resultado.nota}</p>
       )}
 
-      <input
-        className="filtro"
-        value={busquedaLocal}
-        onChange={(e) => setBusquedaLocal(e.target.value)}
-        placeholder="Buscar dentro de los registros que quedaron en pantalla…"
-      />
+      {totalPaginas > 1 && (
+        <div className="datos-paginacion">
+          <button
+            type="button"
+            className="sutil"
+            disabled={pagActual === 0}
+            onClick={() => setPagina((p) => Math.max(0, p - 1))}
+          >
+            &lt; ANTERIOR
+          </button>
+          <span className="datos-paginacion-info">
+            Pagina {pagActual + 1} de {totalPaginas} · filas {desde + 1} a {Math.min(desde + FILAS_POR_PAGINA, resultado.filas.length)} de {resultado.total}
+          </span>
+          <button
+            type="button"
+            className="sutil"
+            disabled={pagActual >= totalPaginas - 1}
+            onClick={() => setPagina((p) => Math.min(totalPaginas - 1, p + 1))}
+          >
+            SIGUIENTE &gt;
+          </button>
+        </div>
+      )}
 
       <div className="tabla-scroll datos-filtro-scroll">
         <table className="tabla-datos">
@@ -366,8 +399,8 @@ function PantallaFiltro({ resultado }: { resultado: ResultadoFiltro }) {
             </tr>
           </thead>
           <tbody>
-            {filasFiltradas.map((f, idx) => (
-              <tr key={`${f[0]}-${idx}`} className={resultado.total === 1 ? 'resaltada' : ''}>
+            {filasPagina.map((f, idx) => (
+              <tr key={`${f[0]}-${desde + idx}`} className={resultado.total === 1 ? 'resaltada' : ''}>
                 {f.map((celda, j) => (
                   <td key={j}>{celda && celda !== 'NULL' ? celda : <span className="vacio">—</span>}</td>
                 ))}
@@ -377,14 +410,8 @@ function PantallaFiltro({ resultado }: { resultado: ResultadoFiltro }) {
         </table>
       </div>
 
-      {filasFiltradas.length === 0 && (
+      {filasPagina.length === 0 && (
         <p className="pendiente">Ningun registro coincide con el filtro actual.</p>
-      )}
-      {resultado.total > resultado.filas.length && (
-        <p className="datos-filtro-pie">
-          Mostrando los primeros {resultado.filas.length} de {resultado.total} registros que cumplen el filtro.
-          Aplica mas condiciones en Terminal para estrechar la tabla.
-        </p>
       )}
     </div>
   );

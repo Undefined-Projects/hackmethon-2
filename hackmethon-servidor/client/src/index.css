@@ -962,6 +962,14 @@ body.fallo .cortinilla > strong{ animation:falloCanales .22s steps(1) infinite; 
 .datos-filtro-pie{
   margin:0; font-size:11px; color:var(--phos-dim); text-align:right;
 }
+.datos-paginacion{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; padding:4px 8px;
+  border:1px solid rgba(79,134,238,.28); background:var(--screen);
+}
+.datos-paginacion-info{
+  font-family:var(--f-mono); font-size:11px; color:var(--phos-soft);
+}
 @media (max-width:700px){
   .nodo__desc{ display:none; }
 }

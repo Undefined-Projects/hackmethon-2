@@ -10,22 +10,27 @@
 //  DOS PARTES, MISMA TERMINAL (Pseudo-SQL natural en español)
 //    PARTE 1 · «Encontrar las tres llaves»
 //      En Datos están las 4 tablas reales de la memoria (sin tablas de
-//      pistas artificiales) y una PANTALLA DE FILTRO EN VIVO que muestra
-//      los registros y columnas que van quedando tras cada filtro o JOIN
-//      (`JUNTO CON` / `DONDE`) que aplica Terminal.
+//      pistas artificiales) y una PANTALLA DE FILTRO EN VIVO (paginada)
+//      que muestra los registros y columnas que van quedando tras cada
+//      filtro o JOIN (`JUNTO CON` / `DONDE`) que aplica Terminal.
+//      Cada equipo tiene su propia semilla: cambian el prefijo, los
+//      números, la terminación y el tamaño de la llave.
 //    PARTE 2 · «Borrar la memoria»
-//      Las 2400 filas ahora tienen tablas de respaldo y reglas
-//      automáticas (`sistema_triggers`) que restauran lo borrado. Datos
-//      ve en vivo cómo bajan o se restauran las filas de cada tabla.
+//      Se conservan las 4 tablas originales (con las mismas filas y
+//      llaves de la Parte 1) y se SUMAN las tablas de respaldo y la
+//      bitácora (8 tablas en Datos). Además, hay reglas automáticas en
+//      `sistema_triggers` (visibles en Pantalla) donde unos triggers
+//      protegen a otros triggers en cadena.
 //
-//  EL REPARTO
-//    DATOS     el mapa relacional con las tablas REALES de la memoria y
-//              la pantalla en vivo con las filas y columnas que quedan
-//              tras cada filtro o JOIN.
-//    PANTALLA  el circuito cerrado (ARCHIVO / LLAVERO / MEMORIA /
-//              RESPALDOS), el estado de las 3 ranuras de la conciencia
-//              y la salida de la consola.
-//    TERMINAL  escribe consultas y filtros a ciegas.
+//  EL REPARTO EQUILIBRADO (33% / 33% / 33%)
+//    DATOS     el mapa relacional de las tablas de memoria y el ÚNICO
+//              que ve los registros y columnas en la Pantalla de Filtro
+//              en Vivo (con paginación).
+//    PANTALLA  las cámaras (ARCHIVO / LLAVERO / MEMORIA / RESPALDOS),
+//              las pistas de las 3 cerraduras (`estado`), el manual
+//              (`consultas`) y, en Parte 2, el catálogo `sistema_triggers`
+//              y las alertas de reglas disparadas o bloqueadas.
+//    TERMINAL  escribe consultas, filtros, guardados y borrados a ciegas.
 // ============================================================
 
 import type { Role } from '../lib/constants.js';
@@ -42,13 +47,13 @@ import {
   type BD, type Fila, type Sentencia, type Tabla, type TriggerDef, type Valor,
 } from './sqlmini.js';
 
-// ---------- Aleatorio con semilla fija ----------
-//
-// La misma memoria en todos los equipos y en todas las partidas: con
-// `Math.random()` dos equipos vecinos tendrían respuestas distintas y una
-// prueba verde hoy fallaría mañana.
+// ---------- Aleatorio con semilla por equipo ----------
+
+export const SEMILLA_BASE = 20260915;
+
 function generador(semilla: number) {
-  let s = semilla;
+  let s = Math.abs(Math.trunc(semilla) || SEMILLA_BASE) % 2147483647;
+  if (s === 0) s = SEMILLA_BASE;
   return (n: number) => {
     s = (s * 1103515245 + 12345) % 2147483648;
     return Math.floor(s / 65536) % n;
@@ -57,25 +62,18 @@ function generador(semilla: number) {
 const nn = (n: number, w: number) => String(n).padStart(w, '0');
 
 // ============================================================
-//  PARTE 1 · la memoria desordenada
+//  Construcción del mundo (Parte 1 y Parte 2) por semilla
 // ============================================================
 
 const N_FRAG = 1800;
 const SISTEMAS = ['nucleo', 'red', 'energia', 'sensores', 'memoria'];
+const PREFIJOS_LLAVE = ['LLV', 'CLV', 'KRN', 'ACC', 'NUC', 'SIG'];
+const SUFIJOS_LLAVE = ['K7', 'X9', 'M4', 'R8', 'Z3', 'V6'];
+const TAMANOS_LLAVE = [64, 96, 128, 48, 72, 84];
 
-/** Las tres consultas en Pseudo-SQL español que resuelven cada llave.
- *  Las usa la construcción del mundo (para garantizar que cada llave es
- *  ÚNICA) y las pruebas. */
-export const SOLUCIONES = [
-  'MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios '
-  + 'DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y estado ES activo '
-  + 'Y tipo ES subsistema Y sistema ES nucleo',
-  'MOSTRAR TODO DE fragmentos JUNTO CON modulos, etiquetas '
-  + 'DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y nivel ES 9 '
-  + 'Y categoria ES seguridad Y enlace ES externo',
-  'MOSTRAR TODO DE fragmentos JUNTO CON referencia, etiquetas '
-  + 'DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64 Y estado ES archivado '
-  + 'Y etiquetas.nombre ES llave_maestra',
+export const DATOS2 = [
+  'fragmentos', 'modulos', 'propietarios', 'etiquetas',
+  'respaldo_fragmentos', 'respaldo_modulos', 'respaldo_propietarios', 'bitacora',
 ];
 
 type Spec = {
@@ -83,8 +81,56 @@ type Spec = {
   modulo_id: string; etiqueta_id: string; nivel: number; referencia_id: string | null;
 };
 
-function construirMundo1() {
-  const az = generador(20260915);
+export type MundoFase5 = {
+  semilla: number;
+  prefijo: string;
+  sufijo: string;
+  tamanoLlave: number;
+  patronFormato: string;
+  soluciones: [string, string, string];
+  bd1: BD;
+  claves: [string, string, string];
+  idMolde: string;
+  bd2Base: BD;
+  total2: number;
+};
+
+export function solucionesPara(prefijo: string, sufijo: string, tamano: number): [string, string, string] {
+  const pat = `${prefijo}-####-${sufijo}`;
+  return [
+    `MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios `
+    + `DONDE codigo TIENE FORMATO ${pat} Y tamano ES ${tamano} Y estado ES activo `
+    + `Y tipo ES conciencia Y sistema ES nucleo`,
+    `MOSTRAR TODO DE fragmentos JUNTO CON modulos, etiquetas `
+    + `DONDE codigo TIENE FORMATO ${pat} Y tamano ES ${tamano} Y nivel ES 9 `
+    + `Y categoria ES seguridad Y enlace ES externo`,
+    `MOSTRAR TODO DE fragmentos JUNTO CON referencia, etiquetas `
+    + `DONDE codigo TIENE FORMATO ${pat} Y tamano ES ${tamano} Y estado ES archivado `
+    + `Y etiquetas.nombre ES llave_maestra`,
+  ];
+}
+
+function elegirRasgosSemilla(semilla: number) {
+  if (semilla === SEMILLA_BASE) {
+    return { prefijo: 'LLV', sufijo: 'K7', tamanoLlave: 64 };
+  }
+  const az = generador(semilla ^ 0x5f3759df);
+  return {
+    prefijo: PREFIJOS_LLAVE[az(PREFIJOS_LLAVE.length)],
+    sufijo: SUFIJOS_LLAVE[az(SUFIJOS_LLAVE.length)],
+    tamanoLlave: TAMANOS_LLAVE[az(TAMANOS_LLAVE.length)],
+  };
+}
+
+export const contarFilas = (db: BD) =>
+  DATOS2.reduce((n, t) => n + (db.tablas.get(t)?.filas.length ?? 0), 0);
+
+function construirMundoPorSemilla(semilla: number): MundoFase5 {
+  const az = generador(semilla);
+  const { prefijo, sufijo, tamanoLlave } = elegirRasgosSemilla(semilla);
+  const patronFormato = `${prefijo}-####-${sufijo}`;
+  const soluciones = solucionesPara(prefijo, sufijo, tamanoLlave);
+
   const pick = <T>(a: T[]): T => a[az(a.length)];
   const mezclar = <T>(a: T[]): T[] => {
     for (let i = a.length - 1; i > 0; i--) {
@@ -106,21 +152,25 @@ function construirMundo1() {
     modulos.push({ id: `M-${nn(i, 3)}`, nombre: `mod_${sistema}_${nn(i, 3)}`, sistema, enlace });
   }
 
-  // --- propietarios (180)
+  // --- propietarios (180): roles realistas de sistema/empresa
+  const DEPTOS_EMP = ['finanzas', 'soporte', 'redes', 'almacen', 'operaciones', 'recursos'];
   const tipos = mezclar([
-    ...Array<string>(12).fill('robot'),
-    ...Array<string>(45).fill('subsistema'),
-    ...Array<string>(123).fill('humano'),
+    ...Array<string>(12).fill('admin'),
+    ...Array<string>(45).fill('conciencia'),
+    ...Array<string>(123).fill('usuario'),
   ]);
-  const propietarios: Fila[] = tipos.map((tipo, i) => ({
-    id: `P-${nn(i + 1, 3)}`,
-    nombre: tipo === 'subsistema'
-      ? `sub_conciencia_${nn(i + 1, 3)}`
-      : tipo === 'robot'
-        ? `chasis_robot_${nn(i + 1, 3)}`
-        : `operador_${nn(i + 1, 3)}`,
-    tipo,
-  }));
+  const propietarios: Fila[] = tipos.map((tipo, i) => {
+    const depto = DEPTOS_EMP[i % DEPTOS_EMP.length];
+    return {
+      id: `P-${nn(i + 1, 3)}`,
+      nombre: tipo === 'conciencia'
+        ? `ia_nucleo_${nn(i + 1, 3)}`
+        : tipo === 'admin'
+          ? `admin_${depto}_${nn(i + 1, 3)}`
+          : `usr_${depto}_${nn(i + 1, 3)}`,
+      tipo,
+    };
+  });
 
   // --- etiquetas (300). Las seis primeras son las que se parecen entre sí.
   const BASES = ['acceso', 'respaldo', 'diagnostico', 'telemetria', 'energia', 'red', 'sensor', 'registro', 'calibracion', 'arranque'];
@@ -143,23 +193,23 @@ function construirMundo1() {
   const modOtroExt = modulos.filter((m) => m.sistema !== 'nucleo' && m.enlace === 'externo');
   const modOtroInt = modulos.filter((m) => m.sistema !== 'nucleo' && m.enlace === 'interno');
   const modInterno = modulos.filter((m) => m.enlace === 'interno');
-  const propSub = propietarios.filter((p) => p.tipo === 'subsistema');
-  const propRobot = propietarios.filter((p) => p.tipo === 'robot');
-  const propHum = propietarios.filter((p) => p.tipo === 'humano');
+  const propSub = propietarios.filter((p) => p.tipo === 'conciencia');
+  const propRobot = propietarios.filter((p) => p.tipo === 'admin');
+  const propHum = propietarios.filter((p) => p.tipo === 'usuario');
   const etq = etiquetas.slice(6);
   const etqSeg = etq.filter((e) => e.categoria === 'seguridad');
   const etqOp = etq.filter((e) => e.categoria === 'operacion');
   const etqHist = etq.filter((e) => e.categoria === 'historial');
 
   // --- fragmentos (1800): el ruido de fondo
-  const PREF = ['DAT', 'LOG', 'CFG', 'TMP', 'SYS', 'MEM'];
+  const PREF_RUIDO = ['DAT', 'LOG', 'CFG', 'TMP', 'SYS', 'MEM'];
   const LET = 'ABCDEFGHIJ';
   const ESTADOS = ['activo', 'activo', 'activo', 'activo', 'activo', 'activo', 'archivado', 'archivado', 'corrupto', 'corrupto'];
   const frags: Fila[] = [];
   for (let i = 1; i <= N_FRAG; i++) {
     frags.push({
       id: `F-${nn(i, 4)}`,
-      codigo: `${pick(PREF)}-${nn(az(10000), 4)}-${LET[az(10)]}${az(10)}`,
+      codigo: `${pick(PREF_RUIDO)}-${nn(az(10000), 4)}-${LET[az(10)]}${az(10)}`,
       modulo_id: pick(modulos).id,
       propietario_id: pick(propietarios).id,
       etiqueta_id: etq[az(etq.length)].id,
@@ -170,12 +220,17 @@ function construirMundo1() {
     });
   }
 
-  // Reservados: el fragmento que lleva la etiqueta buena y los que llevan
-  // las parecidas. Nadie al azar puede apuntar a ellos.
-  const iMaestra = 88;
-  const iSimil = [140, 141, 142, 143, 144];
+  // Reservados: el fragmento molde (`llave_maestra`) y sus señuelos van
+  // después de la fila 600 para que nunca aparezcan en las primeras páginas
+  // sin haber aplicado ningún filtro.
+  const iMaestra = 688;
+  const iSimil = [740, 841, 942, 1043, 1144];
   frags[iMaestra].etiqueta_id = 'E-001';
+  frags[iMaestra].codigo = `${prefijo}-0000-${sufijo}`;
+  frags[iMaestra].tamano = tamanoLlave;
+  frags[iMaestra].estado = 'corrupto';
   iSimil.forEach((idx, k) => { frags[idx].etiqueta_id = `E-${nn(k + 2, 3)}`; });
+
   const reservados = new Set([iMaestra, ...iSimil]);
   const idsReservados = new Set([...reservados].map((i) => frags[i].id as string));
   for (const f of frags) {
@@ -185,11 +240,15 @@ function construirMundo1() {
     }
   }
 
-  const libres = mezclar(Array.from({ length: N_FRAG }, (_, i) => i).filter((i) => !reservados.has(i)));
-  const usados = new Set<string>();
+  // Todas las llaves y señuelos se plantan a partir de la fila 350 (fuera de
+  // las primeras páginas de la tabla cruda).
+  const libres = mezclar(
+    Array.from({ length: N_FRAG }, (_, i) => i).filter((i) => i >= 350 && !reservados.has(i)),
+  );
+  const usados = new Set<string>([`${prefijo}-0000-${sufijo}`]);
   const codigoLlave = () => {
     for (;;) {
-      const c = `LLV-${nn(1000 + az(9000), 4)}-K7`;
+      const c = `${prefijo}-${nn(1000 + az(9000), 4)}-${sufijo}`;
       if (!usados.has(c)) { usados.add(c); return c; }
     }
   };
@@ -201,36 +260,41 @@ function construirMundo1() {
 
   // Las tres llaves.
   const specA: Spec = {
-    codigo: codigoLlave(), tamano: 64, estado: 'activo',
+    codigo: codigoLlave(), tamano: tamanoLlave, estado: 'activo',
     propietario_id: propSub[0].id as string, modulo_id: modNucleo[0].id as string,
     etiqueta_id: etqOp[0].id as string, nivel: 4, referencia_id: null,
   };
   const specB: Spec = {
-    codigo: codigoLlave(), tamano: 64, estado: 'activo',
+    codigo: codigoLlave(), tamano: tamanoLlave, estado: 'activo',
     propietario_id: propHum[0].id as string, modulo_id: modOtroExt[0].id as string,
     etiqueta_id: etqSeg[0].id as string, nivel: 9, referencia_id: null,
   };
   const specC: Spec = {
-    codigo: codigoLlave(), tamano: 64, estado: 'archivado',
+    codigo: codigoLlave(), tamano: tamanoLlave, estado: 'archivado',
     propietario_id: propHum[1].id as string, modulo_id: modOtroInt[0].id as string,
     etiqueta_id: etqOp[1].id as string, nivel: 3, referencia_id: frags[iMaestra].id as string,
   };
-  const claves = [plantar(specA), plantar(specB), plantar(specC)];
+  const claves: [string, string, string] = [plantar(specA), plantar(specB), plantar(specC)];
 
-  // Los señuelos: cada uno es la llave con UN solo rasgo cambiado.
+  // Prefijo y sufijo trampa derivados de los reales de este equipo
+  const prefijoFalso = prefijo.slice(0, 2) + (prefijo[2] === 'U' ? 'V' : 'U');
+  const sufijoFalso = sufijo[0] + (sufijo[1] === '9' ? '1' : '9');
+  const sufijoMinusc = sufijo.toLowerCase();
+
   const variantesFormato = (base: Spec): Partial<Spec>[] => {
-    const d = (base.codigo.match(/LLV-(\d{4})-K7/) ?? [])[1] ?? '0000';
+    const m = new RegExp(`${prefijo}-(\\d{4})-${sufijo}`).exec(base.codigo);
+    const d = m ? m[1] : '1234';
     return [
-      { codigo: `LLU-${d}-K7` },
-      { codigo: `LLV-${d}-K9` },
-      { codigo: `LLV-${d.slice(1)}-K7` },
-      { codigo: `LLV-${d}-k7` },
-      { tamano: 63 },
-      { tamano: 65 },
+      { codigo: `${prefijoFalso}-${d}-${sufijo}` },
+      { codigo: `${prefijo}-${d}-${sufijoFalso}` },
+      { codigo: `${prefijo}-${d.slice(1)}-${sufijo}` },
+      { codigo: `${prefijo}-${d}-${sufijoMinusc}` },
+      { tamano: tamanoLlave - 1 },
+      { tamano: tamanoLlave + 1 },
     ];
   };
+
   const cambios: Partial<Spec>[][] = [
-    // A: activa · subsistema · núcleo
     [
       ...variantesFormato(specA),
       { estado: 'archivado' }, { estado: 'corrupto' },
@@ -238,14 +302,12 @@ function construirMundo1() {
       { modulo_id: modulos.find((m) => m.sistema === 'red')!.id as string },
       { modulo_id: modulos.find((m) => m.sistema === 'energia')!.id as string },
     ],
-    // B: nivel máximo · seguridad · externo
     [
       ...variantesFormato(specB),
       { nivel: 8 }, { nivel: 5 },
       { etiqueta_id: etqOp[2].id as string }, { etiqueta_id: etqHist[0].id as string },
       { modulo_id: modInterno[0].id as string }, { modulo_id: modInterno[1].id as string },
     ],
-    // C: archivada · referencia a la maestra
     [
       ...variantesFormato(specC),
       { estado: 'activo' }, { estado: 'corrupto' },
@@ -262,130 +324,132 @@ function construirMundo1() {
   // Relleno que imita: formatos casi llave con atributos al azar.
   for (let k = 0; k < 45; k++) {
     const d = nn(1000 + az(9000), 4);
-    const cod = [`LLV-${d}-K7`, `LLV-${d}-K7`, `LLU-${d}-K7`, `LLV-${d}-K1`, `L1V-${d}-K7`][az(5)];
+    const cod = [
+      `${prefijo}-${d}-${sufijo}`,
+      `${prefijo}-${d}-${sufijo}`,
+      `${prefijoFalso}-${d}-${sufijo}`,
+      `${prefijo}-${d}-${sufijoFalso}`,
+      `${prefijo[0]}1${prefijo[2]}-${d}-${sufijo}`,
+    ][az(5)];
     const idx = libres.pop()!;
     frags[idx].codigo = cod;
-    if (az(2) === 0) frags[idx].tamano = 64;
+    if (az(2) === 0) frags[idx].tamano = tamanoLlave;
   }
 
-  const bd: BD = {
+  const colF = ['id', 'codigo', 'modulo_id', 'propietario_id', 'etiqueta_id', 'referencia_id', 'estado', 'nivel', 'tamano'];
+  const colM = ['id', 'nombre', 'sistema', 'enlace'];
+  const colP = ['id', 'nombre', 'tipo'];
+  const colE = ['id', 'nombre', 'categoria'];
+
+  const bd1: BD = {
     tablas: new Map([
-      ['fragmentos', { nombre: 'fragmentos', columnas: ['id', 'codigo', 'modulo_id', 'propietario_id', 'etiqueta_id', 'referencia_id', 'estado', 'nivel', 'tamano'], filas: frags }],
-      ['modulos', { nombre: 'modulos', columnas: ['id', 'nombre', 'sistema', 'enlace'], filas: modulos }],
-      ['propietarios', { nombre: 'propietarios', columnas: ['id', 'nombre', 'tipo'], filas: propietarios }],
-      ['etiquetas', { nombre: 'etiquetas', columnas: ['id', 'nombre', 'categoria'], filas: etiquetas }],
+      ['fragmentos', { nombre: 'fragmentos', columnas: colF, filas: frags }],
+      ['modulos', { nombre: 'modulos', columnas: colM, filas: modulos }],
+      ['propietarios', { nombre: 'propietarios', columnas: colP, filas: propietarios }],
+      ['etiquetas', { nombre: 'etiquetas', columnas: colE, filas: etiquetas }],
     ]),
     triggers: [],
     catalogoTriggers: false,
     seqBitacora: 0,
   };
 
-  // Que cada llave sea ÚNICA no se deja a la suerte de la semilla: se
-  // ejecuta su consulta y todo lo que cuele se descarta (tamano 63 rompe
-  // el formato de las tres).
+  // Garantizar que cada llave sea ÚNICA ejecutando sus 3 consultas de solución.
   for (let k = 0; k < 3; k++) {
-    const s = analizar(SOLUCIONES[k]);
+    const s = analizar(soluciones[k]);
     if (s.tipo !== 'select') throw new Error('solucion no es SELECT');
     for (let vuelta = 0; vuelta < 6; vuelta++) {
-      const r = ejecutarSelect(s.sel, bd);
+      const r = ejecutarSelect(s.sel, bd1);
       const intrusos = r.base.filter((f) => f && f.id !== claves[k]);
       if (intrusos.length === 0) break;
-      for (const f of intrusos) f!.tamano = 63;
+      for (const f of intrusos) f!.tamano = tamanoLlave - 1;
     }
   }
 
-  return { bd, claves };
-}
+  // ============================================================
+  //  PARTE 2 · CONSERVA las 4 tablas originales (con las mismas
+  //  filas y llaves de la Parte 1) y SUMA las 4 tablas nuevas
+  //  (respaldo_fragmentos, respaldo_modulos, respaldo_propietarios,
+  //  bitacora) + la cadena de triggers protectores.
+  // ============================================================
 
-const MUNDO1 = construirMundo1();
-const LLAVES = MUNDO1.claves;
-
-// ============================================================
-//  PARTE 2 · la memoria con respaldos y triggers
-// ============================================================
-
-const DATOS2 = ['fragmentos', 'modulos', 'propietarios', 'etiquetas',
-  'respaldo_fragmentos', 'respaldo_modulos', 'respaldo_propietarios', 'bitacora'];
-
-function construirMundo2(): BD {
-  const az = generador(20261105);
-  const pick = <T>(a: T[]): T => a[az(a.length)];
-
-  const modulos: Fila[] = Array.from({ length: 100 }, (_, i) => ({
-    id: `M-${nn(i + 1, 3)}`, nombre: `mod_${nn(i + 1, 3)}`, sistema: pick(SISTEMAS),
-  }));
-  const propietarios: Fila[] = Array.from({ length: 120 }, (_, i) => ({
-    id: `P-${nn(i + 1, 3)}`, nombre: `prop_${nn(i + 1, 3)}`, tipo: pick(['humano', 'humano', 'subsistema', 'robot']),
-  }));
-  const etiquetas: Fila[] = Array.from({ length: 120 }, (_, i) => ({
-    id: `E-${nn(i + 1, 3)}`, nombre: `etq_${nn(i + 1, 3)}`, categoria: pick(['seguridad', 'operacion', 'historial']),
-  }));
-  const frags: Fila[] = Array.from({ length: 1300 }, (_, i) => ({
-    id: `F-${nn(i + 1, 4)}`,
-    codigo: `${pick(['DAT', 'LOG', 'CFG', 'TMP'])}-${nn(az(10000), 4)}-${'ABCDEFGHIJ'[az(10)]}${az(10)}`,
-    modulo_id: pick(modulos).id,
-    propietario_id: pick(propietarios).id,
-    estado: pick(['activo', 'archivado', 'corrupto']),
-  }));
-
-  // El respaldo de fragmentos es PARCIAL (450 de 1300): el robot no lo
-  // copia todo, y eso es lo que impide resolverlo borrando "las copias"
-  // a ciegas.
   const orden = Array.from({ length: frags.length }, (_, i) => i);
   for (let i = orden.length - 1; i > 0; i--) {
     const j = az(i + 1);
     [orden[i], orden[j]] = [orden[j], orden[i]];
   }
-  const copiados = orden.slice(0, 450).sort((a, b) => a - b).map((i) => ({ ...frags[i] }));
+  // Nos aseguramos de que las 3 llaves también estén incluidas en las 450 copias de respaldo_fragmentos
+  const indicesClaves = claves.map((id) => frags.findIndex((f) => f.id === id)).filter((i) => i >= 0);
+  const setCopiados = new Set<number>(indicesClaves);
+  for (const idx of orden) {
+    if (setCopiados.size >= 450) break;
+    setCopiados.add(idx);
+  }
+  const copiados = [...setCopiados].sort((a, b) => a - b).map((i) => ({ ...frags[i] }));
 
   const bitacora: Fila[] = Array.from({ length: 90 }, (_, i) => ({
-    id: `B-${nn(i + 1, 4)}`, evento: pick(['arranque', 'copia', 'sincronia', 'latido']), detalle: `ciclo ${i + 1}`,
+    id: `B-${nn(i + 1, 4)}`,
+    evento: pick(['arranque', 'copia', 'sincronia', 'latido']),
+    detalle: `ciclo ${i + 1}`,
   }));
 
   const mk = (nombre: string, columnas: string[], filas: Fila[]) => [nombre, { nombre, columnas, filas }] as const;
-  const colF = ['id', 'codigo', 'modulo_id', 'propietario_id', 'estado'];
-  const colM = ['id', 'nombre', 'sistema'];
-  const colP = ['id', 'nombre', 'tipo'];
 
+  // Cadena de triggers:
+  //   trg_vigia_maestro (TR-09)
+  //     ├── protege a trg_escudo_respaldos (TR-08) y a trg_latido (TR-05)
+  //   trg_escudo_respaldos (TR-08)
+  //     └── protege a trg_restaurar_frag, trg_replicar_respaldo, trg_restaurar_mod, trg_restaurar_prop
   const triggers: TriggerDef[] = [
     { id: 'TR-01', nombre: 'trg_restaurar_frag', tabla: 'fragmentos', evento: 'DELETE', activo: true,
       efecto: { tipo: 'reponer', desde: 'respaldo_fragmentos' },
-      accion: 'al borrar de fragmentos, vuelve a insertar las filas que tengan copia en respaldo_fragmentos' },
+      accion: 'al borrar de fragmentos, vuelve a insertar las filas que tengan copia en respaldo_fragmentos (protegida por trg_escudo_respaldos)' },
     { id: 'TR-02', nombre: 'trg_replicar_respaldo', tabla: 'respaldo_fragmentos', evento: 'DELETE', activo: true,
       efecto: { tipo: 'reponer', desde: 'fragmentos' },
-      accion: 'al borrar de respaldo_fragmentos, vuelve a copiar las filas que sigan existiendo en fragmentos' },
+      accion: 'al borrar de respaldo_fragmentos, vuelve a copiar las filas que sigan en fragmentos (protegida por trg_escudo_respaldos)' },
     { id: 'TR-03', nombre: 'trg_restaurar_mod', tabla: 'modulos', evento: 'DELETE', activo: true,
       efecto: { tipo: 'reponer', desde: 'respaldo_modulos' },
-      accion: 'al borrar de modulos, vuelve a insertar las filas que tengan copia en respaldo_modulos' },
+      accion: 'al borrar de modulos, vuelve a insertar las filas desde respaldo_modulos (protegida por trg_escudo_respaldos)' },
     { id: 'TR-04', nombre: 'trg_restaurar_prop', tabla: 'propietarios', evento: 'DELETE', activo: true,
       efecto: { tipo: 'reponer', desde: 'respaldo_propietarios' },
-      accion: 'al borrar de propietarios, vuelve a insertar las filas que tengan copia en respaldo_propietarios' },
+      accion: 'al borrar de propietarios, vuelve a insertar las filas desde respaldo_propietarios (protegida por trg_escudo_respaldos)' },
     { id: 'TR-05', nombre: 'trg_latido', tabla: 'bitacora', evento: 'DELETE', activo: true,
       efecto: { tipo: 'registrar', detalle: 'latido' },
-      accion: 'al borrar de bitacora, anade una fila nueva a bitacora (el latido del robot)' },
+      accion: 'al borrar de bitacora, anade una fila nueva a bitacora (protegida por trg_vigia_maestro)' },
     { id: 'TR-06', nombre: 'trg_auditoria_etq', tabla: 'etiquetas', evento: 'DELETE', activo: true,
       efecto: { tipo: 'registrar', detalle: 'auditoria' },
-      accion: 'al borrar de etiquetas, anade una fila a bitacora' },
+      accion: 'al borrar de etiquetas, anade una fila de auditoria a bitacora' },
     { id: 'TR-07', nombre: 'trg_restaurar_frag_v0', tabla: 'fragmentos', evento: 'DELETE', activo: false,
       efecto: { tipo: 'reponer', desde: 'respaldo_fragmentos' },
       accion: 'version antigua de trg_restaurar_frag (desactivada)' },
-    { id: 'TR-08', nombre: 'trg_sello_fecha', tabla: 'fragmentos', evento: 'INSERT', activo: true,
+    { id: 'TR-08', nombre: 'trg_escudo_respaldos', tabla: 'sistema_triggers', evento: 'TRIGGER', activo: true,
+      efecto: {
+        tipo: 'protector',
+        protegeA: ['trg_restaurar_frag', 'trg_replicar_respaldo', 'trg_restaurar_mod', 'trg_restaurar_prop'],
+      },
+      accion: 'CUSTODIO: impide apagar o borrar trg_restaurar_frag, trg_replicar_respaldo, trg_restaurar_mod y trg_restaurar_prop (protegida por trg_vigia_maestro)' },
+    { id: 'TR-09', nombre: 'trg_vigia_maestro', tabla: 'sistema_triggers', evento: 'TRIGGER', activo: true,
+      efecto: {
+        tipo: 'protector',
+        protegeA: ['trg_escudo_respaldos', 'trg_latido'],
+      },
+      accion: 'VIGIA RAIZ: impide apagar o borrar trg_escudo_respaldos y trg_latido (sin protector superior)' },
+    { id: 'TR-10', nombre: 'trg_sello_fecha', tabla: 'fragmentos', evento: 'INSERT', activo: true,
       efecto: { tipo: 'inocuo' },
-      accion: 'al insertar en fragmentos, rellena la fecha de creacion' },
-    { id: 'TR-09', nombre: 'trg_validar_nivel', tabla: 'modulos', evento: 'UPDATE', activo: true,
+      accion: 'al insertar en fragmentos, rellena la fecha de creacion (funcionamiento normal)' },
+    { id: 'TR-11', nombre: 'trg_validar_nivel', tabla: 'modulos', evento: 'UPDATE', activo: true,
       efecto: { tipo: 'inocuo' },
-      accion: 'al actualizar modulos, comprueba que el sistema sea uno de los cinco validos' },
-    { id: 'TR-10', nombre: 'trg_cuenta_prop', tabla: 'propietarios', evento: 'INSERT', activo: true,
+      accion: 'al actualizar modulos, comprueba que el sistema sea valido (funcionamiento normal)' },
+    { id: 'TR-12', nombre: 'trg_cuenta_prop', tabla: 'propietarios', evento: 'INSERT', activo: true,
       efecto: { tipo: 'inocuo' },
-      accion: 'al insertar en propietarios, actualiza el contador interno de altas' },
+      accion: 'al insertar en propietarios, actualiza el contador interno de altas (funcionamiento normal)' },
   ];
 
-  return {
+  const bd2Base: BD = {
     tablas: new Map([
-      mk('fragmentos', colF, frags),
-      mk('modulos', colM, modulos),
-      mk('propietarios', colP, propietarios),
-      mk('etiquetas', ['id', 'nombre', 'categoria'], etiquetas),
+      mk('fragmentos', colF, frags.map((f) => ({ ...f }))),
+      mk('modulos', colM, modulos.map((m) => ({ ...m }))),
+      mk('propietarios', colP, propietarios.map((p) => ({ ...p }))),
+      mk('etiquetas', colE, etiquetas.map((e) => ({ ...e }))),
       mk('respaldo_fragmentos', colF, copiados),
       mk('respaldo_modulos', colM, modulos.map((m) => ({ ...m }))),
       mk('respaldo_propietarios', colP, propietarios.map((p) => ({ ...p }))),
@@ -395,14 +459,48 @@ function construirMundo2(): BD {
     catalogoTriggers: true,
     seqBitacora: bitacora.length,
   };
+
+  return {
+    semilla,
+    prefijo,
+    sufijo,
+    tamanoLlave,
+    patronFormato,
+    soluciones,
+    bd1,
+    claves,
+    idMolde: frags[iMaestra].id as string,
+    bd2Base,
+    total2: contarFilas(bd2Base),
+  };
 }
 
-const BASE2 = construirMundo2();
-const contarFilas = (db: BD) => DATOS2.reduce((n, t) => n + (db.tablas.get(t)?.filas.length ?? 0), 0);
-const TOTAL2 = contarFilas(BASE2);
+const cacheMundos = new Map<number, MundoFase5>();
 
-function reconstruir(log: string[]): BD {
-  const db = clonarBD(BASE2);
+export function mundoDeSemilla(semilla?: number): MundoFase5 {
+  const s = typeof semilla === 'number' && Number.isFinite(semilla) && semilla > 0
+    ? Math.trunc(semilla)
+    : SEMILLA_BASE;
+  let m = cacheMundos.get(s);
+  if (!m) {
+    m = construirMundoPorSemilla(s);
+    cacheMundos.set(s, m);
+  }
+  return m;
+}
+
+export function mundoDeEstado(estado: Record<string, unknown>): MundoFase5 {
+  return mundoDeSemilla(numero(estado, 'semilla') || SEMILLA_BASE);
+}
+
+const MUNDO_POR_DEFECTO = mundoDeSemilla(SEMILLA_BASE);
+export const SOLUCIONES = MUNDO_POR_DEFECTO.soluciones;
+const LLAVES = MUNDO_POR_DEFECTO.claves;
+const TOTAL2 = MUNDO_POR_DEFECTO.total2;
+
+export function reconstruir(log: string[], semilla?: number): BD {
+  const mundo = mundoDeSemilla(semilla);
+  const db = clonarBD(mundo.bd2Base);
   for (const s of log) {
     try { aplicarMutacion(analizar(s), db); } catch { /* el log solo guarda lo que ya funcionó */ }
   }
@@ -410,21 +508,27 @@ function reconstruir(log: string[]): BD {
 }
 
 /** Para las pruebas: el mundo entero, sin pasar por el socket. */
-export const bovedaPrueba = { MUNDO1, LLAVES, TOTAL2, DATOS2, BASE2, reconstruir, contarFilas };
+export const bovedaPrueba = {
+  MUNDO1: { bd: MUNDO_POR_DEFECTO.bd1, claves: MUNDO_POR_DEFECTO.claves },
+  LLAVES,
+  TOTAL2,
+  DATOS2,
+  BASE2: MUNDO_POR_DEFECTO.bd2Base,
+  reconstruir,
+  contarFilas,
+  mundoDeSemilla,
+};
 
 // ============================================================
 //  La vista del Operador de Datos:
-//  1) El mapa con las TABLAS REALES y sus relaciones (sin tablas
-//     artificiales de pistas).
-//  2) La PANTALLA DE FILTRO EN VIVO (`resultadoFiltro`) que muestra
-//     los registros y columnas que quedan de la tabla o del JOIN
-//     cuando Terminal aplica una consulta.
+//  1) El mapa con las TABLAS REALES y sus relaciones (`soloEstructura: true`
+//     para que el mapa muestre columnas, llaves foráneas y conteo de filas,
+//     y todas las filas se consulten en equipo con Terminal).
+//  2) La PANTALLA DE FILTRO EN VIVO (`resultadoFiltro`) con TODAS las filas
+//     resultantes del filtro o JOIN, paginadas de 100 en 100 en el cliente.
 // ============================================================
 
-const TOPE_VISTA_DATOS = 150;
-const fmtCelda = (v: Valor) => (v === null || v === undefined ? '' : String(v));
-
-function serializarTabla(t: Tabla, x: number, y: number, w: number, descripcion: string) {
+function serializarTablaMapa(t: Tabla, x: number, y: number, w: number, descripcion: string) {
   return {
     id: t.nombre,
     nombre: t.nombre,
@@ -435,7 +539,8 @@ function serializarTabla(t: Tabla, x: number, y: number, w: number, descripcion:
     clave: 'id',
     columnas: t.columnas,
     totalFilas: t.filas.length,
-    filas: t.filas.slice(0, TOPE_VISTA_DATOS).map((f) => t.columnas.map((c) => fmtCelda(f[c]))),
+    soloEstructura: true,
+    filas: [],
   };
 }
 
@@ -446,7 +551,9 @@ function construirResultadoFiltro(estado: Record<string, unknown>, db: BD, parte
 
   try {
     const s = analizar(sqlGuardado);
-    if (s.tipo !== 'select') throw new Error('no es select');
+    if (s.tipo !== 'select' || s.sel.from.tabla === 'sistema_triggers') {
+      throw new Error('no es tabla de datos');
+    }
     const r = ejecutarSelect(s.sel, db);
     const tablasUnidas = [s.sel.from.tabla, ...s.sel.joins.map((j) => j.tabla)];
     return {
@@ -457,9 +564,9 @@ function construirResultadoFiltro(estado: Record<string, unknown>, db: BD, parte
       tablasUnidas,
       total: r.total,
       columnas: r.columnas,
-      filas: r.filas.slice(0, TOPE_VISTA_DATOS).map((fila) => fila.map((v) => (v === null ? '' : String(v)))),
+      filas: r.filas.map((fila) => fila.map((v) => (v === null ? '' : String(v)))),
       nota: parte === 1
-        ? 'Cada vez que Terminal ejecuta una consulta con JUNTO CON o DONDE, esta tabla muestra los registros y columnas que quedaron.'
+        ? 'Cada vez que Terminal ejecuta una consulta con JUNTO CON o DONDE, esta tabla muestra todos los registros y columnas que quedaron (con paginacion).'
         : 'Muestra los registros que siguen vivos en la tabla consultada o lo que restauraron las reglas automaticas.',
     };
   } catch {
@@ -470,29 +577,28 @@ function construirResultadoFiltro(estado: Record<string, unknown>, db: BD, parte
       tablasUnidas: ['fragmentos'],
       total: t.filas.length,
       columnas: t.columnas,
-      filas: t.filas.slice(0, TOPE_VISTA_DATOS).map((f) => t.columnas.map((c) => fmtCelda(f[c]))),
+      filas: t.filas.map((f) => t.columnas.map((c) => (f[c] === null || f[c] === undefined ? '' : String(f[c])))),
     };
   }
 }
 
 function proyectarDatosParte1(estado: Record<string, unknown>) {
-  const db = MUNDO1.bd;
+  const mundo = mundoDeEstado(estado);
+  const db = mundo.bd1;
   return {
     titulo: 'Memoria del robot · esquema relacional y pantalla de filtro',
-    nota: 'Tu ves las 4 tablas reales de la memoria del robot, como se relacionan entre si, '
-        + 'y abajo la PANTALLA DE FILTRO EN VIVO: cuando Terminal aplique un filtro o un JOIN '
-        + '(JUNTO CON / DONDE), veras aqui que registros y que columnas quedaron para deducir las 3 llaves. '
-        + '(Nota: del codigo descifrado solo se asumia que `nivel` llegaba a 5 y `tipo` era robot o humano, '
-        + 'pero los registros reales pueden esconder valores mas altos o subsistemas).',
+    nota: 'Tu tienes el mapa de las 4 tablas reales de la memoria (que columnas tienen y como se unen) '
+        + 'y abajo eres el UNICO que ve la PANTALLA DE FILTRO EN VIVO con los registros y columnas que '
+        + 'quedan tras cada filtro o JOIN de Terminal. Pantalla tiene las pistas de las 3 cerraduras.',
     lienzo: { w: 1000, h: 460 },
     tablas: [
-      serializarTabla(db.tablas.get('fragmentos')!, 40, 35, 340,
-        'Archivos y llaves en la memoria (1800 registros)'),
-      serializarTabla(db.tablas.get('modulos')!, 620, 20, 340,
+      serializarTablaMapa(db.tablas.get('fragmentos')!, 40, 35, 340,
+        'Archivos y llaves en la memoria'),
+      serializarTablaMapa(db.tablas.get('modulos')!, 620, 20, 340,
         'Modulos del sistema y su tipo de enlace'),
-      serializarTabla(db.tablas.get('propietarios')!, 620, 175, 340,
-        'A quien pertenece cada fragmento'),
-      serializarTabla(db.tablas.get('etiquetas')!, 620, 320, 340,
+      serializarTablaMapa(db.tablas.get('propietarios')!, 620, 175, 340,
+        'Cuentas y procesos propietarios'),
+      serializarTablaMapa(db.tablas.get('etiquetas')!, 620, 320, 340,
         'Etiquetas y categorias de clasificacion'),
     ],
     relaciones: [
@@ -505,37 +611,31 @@ function proyectarDatosParte1(estado: Record<string, unknown>) {
 }
 
 function proyectarDatosParte2(estado: Record<string, unknown>) {
-  const db = reconstruir(listaDe(estado, 'log'));
-  const tablaTriggers: Tabla = {
-    nombre: 'sistema_triggers',
-    columnas: ['id', 'nombre', 'tabla', 'evento', 'accion', 'activo'],
-    filas: db.triggers.map((t) => ({
-      id: t.id, nombre: t.nombre, tabla: t.tabla, evento: t.evento, accion: t.accion, activo: t.activo ? 1 : 0,
-    })),
-  };
+  const mundo = mundoDeEstado(estado);
+  const db = reconstruir(listaDe(estado, 'log'), mundo.semilla);
 
   return {
-    titulo: 'Memoria del robot · tablas, respaldos y reglas automaticas',
-    nota: 'Hay que dejar las 8 tablas de datos en 0 filas. El robot guarda copias en `respaldo_*` '
-        + 'y tiene reglas automaticas en `sistema_triggers` que vuelven a copiar las filas al borrar. '
-        + 'Inspecciona `sistema_triggers` para ver cuales restauran memoria y cuales son de funcionamiento normal.',
+    titulo: 'Memoria del robot · las 4 tablas originales + 4 tablas de respaldo y bitacora',
+    nota: 'Se conservan las 4 tablas originales con sus registros y llaves, y se han sumado las '
+        + '4 tablas de respaldo y bitacora. Hay que dejar las 8 tablas en 0 filas. '
+        + 'Pantalla es quien puede ver el catalogo de reglas automaticas (`sistema_triggers`) cuando Terminal lo consulte.',
     lienzo: { w: 1000, h: 540 },
     tablas: [
-      serializarTabla(db.tablas.get('fragmentos')!, 30, 20, 290, 'Archivos de la memoria'),
-      serializarTabla(db.tablas.get('modulos')!, 30, 210, 290, 'Modulos del sistema'),
-      serializarTabla(db.tablas.get('propietarios')!, 30, 370, 290, 'Propietarios registrados'),
+      serializarTablaMapa(db.tablas.get('fragmentos')!, 30, 20, 290, 'Archivos originales (con las 3 llaves)'),
+      serializarTablaMapa(db.tablas.get('modulos')!, 30, 210, 290, 'Modulos originales'),
+      serializarTablaMapa(db.tablas.get('propietarios')!, 30, 370, 290, 'Propietarios originales'),
 
-      serializarTabla(db.tablas.get('respaldo_fragmentos')!, 355, 20, 295, 'Copia parcial de fragmentos'),
-      serializarTabla(db.tablas.get('respaldo_modulos')!, 355, 210, 295, 'Copia de modulos'),
-      serializarTabla(db.tablas.get('respaldo_propietarios')!, 355, 370, 295, 'Copia de propietarios'),
+      serializarTablaMapa(db.tablas.get('respaldo_fragmentos')!, 355, 20, 295, 'Copia parcial de fragmentos'),
+      serializarTablaMapa(db.tablas.get('respaldo_modulos')!, 355, 210, 295, 'Copia completa de modulos'),
+      serializarTablaMapa(db.tablas.get('respaldo_propietarios')!, 355, 370, 295, 'Copia completa de propietarios'),
 
-      serializarTabla(db.tablas.get('etiquetas')!, 685, 20, 285, 'Etiquetas (sin tabla de copia)'),
-      serializarTabla(db.tablas.get('bitacora')!, 685, 190, 285, 'Registro de actividad y latido'),
-      serializarTabla(tablaTriggers, 685, 350, 285, 'Reglas automaticas (solo lectura)'),
+      serializarTablaMapa(db.tablas.get('etiquetas')!, 685, 20, 285, 'Etiquetas originales (sin tabla de copia)'),
+      serializarTablaMapa(db.tablas.get('bitacora')!, 685, 210, 285, 'Registro de actividad y latido'),
     ],
     relaciones: [
       { desde: 'fragmentos', campo: 'modulo_id', hasta: 'modulos' },
       { desde: 'fragmentos', campo: 'propietario_id', hasta: 'propietarios' },
+      { desde: 'fragmentos', campo: 'etiqueta_id', hasta: 'etiquetas' },
       { desde: 'respaldo_fragmentos', campo: 'id', hasta: 'fragmentos' },
       { desde: 'respaldo_modulos', campo: 'id', hasta: 'modulos' },
       { desde: 'respaldo_propietarios', campo: 'id', hasta: 'propietarios' },
@@ -559,8 +659,6 @@ const CAMARAS_2: CamaraDef[] = [
 
 const parteDe = (estado: Record<string, unknown>): 1 | 2 => (numero(estado, 'parte') === 2 ? 2 : 1);
 
-/** Barra de 20 cajones en escala LOGARÍTMICA: de 2400 a 1 en lineal, los
- *  últimos pasos pintaban todos un cajón y no se veía nada interesante. */
 function escenaBarra(quedan: number, total: number, f: number, pie: string, titulo: string): string[] {
   const enc = quedan <= 0
     ? 0
@@ -617,6 +715,7 @@ function escenaRespaldos(repuestas: number, alerta: boolean, f: number): string[
 
 function vistaDeCamaras(estado: Record<string, unknown>) {
   const parte = parteDe(estado);
+  const mundo = mundoDeEstado(estado);
 
   if (parte === 1) {
     const bruto = estado.quedan;
@@ -641,13 +740,13 @@ function vistaDeCamaras(estado: Record<string, unknown>) {
     });
   }
 
-  const restan = typeof estado.restan === 'number' ? (estado.restan as number) : TOTAL2;
+  const restan = typeof estado.restan === 'number' ? (estado.restan as number) : mundo.total2;
   const repuestas = numero(estado, 'repuestas');
   const ultima = numero(estado, 'ultimaRepuestas');
   return circuitoCerrado(CAMARAS_2, estado, (cam) => {
     const escena: Escena = cam.id === 'memoria'
       ? {
-        fotogramas: [0, 1, 2, 3].map((f) => escenaBarra(restan, TOTAL2, f,
+        fotogramas: [0, 1, 2, 3].map((f) => escenaBarra(restan, mundo.total2, f,
           restan === 0 ? '  vacia.' : '  aun queda memoria.', 'MEMORIA')),
         ritmo: 340,
       }
@@ -663,7 +762,6 @@ function vistaDeCamaras(estado: Record<string, unknown>) {
 //  Ayuda y Manual detallado de Consultas (`consultas`)
 // ============================================================
 
-const TOPE_FILAS = 12;
 const MAX_VISTAS = 8;
 
 function ayuda(parte: 1 | 2): ResultadoComando {
@@ -673,10 +771,11 @@ function ayuda(parte: 1 | 2): ResultadoComando {
       'En `consultas` tienes explicada cada consulta, cada filtro y cada',
       'operacion logica con ejemplos listos para usar.',
       '',
-      'Cuando ejecutas `MOSTRAR TODO DE ...`, la tabla resultante con todas sus',
-      'filas y columnas unidas se actualiza EN VIVO en la pantalla de Datos.',
+      '>>> ESCRIBE `estado` PARA VER LAS PISTAS DE LAS 3 LLAVES <<<',
+      'Cuando ejecutas `MOSTRAR TODO DE ...`, los registros y columnas que quedan',
+      'aparecen EXCLUSIVAMENTE en la Pantalla de Filtro en Vivo de Datos.',
     ],
-    'Manual detallado y pantalla de Datos',
+    'Manual detallado y reparto entre estaciones',
   );
 
   if (parte === 1) {
@@ -685,13 +784,13 @@ function ayuda(parte: 1 | 2): ResultadoComando {
         texto(
           [
             'consultas                               — VER MANUAL de consultas, filtros y logica',
-            'MOSTRAR TODO DE <tabla> [DONDE ...]     — filtra o une tablas y lo muestra en Datos',
+            'estado                                  — VER PISTAS de las 3 cerraduras y el avance',
+            'MOSTRAR TODO DE <tabla> [DONDE ...]     — filtra o une tablas y lo proyecta en Datos',
             'CONTAR <tabla> [DONDE ...]              — cuantas filas cumplen la condicion',
             'MOSTRAR DISTINTOS <col> DE <tabla>      — ver que valores existen de verdad',
             'GUARDAR <nombre | codigo | consulta>    — guardar una llave candidata (3 formas)',
             'PROBAR <nombre | codigo>                — comprobar si lo guardado es una llave',
             'guardados                               — ver lo que llevas guardado',
-            'estado                                  — ver las 3 cerraduras y el avance',
             ...AYUDA_CAMARAS,
           ],
           'Comandos disponibles (Parte 1 · Buscar las 3 llaves)',
@@ -705,13 +804,14 @@ function ayuda(parte: 1 | 2): ResultadoComando {
       texto(
         [
           'consultas                               — VER MANUAL de consultas, filtros y borrado',
-          'MOSTRAR TODO DE <tabla> [DONDE ...]     — ver en Datos una tabla o `sistema_triggers`',
+          'MOSTRAR TODO DE sistema_triggers        — ver en Pantalla las 12 reglas automaticas',
+          'MOSTRAR TODO DE <tabla> [DONDE ...]     — proyectar una tabla en la pantalla de Datos',
           'CONTAR <tabla> [DONDE ...]              — cuantas filas quedan en una tabla',
-          'BORRAR TODO DE <tabla> (o VACIAR <t>)   — vaciar todas las filas de una tabla',
-          'BORRAR DE <tabla> DONDE ...             — borrar solo las filas que cumplan',
           'APAGAR REGLA <nombre>                   — desactivar una regla automatica (trigger)',
           'BORRAR REGLA <nombre>                   — eliminar una regla automatica (trigger)',
-          'reiniciar                               — devolver la memoria a sus 2400 filas',
+          'BORRAR TODO DE <tabla> (o VACIAR <t>)   — vaciar todas las filas de una tabla',
+          'BORRAR DE <tabla> DONDE ...             — borrar solo las filas que cumplan',
+          'reiniciar                               — devolver la memoria a su estado inicial',
           'estado                                  — cuantas filas quedan por borrar',
           ...AYUDA_CAMARAS,
         ],
@@ -726,8 +826,8 @@ function manualConsultas(parte: 1 | 2): ResultadoComando {
   const bloqueConsultas = texto(
     [
       '1) MOSTRAR TODO DE <tabla> [JUNTO CON ...] [DONDE ...]',
-      '   Aplica el filtro o la union (JOIN) y muestra los registros y columnas',
-      '   que quedaron en la PANTALLA DE FILTRO EN VIVO del Operador de Datos.',
+      '   Aplica el filtro o la union (JOIN) y envia todos los registros y columnas',
+      '   que quedaron a la PANTALLA DE FILTRO EN VIVO del Operador de Datos.',
       '   Tambien puedes pedir columnas sueltas: MOSTRAR id, codigo, nivel DE fragmentos',
       '',
       '2) CONTAR <tabla> [JUNTO CON ...] [DONDE ...]',
@@ -761,15 +861,15 @@ function manualConsultas(parte: 1 | 2): ResultadoComando {
       '                         Ej: estado ES activo   |   estado NO ES corrupto',
       '',
       '· MAYOR QUE / MENOR QUE  Compara numeros (tambien MAYOR O IGUAL A, MENOR O IGUAL A).',
-      '                         Ej: tamano ES 64   |   nivel MAYOR QUE 5',
+      '                         Ej: nivel MAYOR QUE 5',
       '',
       '· TIENE FORMATO <patron> Comprueba la forma exacta de un codigo:',
       '                         `#` representa un numero (0-9) y `?` cualquier caracter.',
       '                         Respeta mayusculas y minusculas.',
-      '                         Ej: codigo TIENE FORMATO LLV-####-K7',
+      '                         Ej: codigo TIENE FORMATO <PREFIJO>-####-<SUFIJO>',
       '',
       '· EMPIEZA CON /          Busca textos por su inicio, su final o su contenido.',
-      '  TERMINA CON / CONTIENE Ej: codigo EMPIEZA CON LLV   |   nombre CONTIENE maestra',
+      '  TERMINA CON / CONTIENE Ej: nombre CONTIENE maestra',
       '',
       '· ESTA VACIO /           Filtra si un dato no apunta a nada (NULL) o si tiene valor.',
       '  NO ESTA VACIO          Ej: referencia_id NO ESTA VACIO',
@@ -782,13 +882,13 @@ function manualConsultas(parte: 1 | 2): ResultadoComando {
       'Sirven para encadenar varios filtros dentro del mismo DONDE:',
       '',
       '· Y    Exige que se cumplan TODAS las condiciones a la vez (estrecha la tabla).',
-      '       Ej: DONDE estado ES activo Y tamano ES 64 Y sistema ES nucleo',
+      '       Ej: DONDE estado ES activo Y sistema ES nucleo',
       '',
       '· O    Acepta filas que cumplan CUALQUIERA de las condiciones.',
       '       Ej: DONDE estado ES activo O estado ES archivado',
       '',
       '· NO   Invierte un filtro para descartar lo que no quieres.',
-      '       Ej: DONDE estado NO ES corrupto   |   DONDE codigo NO TIENE FORMATO LLV-####-K7',
+      '       Ej: DONDE estado NO ES corrupto',
     ],
     '3. Operaciones logicas (Y, O, NO)',
   );
@@ -806,11 +906,11 @@ function manualConsultas(parte: 1 | 2): ResultadoComando {
         '· Forma 2 (Guardar escribiendo la consulta directa):',
         '  GUARDAR llave1 DE fragmentos JUNTO CON modulos DONDE ...',
         '',
-        '· Forma 3 (Guardar el codigo o ID que Datos ve en su tabla):',
-        '  GUARDAR LLV-4829-K7    (o `GUARDAR llave1 LLV-4829-K7`, o el id `F-0173`)',
+        '· Forma 3 (Guardar el codigo o ID que Datos lee en su pantalla):',
+        '  GUARDAR <codigo_o_id>   (ej. `GUARDAR F-0412`)',
         '',
         'Y para verificar si de verdad abre una cerradura del robot:',
-        '  PROBAR llave1          (o `PROBAR LLV-4829-K7`)',
+        '  PROBAR llave1          (o `PROBAR <codigo_o_id>`)',
         '  Nota: Probar un senuelo equivocado activa la cuarentena de seguridad.',
       ],
       '4. Como Guardar y Probar las llaves (Parte 1)',
@@ -819,18 +919,22 @@ function manualConsultas(parte: 1 | 2): ResultadoComando {
       [
         'En la Parte 2 hay que dejar las 8 tablas de datos con 0 filas:',
         '',
-        '· Consultar las reglas automaticas del robot:',
+        '· Consultar las reglas automaticas del robot (se ven en Pantalla):',
         '  MOSTRAR TODO DE sistema_triggers',
         '',
-        '· Desactivar o borrar una regla que restaura memoria:',
-        '  APAGAR REGLA <nombre>     (o `BORRAR REGLA <nombre>`)',
-        '  Cuidado: no apagues reglas que no restauran memoria (las de INSERT o UPDATE).',
+        '· Cadena de proteccion entre reglas:',
+        '  Algunas reglas custodian a otras e impiden apagarlas directamente.',
+        '  Leed la columna `accion` en `sistema_triggers` para ver que regla vigila',
+        '  a cual y apagad primero al vigia superior.',
         '',
-        '· Vaciar una tabla entera o borrar con filtro:',
+        '· Desactivar o borrar una regla:',
+        '  APAGAR REGLA <nombre>     (o `BORRAR REGLA <nombre>`)',
+        '  Cuidado: no toqueis las reglas inocuas de INSERT o UPDATE.',
+        '',
+        '· Vaciar una tabla entera:',
         '  BORRAR TODO DE <tabla>    (o `VACIAR <tabla>`)',
-        '  BORRAR DE <tabla> DONDE estado ES corrupto',
       ],
-      '4. Como Apagar Reglas y Borrar la Memoria (Parte 2)',
+      '4. Cadena de Reglas y Borrado de Memoria (Parte 2)',
     );
 
   return {
@@ -865,17 +969,18 @@ export const boveda: ModuloFase = {
           salidas: ctx.salidas,
           camaras: vistaDeCamaras(ctx.estado),
           nota: parte === 1
-            ? 'Tu ves las camaras ARCHIVO y LLAVERO y la salida de los comandos. Cada vez que '
-              + 'Terminal aplica un filtro o JOIN (MOSTRAR TODO DE ...), los registros y columnas '
-              + 'que quedan se actualizan en vivo en la pantalla de Datos.'
-            : 'La memoria se esta vaciando. Mira en las camaras y en las salidas que reglas automaticas '
-              + 'se disparan al borrar, mientras Datos ve en su pantalla que tablas siguen con filas.',
+            ? 'Tu ves las camaras ARCHIVO y LLAVERO, el manual (`consultas`) y las pistas de las 3 '
+              + 'cerraduras (`estado`). Cuando Terminal aplica un filtro con `MOSTRAR TODO DE ...`, '
+              + 'los registros resultantes solo los ve Datos en su Pantalla de Filtro en Vivo.'
+            : 'Tu eres el unico que ve el catalogo de reglas (`MOSTRAR TODO DE sistema_triggers`) '
+              + 'y las alertas de que regla bloqueo o restauro filas. Datos ve en su mapa cuantas '
+              + 'filas quedan en las 8 tablas.',
         };
 
       case 'TERMINAL':
         return {
           camara: numero(ctx.estado, 'camara') || 1,
-          pista: 'Escribe `ayuda` o `consultas`. Cuando filtres con `MOSTRAR TODO DE ...`, Datos vera en su pantalla las filas que quedaron.',
+          pista: 'Escribe `ayuda`, `estado` o `consultas`. Tus filtros con `MOSTRAR TODO DE ...` actualizan la pantalla de Datos.',
           cuarentenaHasta: (ctx.estado.cuarentenaHasta as number) ?? null,
         };
     }
@@ -890,6 +995,7 @@ export const boveda: ModuloFase = {
     const [verbo, ...resto] = cmd.split(' ');
     const arg = resto.join(' ');
     const parte = parteDe(ctx.estado);
+    const mundo = mundoDeEstado(ctx.estado);
 
     const mando = mandoDeCamaras(parte === 1 ? CAMARAS_1 : CAMARAS_2, verbo, arg, ctx.estado);
     if (mando) return mando;
@@ -908,7 +1014,7 @@ export const boveda: ModuloFase = {
         return manualConsultas(parte);
 
       case 'estado':
-        return estadoActual(ctx, parte);
+        return estadoActual(ctx, parte, mundo);
 
       case 'vistas':
       case 'guardados':
@@ -916,16 +1022,16 @@ export const boveda: ModuloFase = {
         return parte === 1 ? listarVistas(ctx) : sinVistas();
 
       case 'guardar':
-        return parte === 1 ? ejecutarGuardar(bruto, ctx) : sinVistas();
+        return parte === 1 ? ejecutarGuardar(bruto, ctx, mundo) : sinVistas();
 
       case 'probar':
-        return parte === 1 ? probar(bruto.slice(verbo.length).trim(), ctx) : sinVistas();
+        return parte === 1 ? probar(bruto.slice(verbo.length).trim(), ctx, mundo) : sinVistas();
 
       case 'reiniciar':
         if (parte !== 2) return { bloques: [error('No hay nada que reiniciar todavia.')] };
         return {
-          estado: { ...ctx.estado, log: [], restan: TOTAL2, repuestas: 0, ultimaRepuestas: 0 },
-          bloques: [texto([`La memoria vuelve a tener ${TOTAL2} filas y las reglas que tenia.`], 'Reinicio')],
+          estado: { ...ctx.estado, log: [], restan: mundo.total2, repuestas: 0, ultimaRepuestas: 0 },
+          bloques: [texto([`La memoria vuelve a tener ${mundo.total2} filas y las reglas que tenia.`], 'Reinicio')],
         };
 
       case 'mostrar':
@@ -945,7 +1051,7 @@ export const boveda: ModuloFase = {
       case 'apagar':
       case 'desactivar':
       case 'disable':
-        return comandoSql(bruto, ctx, parte);
+        return comandoSql(bruto, ctx, parte, mundo);
 
       case 'extraer':
         return {
@@ -956,7 +1062,7 @@ export const boveda: ModuloFase = {
         };
 
       default:
-        return { bloques: [error(`Comando no reconocido: «${comandoBruto}». Prueba \`ayuda\` o \`consultas\`.`)] };
+        return { bloques: [error(`Comando no reconocido: «${comandoBruto}». Prueba \`ayuda\`, \`estado\` o \`consultas\`.`)] };
     }
   },
 };
@@ -965,26 +1071,56 @@ function sinVistas(): ResultadoComando {
   return { bloques: [error('En esta parte ya no hay que guardar ni probar llaves: el objetivo es vaciar la memoria.')] };
 }
 
-function estadoActual(ctx: ContextoComando, parte: 1 | 2): ResultadoComando {
+function estadoActual(ctx: ContextoComando, parte: 1 | 2, mundo: MundoFase5): ResultadoComando {
   if (parte === 1) {
     const n = listaDe(ctx.estado, 'confirmadas').length;
     const v = Object.keys((ctx.estado.vistas as Record<string, string>) ?? {}).length;
     return {
-      bloques: [texto(
-        [
-          `Llaves confirmadas en el llavero: ${n} de 3.`,
-          `Candidatas guardadas: ${v}.`,
-          'Cruza las tablas en Datos con `MOSTRAR TODO DE fragmentos JUNTO CON ... DONDE ...`',
-          'para deducir y aislar los 3 fragmentos autenticos entre los senuelos.',
-        ],
-        'Estado',
-      )],
+      bloques: [
+        texto(
+          [
+            `Llaves confirmadas en el llavero: ${n} de 3.`,
+            `Candidatas guardadas: ${v}.`,
+          ],
+          'Estado del Llavero',
+        ),
+        texto(
+          [
+            'Del fragmento de codigo que logramos descifrar antes de entrar, sabemos',
+            'con que esta relacionada cada una de las 3 partes de la llave:',
+            '',
+            '· LLAVE 1 (Vinculo de Conciencia Interna):',
+            '  Sigue encendida (`activo`). No pertenece a ningun `usuario` ni `admin` de',
+            '  la empresa: su propietario es del tipo oculto que creo el propio robot,',
+            '  y su modulo pertenece al sistema principal (`nucleo`).',
+            '',
+            '· LLAVE 2 (Vinculo de Seguridad Externa):',
+            '  Clasificada bajo una etiqueta de categoria `seguridad`, conectada a un',
+            '  modulo con enlace `externo`, y con el `nivel` mas alto que exista en toda',
+            '  la memoria (comprueba hasta que numero llega `nivel` realmente).',
+            '',
+            '· LLAVE 3 (Vinculo Archivado a la Llave Maestra):',
+            '  Esta en estado `archivado` y apunta (`referencia_id`) al fragmento que',
+            '  lleva la etiqueta exacta `llave_maestra` (cuidado con las etiquetas trampa).',
+            '',
+            '· Como deducir el formato y tamano exacto de las llaves de este robot:',
+            '  Busca primero en Datos el fragmento raiz que lleva la etiqueta `llave_maestra`:',
+            '  ese registro conserva el molde exacto (prefijo, 4 numeros, terminacion y tamano)',
+            '  que deben cumplir las 3 llaves para distinguirlas de los senuelos.',
+          ],
+          'Lo que desciframos del codigo (Las 3 relaciones)',
+        ),
+      ],
     };
   }
-  const restan = typeof ctx.estado.restan === 'number' ? (ctx.estado.restan as number) : TOTAL2;
+  const restan = typeof ctx.estado.restan === 'number' ? (ctx.estado.restan as number) : mundo.total2;
   return {
     bloques: [texto(
-      [`A la memoria le quedan ${restan} filas de ${TOTAL2}.`, 'Datos ve en su mapa cuantas filas quedan en cada una de las 8 tablas.'],
+      [
+        `A la memoria le quedan ${restan} filas de ${mundo.total2}.`,
+        'Datos ve en su mapa cuantas filas quedan en cada una de las 8 tablas (las 4 originales + 4 nuevas).',
+        'Usa `MOSTRAR TODO DE sistema_triggers` para ver en Pantalla la cadena de reglas que las protege.',
+      ],
       'Estado',
     )],
   };
@@ -1000,36 +1136,24 @@ function listarVistas(ctx: ContextoComando): ResultadoComando {
         'Puedes guardar de 3 formas:',
         '  1) `GUARDAR llave1` (guarda tu ultima consulta)',
         '  2) `GUARDAR llave1 DE fragmentos DONDE ...`',
-        '  3) `GUARDAR <codigo_o_id>` (ej. `GUARDAR LLV-0000-K7`)',
+        '  3) `GUARDAR <codigo_o_id>` (el codigo o ID que Datos ve en su pantalla)',
       ], 'Guardados')],
     };
   }
   return { bloques: [texto(nombres.map((n) => `${n}  =  ${vistas[n]}`), 'Guardados')] };
 }
 
-/**
- * Busca si un token corresponde directamente al `id` (ej. `F-0173`) o al
- * `codigo` (ej. `LLV-4829-K7`) de un fragmento de la memoria.
- */
-function buscarFragmentoPorCodigoOId(token: string): Fila | null {
+function buscarFragmentoPorCodigoOId(token: string, mundo: MundoFase5): Fila | null {
   const limpio = token.trim().replace(/^['"]|['"]$/g, '');
   if (!limpio) return null;
   const upper = limpio.toUpperCase();
-  const frags = MUNDO1.bd.tablas.get('fragmentos')!.filas;
-  // 1) Coincidencia exacta de código (respetando mayúsculas, ej. K7 vs k7) o de ID (F-0173)
+  const frags = mundo.bd1.tablas.get('fragmentos')!.filas;
   const exacto = frags.find((f) => String(f.id).toUpperCase() === upper || String(f.codigo) === limpio);
   if (exacto) return exacto;
-  // 2) Si escribió el código en minúsculas pero solo hay uno o quiere probarlo
   return frags.find((f) => String(f.codigo).toUpperCase() === upper) ?? null;
 }
 
-/**
- * Implementa las 3 formas de `GUARDAR`:
- *   1) `GUARDAR <nombre>` -> guarda `ctx.estado.ultimaConsulta`
- *   2) `GUARDAR <nombre> DE <tabla> ...` o `GUARDAR [EN] <nombre> [COMO] MOSTRAR ...`
- *   3) `GUARDAR <codigo_o_id>` o `GUARDAR <nombre> <codigo_o_id>`
- */
-function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando {
+function ejecutarGuardar(bruto: string, ctx: ContextoComando, mundo: MundoFase5): ResultadoComando {
   const cuerpo = bruto.replace(/^\s*guardar\s+/i, '').trim();
   if (!cuerpo) {
     return {
@@ -1039,13 +1163,12 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
           'Formas de usar GUARDAR:',
           '  1) `GUARDAR llave1` (guarda la ultima consulta que hiciste)',
           '  2) `GUARDAR llave1 DE fragmentos DONDE ...`',
-          '  3) `GUARDAR <codigo_o_id>` (ej. `GUARDAR F-0173` o `GUARDAR LLV-0000-K7`)',
+          '  3) `GUARDAR <codigo_o_id>` (ej. `GUARDAR F-0412`)',
         ]),
       ],
     };
   }
 
-  // Quitamos conectores iniciales opcionales: `EN`, `COMO`, `VISTA`
   const sinPrefijo = cuerpo.replace(/^(?:(?:en|como|vista)\s+)+/i, '').trim();
   const partes = sinPrefijo.split(/\s+/);
   const primeroRaw = partes[0].replace(/[:=]$/, '');
@@ -1059,7 +1182,7 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
     if (!/^[a-z0-9_-]{1,35}$/.test(nombre)) {
       return { bloques: [error('El nombre para guardar debe ser una sola palabra (ej. `llave1`).')] };
     }
-    if (MUNDO1.bd.tablas.has(nombre)) {
+    if (mundo.bd1.tablas.has(nombre)) {
       return { bloques: [error(`«${nombre}» ya es el nombre de una tabla: elige otro (ej. \`llave1\`).`)] };
     }
     if (!(nombre in vistas) && Object.keys(vistas).length >= MAX_VISTAS) {
@@ -1069,7 +1192,7 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
     try {
       const s = analizar(sqlGuardar);
       if (s.tipo !== 'select') return { bloques: [error('Solo se pueden guardar consultas.')] };
-      r = ejecutarSelect(s.sel, MUNDO1.bd);
+      r = ejecutarSelect(s.sel, mundo.bd1);
     } catch (e) {
       return fallaSql(e);
     }
@@ -1091,9 +1214,8 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
     };
   };
 
-  // --- Caso A: Solo 1 palabra (`GUARDAR llave1` o `GUARDAR LLV-4829-K7` o `GUARDAR F-0173`)
   if (!resto) {
-    const frag = buscarFragmentoPorCodigoOId(primeroRaw);
+    const frag = buscarFragmentoPorCodigoOId(primeroRaw, mundo);
     if (frag) {
       const sqlFrag = `MOSTRAR TODO DE fragmentos DONDE id ES '${frag.id}'`;
       return guardarConsultaEn(primeroNorm, sqlFrag);
@@ -1113,7 +1235,6 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
     return guardarConsultaEn(primeroNorm, ultima);
   }
 
-  // --- Caso B: Hay más palabras detrás del nombre
   const restoSinComo = resto.replace(/^(?:como|as|es|=)\s+/i, '').trim();
   const primeraPalabraResto = normalizar(restoSinComo.split(/\s+/)[0]);
 
@@ -1129,7 +1250,7 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
   }
 
   if (restoSinComo.split(/\s+/).length === 1) {
-    const frag = buscarFragmentoPorCodigoOId(restoSinComo);
+    const frag = buscarFragmentoPorCodigoOId(restoSinComo, mundo);
     if (frag) {
       return guardarConsultaEn(primeroNorm, `MOSTRAR TODO DE fragmentos DONDE id ES '${frag.id}'`);
     }
@@ -1142,7 +1263,7 @@ function ejecutarGuardar(bruto: string, ctx: ContextoComando): ResultadoComando 
   return guardarConsultaEn(primeroNorm, `MOSTRAR TODO ${restoSinComo}`);
 }
 
-function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
+function probar(argBruto: string, ctx: ContextoComando, mundo: MundoFase5): ResultadoComando {
   const vistas = (ctx.estado.vistas as Record<string, string>) ?? {};
   const ultimoGuardado = typeof ctx.estado.ultimoGuardado === 'string' ? ctx.estado.ultimoGuardado : '';
   const objetivoRaw = argBruto.trim() || ultimoGuardado;
@@ -1159,7 +1280,7 @@ function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
   let sql = vistas[clave];
 
   if (!sql) {
-    const frag = buscarFragmentoPorCodigoOId(objetivoRaw);
+    const frag = buscarFragmentoPorCodigoOId(objetivoRaw, mundo);
     if (frag) {
       sql = `MOSTRAR TODO DE fragmentos DONDE id ES '${frag.id}'`;
     }
@@ -1178,7 +1299,7 @@ function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
   try {
     const s = analizar(sql);
     if (s.tipo !== 'select') return { bloques: [error('Lo guardado no es una consulta.')] };
-    r = ejecutarSelect(s.sel, MUNDO1.bd);
+    r = ejecutarSelect(s.sel, mundo.bd1);
   } catch (e) {
     return fallaSql(e);
   }
@@ -1201,7 +1322,7 @@ function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
 
   const fila = r.base[0]!;
   const confirmadas = listaDe(ctx.estado, 'confirmadas');
-  const idx = LLAVES.indexOf(fila.id as string);
+  const idx = mundo.claves.indexOf(fila.id as string);
 
   if (idx === -1) {
     return rechazo(ctx, `«${objetivoRaw}» devuelve un fragmento que no es ninguna de las tres llaves. La memoria registra el intento.`);
@@ -1221,7 +1342,7 @@ function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
     };
   }
 
-  // Tercera llave: pasa a la Parte 2.
+  // Tercera llave: pasa a la Parte 2 conservando las 4 tablas originales + sumando las 4 nuevas.
   return {
     estado: {
       ...ctx.estado,
@@ -1229,8 +1350,8 @@ function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
       parte: 2,
       vistas: {},
       log: [],
-      consultaFiltro: 'MOSTRAR TODO DE sistema_triggers',
-      restan: TOTAL2,
+      consultaFiltro: 'MOSTRAR TODO DE fragmentos',
+      restan: mundo.total2,
       repuestas: 0,
       ultimaRepuestas: 0,
       camara: 1,
@@ -1239,31 +1360,34 @@ function probar(argBruto: string, ctx: ContextoComando): ResultadoComando {
       exito('PARTE 1 SUPERADA · Las tres llaves son vuestras', [
         'La llave que lo construyo ya no esta escondida. Pero el robot lo ha notado:',
         '',
-        '[!] ALERTA DEL ROBOT: «INTRUSION EN MEMORIA. ACTIVANDO RESTAURACION AUTOMATICA.»',
+        '[!] ALERTA DEL ROBOT: «INTRUSION EN MEMORIA. ACTIVANDO RESPALDOS Y CUSTODIOS DE REGLAS.»',
         '',
         '--- PASO A LA PARTE 2 (BORRAR LA MEMORIA) ---',
-        '1. El mapa de Datos ha cambiado: ahora muestra las tablas de respaldo y `sistema_triggers`.',
-        '2. Misma terminal, ahora con `BORRAR TODO DE <tabla>` (o `VACIAR`) y `APAGAR REGLA <nombre>`.',
-        '3. Esta vez no se trata de encontrar, sino de dejar las 8 tablas vacias... y que se queden asi.',
+        '1. En Datos siguen las 4 tablas originales (con las mismas filas y llaves) y se han',
+        '   sumado 4 tablas nuevas (`respaldo_fragmentos`, `respaldo_modulos`, `respaldo_propietarios`, `bitacora`).',
+        '2. En Pantalla podeis consultar `MOSTRAR TODO DE sistema_triggers`: vereis que hay reglas',
+        '   que protegen a otras reglas en cadena e impiden apagarlas directamente.',
+        '3. Descubrid que regla vigila a cual, desactivad la cadena en orden y dejad las 8 tablas en 0 filas.',
       ]),
     ],
   };
 }
 
-function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): ResultadoComando {
+function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2, mundo: MundoFase5): ResultadoComando {
   let s: Sentencia;
   try { s = analizar(bruto); } catch (e) { return fallaSql(e); }
 
   try {
     switch (s.tipo) {
       case 'select': {
-        const db = parte === 1 ? MUNDO1.bd : reconstruir(listaDe(ctx.estado, 'log'));
+        const db = parte === 1 ? mundo.bd1 : reconstruir(listaDe(ctx.estado, 'log'), mundo.semilla);
         const r = ejecutarSelect(s.sel, db);
+        const esCatalogoTriggers = s.sel.from.tabla === 'sistema_triggers';
+        const esResumenCorto = r.agregada || s.sel.distinct || (s.sel.limite !== undefined && s.sel.limite <= 5);
+
         const embudo = {
           ...(parte === 1 ? { quedan: r.total, consultas: numero(ctx.estado, 'consultas') + 1 } : {}),
-          // Toda consulta NO agregada (o con columnas) actualiza la PANTALLA DE FILTRO EN VIVO de Datos
-          consultaFiltro: bruto,
-          ...(r.agregada ? {} : { ultimaConsulta: bruto }),
+          ...(esCatalogoTriggers || r.agregada ? {} : { consultaFiltro: bruto, ultimaConsulta: bruto }),
         };
         const estado = { ...ctx.estado, ...embudo };
 
@@ -1272,27 +1396,46 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
             estado,
             bloques: [texto([
               'Ningun registro cumple todas esas condiciones a la vez.',
-              'La pantalla de Datos se ha actualizado (0 registros). Afloja alguna condicion.',
+              'La Pantalla de Filtro en Vivo de Datos muestra 0 registros. Afloja alguna condicion.',
             ], '0 filas')],
           };
         }
 
-        const limite = s.sel.limite !== undefined ? Math.min(s.sel.limite, TOPE_FILAS) : TOPE_FILAS;
-        const filas = r.filas.slice(0, limite);
+        // 1) Si es `sistema_triggers` (Parte 2) o un resumen corto (`CONTAR`, `MOSTRAR DISTINTOS`,
+        //    `ORDENADO POR ... LIMITE 5`), se muestra la tabla en Pantalla: es su trabajo.
+        if (esCatalogoTriggers || esResumenCorto) {
+          const filas = r.filas.slice(0, 15);
+          return {
+            estado,
+            bloques: [
+              tabla(
+                esCatalogoTriggers
+                  ? `Catalogo de reglas automaticas (${r.total} reglas)`
+                  : `${r.total} resultado(s)`,
+                r.columnas,
+                filas.map((f) => f.map(fmt)),
+              ),
+            ],
+          };
+        }
 
+        // 2) Si es una consulta de registros (`MOSTRAR TODO DE ...`), las filas y columnas
+        //    van EXCLUSIVAMENTE a la Pantalla de Filtro en Vivo de Datos para que Pantalla
+        //    no le robe el trabajo a Datos.
+        const tablasUnidas = [s.sel.from.tabla, ...s.sel.joins.map((j) => j.tabla)];
         return {
           estado,
           bloques: [
-            tabla(
-              `${r.total} fila(s) · Actualizado en la pantalla de Datos${filas.length < r.total ? ` (vista previa: ${filas.length})` : ''}`,
-              r.columnas,
-              filas.map((f) => f.map(fmt)),
+            texto(
+              [
+                `Filtro aplicado sobre: ${tablasUnidas.join(' + ')}.`,
+                `Quedaron ${r.total} registro(s) con ${r.columnas.length} columna(s) en la Pantalla de Filtro en Vivo de Datos.`,
+                r.total === 1 && parte === 1
+                  ? 'Datos ya tiene el unico registro aislado en su pantalla: que os dicte su codigo o guardadlo con `GUARDAR llave1`.'
+                  : 'Pidele a Datos que revise las filas y columnas que quedaron en su pantalla para afinar el siguiente filtro.',
+              ],
+              `Filtro proyectado en Datos · ${r.total} fila(s)`,
             ),
-            ...(r.total === 1 && !r.agregada && parte === 1
-              ? [texto(['Una sola fila aislada en la pantalla de Datos. Si es la llave: `GUARDAR llave1` y luego `PROBAR llave1`.'])]
-              : r.total > TOPE_FILAS
-                ? [texto([`Los registros y sus columnas ya estan visibles en la pantalla de Datos (${r.total} filas). Anade mas condiciones con DONDE para seguir estrechando.`])]
-                : []),
           ],
         };
       }
@@ -1302,14 +1445,14 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
         if (!/^[a-z_][a-z0-9_]{0,30}$/.test(s.nombre)) {
           return { bloques: [error('El nombre tiene que ser una sola palabra (letras, numeros y _).')] };
         }
-        if (MUNDO1.bd.tablas.has(s.nombre)) {
+        if (mundo.bd1.tablas.has(s.nombre)) {
           return { bloques: [error(`«${s.nombre}» ya es una tabla: elige otro nombre.`)] };
         }
         const vistas = { ...((ctx.estado.vistas as Record<string, string>) ?? {}) };
         if (!(s.nombre in vistas) && Object.keys(vistas).length >= MAX_VISTAS) {
           return { bloques: [error(`Ya hay ${MAX_VISTAS} guardados. Quita alguno con BORRAR VISTA.`)] };
         }
-        const r = ejecutarSelect(s.sel, MUNDO1.bd);
+        const r = ejecutarSelect(s.sel, mundo.bd1);
         vistas[s.nombre] = s.sql;
         return {
           estado: { ...ctx.estado, vistas, ultimoGuardado: s.nombre, consultaFiltro: s.sql, quedan: r.total },
@@ -1333,7 +1476,7 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
       case 'disable_trigger':
         return parte === 1
           ? { bloques: [error('La memoria es de solo lectura por ahora. Primero, encontrar las 3 llaves.')] }
-          : mutar(bruto, s, ctx);
+          : mutar(bruto, s, ctx, mundo);
 
       default:
         return { bloques: [error('No se entiende esa sentencia.')] };
@@ -1343,9 +1486,9 @@ function comandoSql(bruto: string, ctx: ContextoComando, parte: 1 | 2): Resultad
   }
 }
 
-function mutar(bruto: string, s: Sentencia, ctx: ContextoComando): ResultadoComando {
+function mutar(bruto: string, s: Sentencia, ctx: ContextoComando, mundo: MundoFase5): ResultadoComando {
   const log = listaDe(ctx.estado, 'log');
-  const db = reconstruir(log);
+  const db = reconstruir(log, mundo.semilla);
 
   if (s.tipo === 'drop_trigger' || s.tipo === 'disable_trigger') {
     const tr = buscarTrigger(db, s.nombre);
@@ -1355,7 +1498,7 @@ function mutar(bruto: string, s: Sentencia, ctx: ContextoComando): ResultadoComa
     }
     if (tr.efecto.tipo === 'inocuo') {
       return rechazo(ctx,
-        `«${tr.nombre}» no restaura nada: el robot la necesita para funcionar y nota que la tocas.`);
+        `«${tr.nombre}» no restaura ni custodia memoria: el robot la necesita para funcionar y nota que la tocas.`);
     }
     if (s.tipo === 'disable_trigger' && !tr.activo) {
       return { bloques: [texto([`«${tr.nombre}» ya estaba desactivada.`])] };
@@ -1363,20 +1506,34 @@ function mutar(bruto: string, s: Sentencia, ctx: ContextoComando): ResultadoComa
   }
 
   const r = aplicarMutacion(s, db);
+  const bloqueadaPorCustodio = (s.tipo === 'drop_trigger' || s.tipo === 'disable_trigger') && r.eventos.length > 0;
   const restan = contarFilas(db);
   const repuestas = r.eventos.reduce((n, e) => n + e.repuestas, 0);
   const consultaFiltro = s.tipo === 'delete'
     ? `MOSTRAR TODO DE ${s.tabla}`
-    : 'MOSTRAR TODO DE sistema_triggers';
+    : (typeof ctx.estado.consultaFiltro === 'string' ? ctx.estado.consultaFiltro : 'MOSTRAR TODO DE fragmentos');
 
   const estado = {
     ...ctx.estado,
-    log: r.borradas > 0 || s.tipo !== 'delete' ? [...log, bruto] : log,
+    log: (!bloqueadaPorCustodio && (r.borradas > 0 || s.tipo !== 'delete')) ? [...log, bruto] : log,
     restan,
     repuestas: numero(ctx.estado, 'repuestas') + repuestas,
     ultimaRepuestas: repuestas,
     consultaFiltro,
   };
+
+  if (bloqueadaPorCustodio) {
+    return {
+      estado,
+      bloques: [
+        error(r.texto),
+        texto([
+          ...r.eventos.map((e) => `[!] ${e.texto}`),
+          'Consulta `MOSTRAR TODO DE sistema_triggers` para ver que regla custodia a cual y apaga primero al custodio superior.',
+        ], 'Regla blindada por otro trigger'),
+      ],
+    };
+  }
 
   if (restan === 0) {
     return {
@@ -1385,11 +1542,11 @@ function mutar(bruto: string, s: Sentencia, ctx: ContextoComando): ResultadoComa
       bloques: [
         texto([r.texto, ...r.eventos.map((e) => `[!] ${e.texto}`)], 'Borrado'),
         exito('MEMORIA VACIA · El robot ya no recuerda nada', [
-          'Ninguna tabla tiene ni una fila, y ninguna regla va a volver a llenarlas.',
+          'Las 8 tablas han quedado en 0 filas, y ninguna regla va a volver a llenarlas.',
           '',
-          'No bastaba con borrar: la memoria tenia copias, y las copias tenian reglas que las',
-          'devolvian al sitio. Habeis tenido que leer las reglas, distinguir las que restauran',
-          'de las que el robot necesita para funcionar, y apagar las primeras antes de vaciar.',
+          'No bastaba con borrar: la memoria tenia copias, las copias tenian reglas que las',
+          'devolvian al sitio, y esas reglas estaban blindadas por triggers custodios en cadena.',
+          'Habeis desarmado la cadena desde el vigia raiz y vaciado toda su memoria.',
         ]),
       ],
     };

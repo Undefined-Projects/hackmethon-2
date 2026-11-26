@@ -540,8 +540,8 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
 
   const j = juega();
   const a = dice(j('ayuda'));
-  check(!a.includes('llv-') && !a.includes('k7') && !a.includes('subsistema') && !a.includes('llave_maestra'),
-    'la ayuda no lleva ni el formato de la llave ni el encargo: eso es cosa de Datos');
+  check(!a.includes('llv-') && !a.includes('k7') && !a.includes('conciencia') && !a.includes('llave_maestra'),
+    'la ayuda no lleva ni el formato de la llave ni el encargo');
   check(a.includes('consultas') && a.includes('mostrar todo') && a.includes('guardar') && a.includes('probar'),
     'la ayuda presenta los comandos en español natural y destaca `consultas`');
 
@@ -549,10 +549,20 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(man.includes('1. consultas') && man.includes('2. filtros') && man.includes('3. operaciones logicas') && man.includes('forma 1') && man.includes('forma 2') && man.includes('forma 3'),
     '`consultas` abre el manual completo con consultas, filtros, logica y las 3 formas de guardar');
 
-  // --- el mundo
+  // --- el mundo y las semillas por equipo
   const filasP1 = [...MW.MUNDO1.bd.tablas.values()].reduce((n, t) => n + t.filas.length, 0);
   check(filasP1 === 2400, `la memoria de la Parte 1 tiene 2400 entradas (${filasP1})`);
-  check(MW.TOTAL2 === 2400, `y la de la Parte 2, tambien (${MW.TOTAL2})`);
+  check(MW.TOTAL2 === 3240, `la Parte 2 conserva las 2400 originales y suma 840 de respaldos y bitacora (${MW.TOTAL2})`);
+
+  const mundoOtro = MW.mundoDeSemilla(77712345);
+  check(
+    mundoOtro.patronFormato !== 'LLV-####-K7' || mundoOtro.tamanoLlave !== 64 || mundoOtro.claves[0] !== MW.LLAVES[0],
+    `cada equipo (semilla) tiene llaves, prefijo/terminacion y tamano propios (${mundoOtro.patronFormato} · ${mundoOtro.tamanoLlave} KB)`,
+  );
+
+  // Ninguna llave ni el molde caen en las primeras 350 filas (para no verse de entrada sin filtrar)
+  const indicesLlaves = MW.LLAVES.map((id) => Number(id.slice(2)));
+  check(indicesLlaves.every((n) => n > 350), `las 3 llaves no estan al principio de la tabla (${MW.LLAVES.join(', ')})`);
 
   const filaDe = (sql: string) => {
     const s: any = analizarSql(sql);
@@ -575,7 +585,8 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(empiezaTermina >= conTamano, 'EMPIEZA CON y TERMINA CON funcionan sin comillas');
 
   const tipos = dice(j('MOSTRAR DISTINTOS tipo DE propietarios'));
-  check(tipos.includes('subsistema'), 'MOSTRAR DISTINTOS revela el tercer tipo de propietario (subsistema)...');
+  check(tipos.includes('conciencia') && tipos.includes('admin') && tipos.includes('usuario'),
+    'MOSTRAR DISTINTOS revela los tipos de propietario del sistema (usuario, admin y conciencia)...');
   const datosP1 = verPantalla({});
   const nombresTablasP1 = datosP1.tablas.map((t: any) => t.id);
   check(JSON.stringify(nombresTablasP1) === JSON.stringify(['fragmentos', 'modulos', 'propietarios', 'etiquetas']),
@@ -585,8 +596,9 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(dice(j('MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 1')).includes('9'),
     'el nivel maximo real es 9 (ORDENADO POR nivel DESCENDENTE LIMITE 1)');
 
-  // --- la pantalla de filtro en vivo en Datos
-  j('MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64');
+  // --- la pantalla de filtro en vivo en Datos y el balance con Pantalla
+  const salConsulta = j('MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE codigo TIENE FORMATO LLV-####-K7 Y tamano ES 64');
+  check(!dice(salConsulta.bloques).includes('llv-'), 'Pantalla NO ve los codigos al hacer MOSTRAR TODO: solo los ve Datos en su pantalla');
   const datosFiltrados = verPantalla(j.estado());
   check(datosFiltrados.resultadoFiltro.total === conTamano && datosFiltrados.resultadoFiltro.filas.length === conTamano,
     `al aplicar un filtro o JOIN, la pantalla de Datos muestra las ${conTamano} filas y columnas que quedaron`);
@@ -598,7 +610,7 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
     'una columna ambigua se explica');
   check(dice(j('MOSTRAR TODO DE fragmentos DONDE sistema ES nucleo')).includes('junto con'),
     'pedir una columna de otra tabla sin unirla explica que hay que usar JUNTO CON');
-  check(dice(j('MOSTRAR TODO DE fragmentos')).includes('pantalla de datos'), 'pedir todo actualiza la pantalla de Datos y muestra vista previa');
+  check(dice(j('MOSTRAR TODO DE fragmentos')).includes('pantalla de filtro en vivo de datos'), 'pedir todo actualiza la pantalla de Datos');
   check(dice(j('BORRAR TODO DE fragmentos')).includes('solo lectura'), 'en la Parte 1 la memoria es de solo lectura');
   check(j('MOSTRAR TODO DE fantasma').fallo !== true, 'un error de consulta no penaliza');
 
@@ -608,7 +620,7 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   const pm = j('probar muchas');
   check(pm.fallo !== true && dice(pm).includes('exactamente una'), 'un guardado con mas de una fila no se prueba ni penaliza');
 
-  const decoy = filaDe(SOLUCIONES[0].replace('tipo ES subsistema', 'tipo ES robot')).base[0]!;
+  const decoy = filaDe(SOLUCIONES[0].replace('tipo ES conciencia', 'tipo ES admin')).base[0]!;
   j(`GUARDAR senuelo ${decoy.id}`);
   const rd = j('probar senuelo');
   check(rd.fallo === true, 'probar un señuelo (la llave con un rasgo cambiado) penaliza');
@@ -633,16 +645,17 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(r3.resuelto !== true && j.estado().parte === 2, 'Forma 3 (GUARDAR <codigo>): la tercera llave pasa a la Parte 2');
   check(dice(r3).includes('parte 2'), '...y lo dice');
   const dic2 = dice(verPantalla(j.estado()));
-  check(dic2.includes('sistema_triggers') && dic2.includes('respaldo_fragmentos'),
-    'el mapa de Datos cambia en la Parte 2: muestra las tablas de respaldo y sistema_triggers');
-  check((verPantalla(j.estado()).tablas.length) === 9 && verPantalla(j.estado()).titulo !== verPantalla({}).titulo,
-    '...con las 9 tablas reales de la Parte 2 y titulo distinto, para que Datos vuelva al mapa');
+  check(dic2.includes('respaldo_fragmentos') && !dic2.includes('trg_vigia_maestro'),
+    'en la Parte 2 Datos conserva las 4 tablas originales + 4 nuevas, pero NO tiene sistema_triggers (eso es de Pantalla)');
+  check((verPantalla(j.estado()).tablas.length) === 8 && verPantalla(j.estado()).titulo !== verPantalla({}).titulo,
+    '...con las 8 tablas de datos en el mapa y titulo distinto');
   check(dice(j('probar llave1')).includes('no hay que guardar'), 'la Parte 2 no usa guardar ni probar');
 
-  // --- Parte 2: borrar de verdad con comandos naturales
+  // --- Parte 2: cadena de triggers que protegen a otros triggers y borrado
   check(dice(j('BORRAR TODO DE sistema_triggers')).includes('solo lectura'), 'el catalogo de reglas es de solo lectura');
-  const trg = dice(j('MOSTRAR nombre, activo DE sistema_triggers'));
-  check(trg.includes('trg_latido') && trg.includes('trg_restaurar_frag_v0'), 'el catalogo se puede consultar');
+  const trg = dice(j('MOSTRAR nombre, accion, activo DE sistema_triggers'));
+  check(trg.includes('trg_vigia_maestro') && trg.includes('trg_escudo_respaldos') && trg.includes('trg_latido'),
+    'Pantalla recibe el catalogo sistema_triggers con la cadena de proteccion');
 
   const b1 = dice(j('BORRAR TODO DE fragmentos'));
   check(b1.includes('repuso 450'), 'borrar fragmentos sin apagar la regla: 450 filas vuelven solas');
@@ -651,7 +664,7 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(j.estado().ultimaRepuestas === 450 && (j.estado().repuestas as number) === 900, 'la camara lleva la cuenta de lo restaurado');
 
   j('reiniciar');
-  check(j.estado().restan === 2400 && (j.estado().log as string[]).length === 0, 'reiniciar devuelve la memoria entera');
+  check(j.estado().restan === MW.TOTAL2 && (j.estado().log as string[]).length === 0, 'reiniciar devuelve la memoria entera');
 
   const inoc = j('APAGAR REGLA trg_sello_fecha');
   check(inoc.fallo === true, 'apagar una regla que el robot necesita penaliza (acusar en falso)');
@@ -659,8 +672,22 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(j('BORRAR REGLA trg_restaurar_frag_v0').fallo !== true, 'quitar la copia antigua desactivada no cuesta nada');
   j('reiniciar');
 
+  // Intentar apagar trg_restaurar_frag directamente es bloqueado por trg_escudo_respaldos
+  const bloq1 = j('APAGAR REGLA trg_restaurar_frag');
+  check(bloq1.fallo !== true && dice(bloq1).includes('trg_escudo_respaldos') && dice(bloq1).includes('protegida'),
+    'intentar apagar trg_restaurar_frag antes de tiempo es bloqueado por trg_escudo_respaldos');
+
+  // Intentar apagar trg_escudo_respaldos directamente es bloqueado por trg_vigia_maestro
+  const bloq2 = j('APAGAR REGLA trg_escudo_respaldos');
+  check(bloq2.fallo !== true && dice(bloq2).includes('trg_vigia_maestro') && dice(bloq2).includes('protegida'),
+    'intentar apagar trg_escudo_respaldos antes de tiempo es bloqueado por trg_vigia_maestro');
+
+  // Desarmar la cadena en el orden correcto: primero el vigía raíz, luego el escudo
+  check(dice(j('APAGAR REGLA trg_vigia_maestro')).includes('desactivada'), '1) se apaga primero trg_vigia_maestro (el vigia raiz)');
+  check(dice(j('APAGAR REGLA trg_escudo_respaldos')).includes('desactivada'), '2) ahora si se deja apagar trg_escudo_respaldos');
   const latido = j('BORRAR REGLA trg_restaurar_frag');
-  check(dice(latido).includes('eliminada'), 'quitar una regla que restaura se acepta');
+  check(dice(latido).includes('eliminada'), '3) y ahora si se deja eliminar trg_restaurar_frag');
+
   j('BORRAR TODO DE fragmentos'); j('VACIAR respaldo_fragmentos');
   const rb = j('BORRAR TODO DE bitacora');
   check(dice(rb).includes('anadio 1'),
@@ -680,14 +707,22 @@ console.log('\n5) Memoria del Robot · BASES DE DATOS (Pseudo-SQL en español, d
   check(fin.resuelto === true, 'con todo vacio y sin reglas que lo rellenen, la fase se resuelve');
   check(j.estado().restan === 0, '...y la camara marca cero filas');
 
-  // Camino alternativo: apagar todas las reglas que restauran y vaciar en cualquier orden.
+  // Camino alternativo: desarmar la cadena entera desde el vigía raíz y vaciar en cualquier orden.
   const k = juega();
   SOLUCIONES.forEach((sql, n) => { k(`GUARDAR l${n} ${sql}`); k(`PROBAR l${n}`); });
-  for (const c of ['APAGAR REGLA trg_restaurar_frag', 'APAGAR REGLA trg_replicar_respaldo', 'APAGAR REGLA trg_restaurar_mod',
-    'APAGAR REGLA trg_restaurar_prop', 'APAGAR REGLA trg_latido', 'APAGAR REGLA trg_auditoria_etq']) k(c);
+  for (const c of [
+    'APAGAR REGLA trg_vigia_maestro',
+    'APAGAR REGLA trg_escudo_respaldos',
+    'APAGAR REGLA trg_restaurar_frag',
+    'APAGAR REGLA trg_replicar_respaldo',
+    'APAGAR REGLA trg_restaurar_mod',
+    'APAGAR REGLA trg_restaurar_prop',
+    'APAGAR REGLA trg_latido',
+    'APAGAR REGLA trg_auditoria_etq',
+  ]) k(c);
   let ult: any = null;
   for (const t of MW.DATOS2) ult = k(`VACIAR ${t}`);
-  check(ult.resuelto === true, 'tambien se resuelve apagando todas las reglas que restauran y vaciando en cualquier orden');
+  check(ult.resuelto === true, 'tambien se resuelve desarmando la cadena de triggers y vaciando las 8 tablas en cualquier orden');
 }
 
 // ============================================================
@@ -889,7 +924,7 @@ console.log('\n7) Circuito cerrado de todas las fases');
     ['Fase 1 · Control de Acceso', acceso, 2, ['caducada', 'vigente', 'noche', 'almacen']],
     ['Fase 2 · El Enemigo', enemigo, 2, ['svc.backup', 'k.moreno', 'a.duarte', 'j.ortega', 'm.rivas']],
     ['Fase 4 · Nucleo Modular', nucleo, 2, ['v * f', 'n * 2', 'n - 1', '12', '24']],
-    ['Fase 5 · Memoria del Robot', boveda, 2, ['llv-', 'k7', 'subsistema', 'llave_maestra', 'trg_']],
+    ['Fase 5 · Memoria del Robot', boveda, 2, ['llv-', 'k7', 'conciencia', 'llave_maestra', 'trg_']],
     ['Fase 6 · Puente', puente, 6, ['tk-4f19', 'k7qx', '/v2/']],
     ['Fase 7 · El Rastro', rastro, 2, ['9f2ae1', 'pruebas-07', 'nomina-02']],
   ];

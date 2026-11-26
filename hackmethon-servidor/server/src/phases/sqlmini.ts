@@ -31,6 +31,8 @@ export type EfectoTrigger =
   | { tipo: 'reponer'; desde: string }
   /** Al borrar, añade una fila a `bitacora`. */
   | { tipo: 'registrar'; detalle: string }
+  /** Protege a otros triggers: impide que se apaguen o eliminen mientras este siga activo. */
+  | { tipo: 'protector'; protegeA: string[] }
   /** No toca datos: es parte del funcionamiento normal del robot. */
   | { tipo: 'inocuo' };
 
@@ -38,7 +40,7 @@ export type TriggerDef = {
   id: string;
   nombre: string;
   tabla: string;
-  evento: 'INSERT' | 'UPDATE' | 'DELETE';
+  evento: 'INSERT' | 'UPDATE' | 'DELETE' | 'TRIGGER';
   efecto: EfectoTrigger;
   /** Lo que se lee en el catálogo `sistema_triggers`. */
   accion: string;
@@ -1264,15 +1266,29 @@ export function aplicarMutacion(s: Sentencia, db: BD): ResultadoMutacion {
       }
       return { borradas: fuera.length, eventos, texto: `Borradas ${fuera.length} fila(s) de ${s.tabla}.` };
     }
-    case 'drop_trigger': {
-      const tr = buscarTrigger(db, s.nombre);
-      if (!tr) throw new ErrorSql(`No existe ninguna regla o trigger llamada «${s.nombre}».`);
-      db.triggers = db.triggers.filter((x) => x !== tr);
-      return { borradas: 0, eventos: [], texto: `Regla ${tr.nombre} eliminada.` };
-    }
+    case 'drop_trigger':
     case 'disable_trigger': {
       const tr = buscarTrigger(db, s.nombre);
       if (!tr) throw new ErrorSql(`No existe ninguna regla o trigger llamada «${s.nombre}».`);
+      // Comprobar si algún trigger protector ACTIVO está blindando a este trigger
+      const protector = db.triggers.find(
+        (p) => p.activo && p.efecto.tipo === 'protector' && p.efecto.protegeA.includes(tr.nombre),
+      );
+      if (protector) {
+        return {
+          borradas: 0,
+          eventos: [{
+            trigger: protector.nombre,
+            repuestas: 0,
+            texto: `${protector.nombre} bloqueo la orden y mantuvo activa a ${tr.nombre}`,
+          }],
+          texto: `Orden rechazada: la regla «${tr.nombre}» esta protegida por otra regla activa.`,
+        };
+      }
+      if (s.tipo === 'drop_trigger') {
+        db.triggers = db.triggers.filter((x) => x !== tr);
+        return { borradas: 0, eventos: [], texto: `Regla ${tr.nombre} eliminada.` };
+      }
       tr.activo = false;
       return { borradas: 0, eventos: [], texto: `Regla ${tr.nombre} desactivada.` };
     }

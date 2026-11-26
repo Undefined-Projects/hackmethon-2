@@ -6,77 +6,60 @@
 
 Código: [`boveda.ts`](hackmethon-servidor/server/src/phases/boveda.ts) (fase),
 [`sqlmini.ts`](hackmethon-servidor/server/src/phases/sqlmini.ts) (mini-motor tolerante de Pseudo-SQL en español) y
-[`DatosView.tsx`](hackmethon-servidor/client/src/player/roles/DatosView.tsx) (mapa relacional + pantalla de filtro en vivo).
+[`DatosView.tsx`](hackmethon-servidor/client/src/player/roles/DatosView.tsx) (mapa relacional + pantalla de filtro en vivo con paginación).
 Clave: `fase-5-boveda`.
 
-## Misma terminal, dos partes
+---
 
-La Terminal usa **Pseudo-SQL natural en español** (con palabras clave en MAYÚSCULAS, sin asteriscos crípticos ni necesidad de comillas en palabras sueltas, y tolerante con las palabras de unión).
+## Reparto equilibrado (33% / 33% / 33%) en ambas partes
 
-| | Parte 1 · Encontrar las tres llaves | Parte 2 · Borrar la memoria |
+| Rol | Parte 1 · Encontrar las tres llaves | Parte 2 · Borrar la memoria |
 |---|---|---|
-| **Datos** | Mapa con las **4 tablas reales** (`fragmentos`, `modulos`, `propietarios`, `etiquetas`, sin tablas artificiales de pistas) + **Pantalla de Filtro en Vivo** que muestra las filas y columnas que quedan de la tabla o del `JOIN` | Mapa con las **9 tablas reales** (principales, `respaldo_*`, `bitacora` y `sistema_triggers`) + **Pantalla de Filtro en Vivo** que refleja cómo bajan o se restauran las filas |
-| **Pantalla** | Cámaras `ARCHIVO` (embudo) y `LLAVERO` (3 ranuras) + salidas y diagnósticos de la consola | Cámaras `MEMORIA` (filas restantes) y `RESPALDOS` (alertas de restauración automática) + avisos de triggers disparados |
-| **Terminal** | `MOSTRAR TODO DE`, `CONTAR`, `MOSTRAR DISTINTOS`, `GUARDAR` (3 formas), `PROBAR`, `consultas` | `MOSTRAR TODO DE`, `CONTAR`, `BORRAR TODO DE` / `VACIAR`, `APAGAR REGLA` / `BORRAR REGLA`, `reiniciar` |
-| **Victoria** | Las 3 llaves confirmadas con `PROBAR` → pasa a la Parte 2 | **Ninguna fila** en ninguna de las 8 tablas de datos |
-
-Cada parte tiene **2400 entradas** (1800+120+180+300 en la Parte 1; 1300+100+120+120+450+100+120+90 en la Parte 2).
+| **`DATOS`** | Tiene el **mapa de las 4 tablas reales** (`fragmentos`, `modulos`, `propietarios`, `etiquetas`, sin tablas artificiales de pistas) y es el **ÚNICO** que ve los registros y columnas en la **Pantalla de Filtro en Vivo** (con paginación de 100 en 100). | Conserva en su mapa las **4 tablas originales** (con sus registros y llaves) + **4 tablas nuevas** (`respaldo_fragmentos`, `respaldo_modulos`, `respaldo_propietarios`, `bitacora`) y ve en vivo cuántas filas quedan en cada una. |
+| **`PANTALLA`** | Tiene las **cámaras** (`ARCHIVO` y `LLAVERO`), el **manual completo** (`consultas`), las **pistas de las 3 cerraduras** (`estado`) y el veredicto de `PROBAR`. No ve los registros ni los códigos de `fragmentos`. | Es el **ÚNICO** que ve el catálogo de reglas automáticas (`MOSTRAR TODO DE sistema_triggers`), las alertas de qué trigger bloqueó o restauró filas y la cámara `RESPALDOS`. |
+| **`TERMINAL`** | Escribe a ciegas las consultas (`MOSTRAR TODO DE`, `CONTAR`, `MOSTRAR DISTINTOS`, `JUNTO CON`, `DONDE`), guarda (`GUARDAR` en cualquiera de sus 3 formas) y valida (`PROBAR`). | Cruza la cadena de protección de reglas que lee `PANTALLA` con el estado de las 8 tablas que lee `DATOS` para ejecutar `APAGAR REGLA` y `VACIAR` en el orden correcto. |
 
 ---
 
-## Cómo funciona la Pantalla de Filtro en Vivo en `DATOS`
+## Semilla dinámica por equipo (`semilla`)
 
-En lugar de mostrar tablas de pistas separadas o devolver solo un número cuando hay muchos resultados:
-1. **`DATOS` tiene únicamente las tablas reales del sistema** conectadas por sus flechas de relación (`modulo_id → modulos`, `propietario_id → propietarios`, `etiqueta_id → etiquetas`).
-2. Debajo del mapa relacional, `DATOS` tiene la **`PANTALLA DE FILTRO EN VIVO`**:
-   - Al iniciar, muestra los registros y las 9 columnas de `fragmentos`.
-   - Cada vez que `TERMINAL` ejecuta una consulta con `JUNTO CON` o `DONDE` (ej. `MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE ...`), la pantalla de `DATOS` se actualiza en tiempo real con **los registros que quedaron de la tabla o del `JOIN`**, incluyendo todas las columnas de `fragmentos` más las columnas unidas (`modulos.nombre`, `modulos.sistema`, `modulos.enlace`, `propietarios.nombre`, `propietarios.tipo`, `etiquetas.nombre`, `etiquetas.categoria`).
-   - Así, el Operador de Datos analiza los registros que van quedando, detecta los señuelos por sus valores y guía a `TERMINAL` para afinar el filtro hasta aislar cada una de las 3 llaves.
+- Cada equipo puede tener su propia semilla (`mundoDeSemilla(semilla)`), lo que cambia:
+  - El **prefijo** del código de la llave (`LLV`, `CLV`, `KRN`, `ACC`, `NUC`, `SIG`).
+  - Los **4 dígitos** y la **terminación** (`K7`, `X9`, `M4`, `R8`, `Z3`, `V6`).
+  - El **tamaño** exacto de la llave (`64`, `96`, `128`, `48`, `72`, `84`).
+  - Los IDs y posiciones de las 3 llaves.
+- Ni el fragmento molde (`llave_maestra`) ni las 3 llaves caen nunca en las primeras 350 filas de `fragmentos`, de modo que no aparecen en las primeras páginas sin filtrar.
 
 ---
 
-## Sintaxis del Pseudo-SQL en Español (`consultas`)
+## Parte 1 — Pistas y deducción de las 3 llaves
 
-Al escribir `ayuda`, la terminal muestra los comandos básicos y destaca el comando **`consultas`**, que despliega un manual amplio dividido en 4 bloques:
+1. **El molde del código y tamaño (`llave_maestra`):**
+   - Al consultar qué fragmento tiene la etiqueta `llave_maestra` (`E-001`, categoría `seguridad`), el equipo descubre el registro molde (`<PREFIJO>-0000-<SUFIJO>` y su `tamano`), con el que descartan la basura (`DAT-`, `LOG-`, `CFG-`, `TMP-`) y los señuelos.
+2. **Llave 1 (Vínculo de Conciencia Interna):**
+   - `estado ES activo`, su propietario no es `usuario` ni `admin` sino el tercer tipo oculto del sistema (`tipo ES conciencia`, descubierto con `MOSTRAR DISTINTOS tipo DE propietarios`), y su módulo pertenece al sistema `nucleo`.
+3. **Llave 2 (Vínculo de Seguridad Externa de Máximo Nivel):**
+   - Etiqueta de `categoria ES seguridad`, módulo con `enlace ES externo`, y el `nivel` más alto de toda la memoria (`nivel ES 9`, descubierto con `MOSTRAR nivel DE fragmentos ORDENADO POR nivel DESCENDENTE LIMITE 5`).
+4. **Llave 3 (Vínculo Archivado a la Llave Maestra):**
+   - `estado ES archivado` y su `referencia_id` apunta al fragmento que lleva la etiqueta exacta `llave_maestra` (descartando las etiquetas trampa `llave-maestra`, `llave_maestro`, `llave_maestra_v0`, `Llave_maestra`).
 
-### 1. Consultas (cómo pedir y cruzar datos)
-- **`MOSTRAR TODO DE <tabla> [JUNTO CON ...] [DONDE ...]`**
-  Aplica el filtro o la unión (`JOIN`) y muestra los registros y columnas que quedaron en la Pantalla de Filtro en Vivo de `DATOS`. También se pueden pedir columnas específicas: `MOSTRAR id, codigo, nivel DE fragmentos`.
-- **`CONTAR <tabla> [JUNTO CON ...] [DONDE ...]`**
-  Cuenta cuántas filas cumplen la condición.
-- **`MOSTRAR DISTINTOS <columna> DE <tabla>`**
-  Muestra todos los valores diferentes que existen realmente en esa columna.
-- **`... JUNTO CON <otra_tabla> [, <otra_tabla_2>]`** (también acepta `UNIR CON`)
-  Une tablas relacionadas automáticamente para ver sus columnas juntas en `DATOS` y filtrar por ellas. Si un fragmento apunta a otro (`referencia_id`), se puede unir con `referencia`.
-- **`... ORDENADO POR <columna> DESCENDENTE [LIMITE <n>]`**
-  Ordena de mayor a menor (`DESCENDENTE`) o de menor a mayor (`ASCENDENTE`) y limita cuántas filas se muestran.
+---
 
-### 2. Filtros después de `DONDE` (cómo comparar valores)
-- **`columna ES valor`** / **`columna NO ES valor`**
-- **`columna MAYOR QUE n`** / **`columna MENOR QUE n`** (también `MAYOR O IGUAL A`, `MENOR O IGUAL A`)
-- **`columna TIENE FORMATO LLV-####-K7`** (`#` exige un número del 0 al 9 y `?` cualquier carácter; respeta mayúsculas y minúsculas)
-- **`columna EMPIEZA CON texto`** / **`columna TERMINA CON texto`** / **`columna CONTIENE texto`**
-- **`columna ESTA VACIO`** / **`columna NO ESTA VACIO`**
+## Parte 2 — Las 8 tablas y la cadena de triggers que se protegen entre sí
 
-### 3. Operaciones lógicas
-- **`Y`** — Exige que se cumplan todas las condiciones a la vez.
-- **`O`** — Acepta registros que cumplan cualquiera de las condiciones.
-- **`NO`** — Invierte un filtro (`NO ES`, `NO CONTIENE`, `NO TIENE FORMATO`, `NO ESTA VACIO`).
+En la Parte 2 **se conservan las 4 tablas originales** (con las mismas 2400 filas de la Parte 1) y **se suman 4 tablas nuevas** (`respaldo_fragmentos` con 450 copias, `respaldo_modulos` con 120, `respaldo_propietarios` con 180 y `bitacora` con 90 = **3240 filas en total** distribuidas en 8 tablas).
 
-### 4. Las 3 formas de `GUARDAR` y `PROBAR` (Parte 1)
-1. **Forma 1 (Guardar tu última consulta):**
-   ```text
-   MOSTRAR TODO DE fragmentos JUNTO CON modulos, propietarios DONDE ...
-   GUARDAR llave1
-   PROBAR llave1
-   ```
-2. **Forma 2 (Guardar escribiendo la consulta con un solo verbo):**
-   ```text
-   GUARDAR llave1 DE fragmentos JUNTO CON modulos, propietarios DONDE ...
-   PROBAR llave1
-   ```
-3. **Forma 3 (Guardar el código o ID que `DATOS` ve en su pantalla):**
-   ```text
-   GUARDAR LLV-4829-K7
-   PROBAR LLV-4829-K7
-   ```
+Además, en `sistema_triggers` (12 reglas, consultable desde `PANTALLA`) existe una **cadena de protección entre triggers**:
+1. **`trg_vigia_maestro` (`TR-09`, Vigía Raíz):**
+   - No está protegido por nadie, pero custodia a **`trg_escudo_respaldos`** y a **`trg_latido`**. Si intentan apagar cualquiera de esos dos antes de apagar a `trg_vigia_maestro`, la orden es bloqueada.
+2. **`trg_escudo_respaldos` (`TR-08`, Custodio Intermedio):**
+   - Está protegido por `trg_vigia_maestro` y custodia a las 4 reglas que restauran copias (**`trg_restaurar_frag`**, **`trg_replicar_respaldo`**, **`trg_restaurar_mod`**, **`trg_restaurar_prop`**).
+3. **Reglas de restauración y bitácora:**
+   - `trg_restaurar_frag`, `trg_replicar_respaldo`, `trg_restaurar_mod`, `trg_restaurar_prop`, `trg_latido`, `trg_auditoria_etq`.
+4. **Reglas inocuas de funcionamiento (`INSERT` / `UPDATE`):**
+   - `trg_sello_fecha`, `trg_validar_nivel`, `trg_cuenta_prop` (no deben apagarse; tocarlas activa la cuarentena).
+
+**Orden de desactivación para ganar la Parte 2:**
+1. `APAGAR REGLA trg_vigia_maestro`
+2. `APAGAR REGLA trg_escudo_respaldos` y `APAGAR REGLA trg_latido`
+3. Apagar las reglas de restauración (`trg_restaurar_frag`, `trg_auditoria_etq`, etc.) y vaciar las 8 tablas con `VACIAR <tabla>` (o `BORRAR TODO DE <tabla>`).
